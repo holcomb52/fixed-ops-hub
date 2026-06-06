@@ -1,0 +1,42 @@
+{
+  "seasoned": [
+    {
+      "name": "Tom LeBlanc",
+      "plan_type": "seasoned",
+      "advisor_id": "049",
+      "top_labor_rate": 9.5,
+      "weekly_guarantee": 1000.0
+    },
+    {
+      "name": "Richard Maldonado",
+      "plan_type": "seasoned",
+      "advisor_id": "3490",
+      "top_labor_rate": 9.5,
+      "weekly_guarantee": 1000.0
+    }
+  ],
+  "new_advisors": [
+    {
+      "name": "Matthew Garrigan",
+      "plan_type": "new_advisors",
+      "advisor_id": "3809",
+      "top_labor_rate": 9.5,
+      "weekly_guarantee": 1000.0
+    },
+    {
+      "name": "Felix Figueroa",
+      "plan_type": "new_advisors",
+      "advisor_id": "3812",
+      "top_labor_rate": 9.5,
+      "weekly_guarantee": 1000.0
+    },
+    {
+      "name": "Brady Hatcher",
+      "plan_type": "new_advisors",
+      "advisor_id": "3816",
+      "top_labor_rate": 9.5,
+      "weekly_guarantee": 1000.0
+    }
+  ],
+  "new_hires": []
+}

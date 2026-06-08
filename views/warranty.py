@@ -125,21 +125,22 @@ def _render_ro_card(
     ro_hours = sum(line.tech_hrs for line in included_lines)
     all_excluded = len(included_lines) == 0
     header = ro_lines[0]
+    is_reviewed = st.session_state.get(review_widget_key(recid), is_reviewed)
+    strip_class = "done" if is_reviewed else "pending"
     card_class = "warranty-ro-card-reviewed" if is_reviewed else "warranty-ro-card-pending"
     if is_focus:
         card_class += " warranty-ro-card-focus"
 
-    strip_class = "done" if is_reviewed else "pending"
     st.markdown(f'<div class="warranty-ro-wrap {card_class}">', unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown(
             f'<div class="warranty-ro-review-strip {strip_class}">',
             unsafe_allow_html=True,
         )
-        review_col, status_col = st.columns([0.42, 1.58])
+        review_col, status_col = st.columns([0.48, 1.52])
         with review_col:
             st.checkbox(
-                "Reviewed",
+                "Mark reviewed",
                 key=review_widget_key(recid),
                 help="Check when you have finished reviewing this repair order.",
             )
@@ -148,16 +149,20 @@ def _render_ro_card(
                 st.markdown(
                     '<div class="warranty-review-status done">'
                     '<span class="warranty-review-status-icon">✓</span>'
-                    "<span>Reviewed — you are done with this RO</span>"
-                    "</div>",
+                    '<div class="warranty-review-status-copy">'
+                    '<div class="warranty-review-headline">Reviewed</div>'
+                    '<div class="warranty-review-sub">You are done with this repair order</div>'
+                    "</div></div>",
                     unsafe_allow_html=True,
                 )
             else:
                 st.markdown(
                     '<div class="warranty-review-status pending">'
                     '<span class="warranty-review-status-icon">!</span>'
-                    "<span>Needs review — check the box when finished</span>"
-                    "</div>",
+                    '<div class="warranty-review-status-copy">'
+                    '<div class="warranty-review-headline">Needs review</div>'
+                    '<div class="warranty-review-sub">Check the box when you finish this RO</div>'
+                    "</div></div>",
                     unsafe_allow_html=True,
                 )
         st.markdown("</div>", unsafe_allow_html=True)

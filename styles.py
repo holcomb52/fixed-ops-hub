@@ -702,13 +702,17 @@ h2, h3 { font-family: 'Syne', sans-serif; }
 }
 
 .warranty-ro-wrap.warranty-ro-card-pending [data-testid="stVerticalBlockBorderWrapper"] {
-    border-color: rgba(251, 191, 36, 0.45) !important;
-    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    border-color: rgba(251, 191, 36, 0.72) !important;
+    box-shadow:
+        0 0 0 1px rgba(251, 191, 36, 0.2),
+        0 0 22px rgba(251, 191, 36, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .warranty-ro-wrap.warranty-ro-card-reviewed [data-testid="stVerticalBlockBorderWrapper"] {
-    border-color: rgba(34, 197, 94, 0.35) !important;
-    opacity: 0.88;
+    border-color: rgba(34, 197, 94, 0.55) !important;
+    opacity: 0.92;
+    box-shadow: 0 0 16px rgba(34, 197, 94, 0.1);
 }
 
 .warranty-ro-wrap.warranty-ro-card-focus [data-testid="stVerticalBlockBorderWrapper"] {
@@ -717,48 +721,92 @@ h2, h3 { font-family: 'Syne', sans-serif; }
 }
 
 .warranty-ro-review-strip {
-    margin: -0.15rem -0.15rem 0.85rem;
-    padding: 0.7rem 0.85rem;
-    border-radius: 12px 12px 10px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin: -0.35rem -0.35rem 1rem;
+    padding: 0.95rem 1rem 0.95rem 1.15rem;
+    border-radius: 14px 14px 10px 10px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-left-width: 6px;
 }
 
 .warranty-ro-review-strip.pending {
-    background: linear-gradient(90deg, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0.08));
-    border-color: rgba(251, 191, 36, 0.42);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.34), rgba(251, 191, 36, 0.12) 55%, rgba(251, 191, 36, 0.05));
+    border-color: rgba(251, 191, 36, 0.75);
+    border-left-color: #fbbf24;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 0 24px rgba(251, 191, 36, 0.16);
+    animation: warranty-review-pulse 2.2s ease-in-out infinite;
 }
 
 .warranty-ro-review-strip.done {
-    background: linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.07));
-    border-color: rgba(34, 197, 94, 0.38);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    background: linear-gradient(90deg, rgba(34, 197, 94, 0.3), rgba(34, 197, 94, 0.1) 55%, rgba(34, 197, 94, 0.04));
+    border-color: rgba(74, 222, 128, 0.55);
+    border-left-color: #4ade80;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        0 0 18px rgba(34, 197, 94, 0.12);
+}
+
+@keyframes warranty-review-pulse {
+    0%, 100% {
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 0 18px rgba(251, 191, 36, 0.12);
+    }
+    50% {
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 0 30px rgba(251, 191, 36, 0.28);
+    }
 }
 
 .warranty-review-status {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    min-height: 2rem;
+    gap: 0.75rem;
+    min-height: 2.6rem;
+}
+
+.warranty-review-status-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+
+.warranty-review-headline {
     font-family: 'Syne', sans-serif;
-    font-size: 0.92rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
+    font-size: 1.18rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.warranty-review-sub {
+    font-size: 0.82rem;
+    font-weight: 600;
+    opacity: 0.92;
 }
 
 .warranty-review-status-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.45rem;
-    height: 1.45rem;
+    width: 2.15rem;
+    height: 2.15rem;
     border-radius: 999px;
-    font-size: 0.82rem;
-    font-weight: 800;
+    font-size: 1.05rem;
+    font-weight: 900;
     flex-shrink: 0;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
 }
 
-.warranty-review-status.pending {
+.warranty-review-status.pending .warranty-review-headline {
+    color: #fef3c7;
+    text-shadow: 0 0 18px rgba(251, 191, 36, 0.35);
+}
+
+.warranty-review-status.pending .warranty-review-sub {
     color: #fde68a;
 }
 
@@ -767,7 +815,12 @@ h2, h3 { font-family: 'Syne', sans-serif; }
     background: #fbbf24;
 }
 
-.warranty-review-status.done {
+.warranty-review-status.done .warranty-review-headline {
+    color: #dcfce7;
+    text-shadow: 0 0 16px rgba(74, 222, 128, 0.28);
+}
+
+.warranty-review-status.done .warranty-review-sub {
     color: #bbf7d0;
 }
 
@@ -776,11 +829,32 @@ h2, h3 { font-family: 'Syne', sans-serif; }
     background: #4ade80;
 }
 
+.warranty-ro-wrap .stCheckbox {
+    padding-top: 0.45rem;
+}
+
+.warranty-ro-wrap .stCheckbox label {
+    min-height: 2.6rem;
+    align-items: center !important;
+}
+
 .warranty-ro-wrap .stCheckbox label p {
     font-family: 'Syne', sans-serif;
-    font-size: 0.95rem !important;
-    font-weight: 700 !important;
+    font-size: 1.02rem !important;
+    font-weight: 800 !important;
     color: #f8fafc !important;
+    letter-spacing: 0.02em;
+}
+
+.warranty-ro-wrap .stCheckbox label p::before {
+    content: "☐ ";
+    color: #fbbf24;
+    font-size: 1.1rem;
+}
+
+.warranty-ro-wrap.warranty-ro-card-reviewed .stCheckbox label p::before {
+    content: "☑ ";
+    color: #4ade80;
 }
 
 .warranty-review-resume {

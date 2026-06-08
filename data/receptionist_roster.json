@@ -1,0 +1,71 @@
+{
+  "receptionist": [
+    {
+      "name": "Misty Carver",
+      "last_name": "CARVER",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22CARVERM"
+      ],
+      "appointment_rate": 2.0,
+      "has_warranty_bonus": false,
+      "warranty_bonus_amount": 100.0
+    },
+    {
+      "name": "Jennifer Cleary",
+      "last_name": "CLEARY",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22CLEARYJ"
+      ],
+      "appointment_rate": 3.0,
+      "has_warranty_bonus": false,
+      "warranty_bonus_amount": 100.0
+    },
+    {
+      "name": "Brandy Sistrunk",
+      "last_name": "SISTRUNK",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22SISTRUNKB"
+      ],
+      "appointment_rate": 2.0,
+      "has_warranty_bonus": false,
+      "warranty_bonus_amount": 100.0
+    },
+    {
+      "name": "Kayla Hoffman",
+      "last_name": "HOFFMAN",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22HOFFMANK"
+      ],
+      "appointment_rate": 2.0,
+      "has_warranty_bonus": false,
+      "warranty_bonus_amount": 100.0
+    },
+    {
+      "name": "Samantha Rodriguez",
+      "last_name": "RODRIGUEZ",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22RODRIGUEZS"
+      ],
+      "appointment_rate": 2.0,
+      "has_warranty_bonus": false,
+      "warranty_bonus_amount": 100.0
+    },
+    {
+      "name": "Serenity Skinner",
+      "last_name": "SKINNER",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22SKINNERS"
+      ],
+      "appointment_rate": 2.0,
+      "has_warranty_bonus": true,
+      "warranty_bonus_amount": 100.0
+    }
+  ],
+  "bonus": []
+}

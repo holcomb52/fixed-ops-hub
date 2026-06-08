@@ -52,6 +52,40 @@ create table if not exists advisor_payroll_runs (
 create index if not exists idx_advisor_payroll_runs_period on advisor_payroll_runs (pay_period desc);
 create index if not exists idx_advisor_payroll_runs_completed on advisor_payroll_runs (completed_at desc);
 
+-- Completed receptionist payroll runs (Reports → Receptionist Payroll)
+create table if not exists receptionist_payroll_runs (
+    id uuid primary key default gen_random_uuid(),
+    pay_period text not null,
+    status text not null default 'completed' check (status in ('draft', 'completed')),
+    snapshot jsonb not null,
+    grand_total numeric(12, 2),
+    employee_count integer,
+    completed_at timestamptz,
+    updated_at timestamptz default now(),
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_receptionist_payroll_runs_period on receptionist_payroll_runs (pay_period desc);
+create index if not exists idx_receptionist_payroll_runs_completed on receptionist_payroll_runs (completed_at desc);
+
+-- Saved warranty ELR analysis runs (Reports → Warranty ELR Analysis)
+create table if not exists warranty_labor_runs (
+    id uuid primary key default gen_random_uuid(),
+    run_label text not null,
+    source_name text not null,
+    sheet_name text not null,
+    status text not null default 'saved' check (status in ('draft', 'saved')),
+    snapshot jsonb not null,
+    effective_labor_rate numeric(12, 2),
+    included_rows integer,
+    total_rows integer,
+    completed_at timestamptz,
+    updated_at timestamptz default now(),
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_warranty_labor_runs_completed on warranty_labor_runs (completed_at desc);
+
 -- Sample data (optional — remove if you want a blank slate)
 insert into employees (full_name, role, hourly_rate) values
     ('Alex Rivera', 'Service Advisor', 28.50),

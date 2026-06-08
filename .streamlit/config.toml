@@ -7,6 +7,8 @@ textColor = "#e8edf5"
 font = "sans serif"
 
 [server]
+port = 8510
+address = "localhost"
 headless = true
 
 [browser]

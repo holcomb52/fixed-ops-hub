@@ -49,3 +49,5 @@ venv/
 .streamlit/secrets.toml
 data/payroll_archive/
 data/advisor_payroll_archive/
+data/receptionist_payroll_archive/
+data/warranty_labor_archive/

@@ -184,6 +184,10 @@ def init_payroll_session():
         st.session_state.advisor_payroll_completed = False
     if "payroll_completed" not in st.session_state:
         st.session_state.payroll_completed = False
+    if "active_receptionist_run_id" not in st.session_state:
+        st.session_state.active_receptionist_run_id = None
+    if "receptionist_payroll_completed" not in st.session_state:
+        st.session_state.receptionist_payroll_completed = False
 
     init_pay_period_state()
 

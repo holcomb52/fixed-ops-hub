@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fixedopshub.streamlit</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/bigstud/Projects/fixed-ops-hub/scripts/start-fixed-ops-hub.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/bigstud/Library/Logs/fixed-ops-hub/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/bigstud/Library/Logs/fixed-ops-hub/stderr.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/bigstud/Projects/fixed-ops-hub</string>
+</dict>
+</plist>

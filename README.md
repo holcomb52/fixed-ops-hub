@@ -36,31 +36,57 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 streamlit run app.py
 ```
 
-Opens at [http://localhost:8501](http://localhost:8501).
+Opens at [http://localhost:8510](http://localhost:8510).
 
-## 3. Deploy to the cloud
+### Open from a bookmark (Mac or Windows)
 
-### Push to GitHub
+In **Google Chrome**, bookmark:
+
+**[http://localhost:8510](http://localhost:8510)**
+
+Use the same bookmark on every computer where Fixed Ops Hub is installed.
+
+#### Mac — one-time setup
 
 ```bash
-git add app.py requirements.txt .streamlit/config.toml styles.py views/ lib/ supabase/ README.md .gitignore .env.example .streamlit/secrets.toml.example
-git commit -m "Add Streamlit + Supabase fixed ops dashboard"
-git remote add origin https://github.com/YOUR_USERNAME/fixed-ops-hub.git
-git push -u origin main
+/Users/bigstud/Projects/fixed-ops-hub/scripts/install-autostart.sh
 ```
 
-### Deploy on Streamlit Cloud
+Then double-click **Fixed Ops Hub** on your Desktop or in Applications anytime. It starts the server and opens Chrome.
 
-1. Go to [share.streamlit.io](https://share.streamlit.io) → sign in with GitHub
-2. **New app** → repo `fixed-ops-hub`, branch `main`, main file `app.py`
-3. Open **Advanced settings → Secrets** and add:
+Optional: add **Fixed Ops Hub.app** to **System Settings → General → Login Items** so the bookmark works right after login.
+
+#### Windows — one-time setup
+
+1. Copy or sync this project folder to the Windows PC (OneDrive, Git, or USB).
+2. Install [Python 3](https://www.python.org/downloads/) and check **Add Python to PATH**.
+3. Double-click **`SETUP-WINDOWS.bat`** in the project folder.
+
+That installs packages, creates a **Fixed Ops Hub** Desktop shortcut, adds Windows startup, and opens Chrome.
+
+**Important:** a Chrome bookmark alone does not start the app on Windows. Run setup once, then use the Desktop shortcut or startup entry. See **[SETUP-WINDOWS.md](SETUP-WINDOWS.md)** if the bookmark will not open.
+
+## 3. Cloud (recommended for Windows / no installs)
+
+**Best if you cannot install Python on Windows.** One URL works on Mac, Windows, and any browser.
+
+See **[DEPLOY-CLOUD.md](DEPLOY-CLOUD.md)** for the full walkthrough.
+
+Quick summary:
+
+1. Run `supabase/schema.sql` in Supabase
+2. Push this repo to GitHub
+3. Deploy at [share.streamlit.io](https://share.streamlit.io) with secrets:
 
 ```toml
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
 SUPABASE_KEY = "your_service_role_key"
+APP_PASSWORD = "choose-a-strong-password"
 ```
 
-4. **Deploy** — you get a shareable URL like `https://fixed-ops-hub.streamlit.app`
+4. Bookmark your `https://something.streamlit.app` URL in Chrome
+
+No AI runs in this app — it is payroll and warranty spreadsheet math only.
 
 ## Project structure
 

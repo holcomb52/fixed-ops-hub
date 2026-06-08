@@ -1,9 +1,10 @@
 import streamlit as st
 
 from components.ui import coming_soon_panel
+from lib.app_auth import require_login
 from lib.supabase_client import is_configured
 from styles import CUSTOM_CSS
-from views import flag_sheet, home, payroll, reports
+from views import flag_sheet, home, payroll, reports, warranty
 
 st.set_page_config(
     page_title="Fixed Ops Hub",
@@ -14,10 +15,14 @@ st.set_page_config(
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+if not require_login():
+    st.stop()
+
 PAGES = {
     "Home": home.render,
     "Payroll": payroll.render,
     "Flag Sheet": flag_sheet.render,
+    "Warranty": warranty.render,
     "Inventory": None,
     "Reports": reports.render,
 }
@@ -53,6 +58,7 @@ with st.sidebar:
             "Home": "🏠  Home",
             "Payroll": "💰  Payroll",
             "Flag Sheet": "📋  Flag Sheet",
+            "Warranty": "🛡️  Warranty",
             "Inventory": "📦  Inventory",
             "Reports": "📊  Reports",
         }[x],

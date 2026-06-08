@@ -590,6 +590,117 @@ hr {
 /* Hide default markdown h2/h3 styling conflicts */
 h2, h3 { font-family: 'Syne', sans-serif; }
 
+/* ── Warranty RO grid ── */
+.warranty-ro-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+@media (max-width: 1100px) {
+    .warranty-ro-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.warranty-ro-card {
+    padding: 1rem 1.1rem;
+    border-radius: 16px;
+    background: rgba(12, 18, 32, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.warranty-ro-card.excluded-ro {
+    border-color: rgba(148, 163, 184, 0.35);
+    opacity: 0.92;
+}
+
+.warranty-ro-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 0.65rem;
+}
+
+.warranty-ro-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.warranty-ro-meta {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    margin-top: 0.2rem;
+}
+
+.warranty-ro-total {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    white-space: nowrap;
+}
+
+.warranty-ro-line-panel {
+    margin-top: 0.75rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.warranty-ro-line-panel.excluded-line {
+    opacity: 0.78;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.warranty-ro-line-title {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 0.55rem;
+}
+
+.warranty-ro-line-top {
+    display: grid;
+    grid-template-columns: 1.1fr 1.6fr 0.7fr 0.8fr 0.8fr;
+    gap: 0.45rem;
+    font-size: 0.8rem;
+    color: #e2e8f0;
+    margin-bottom: 0.45rem;
+}
+
+.warranty-ro-line-label {
+    color: #64748b;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.1rem;
+}
+
+.warranty-ro-line.excluded-line {
+    opacity: 0.72;
+}
+
+.warranty-ro-elr-good {
+    color: #86efac;
+    font-weight: 700;
+}
+
+.warranty-ro-elr-bad {
+    color: #fca5a5;
+    font-weight: 700;
+}
+
 /* ── Payroll grid legend ── */
 .legend-chip {
     display: inline-block;

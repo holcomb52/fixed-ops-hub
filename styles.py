@@ -701,6 +701,61 @@ h2, h3 { font-family: 'Syne', sans-serif; }
     font-weight: 700;
 }
 
+.warranty-ro-wrap.warranty-ro-card-pending [data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: rgba(251, 191, 36, 0.45) !important;
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.warranty-ro-wrap.warranty-ro-card-reviewed [data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: rgba(34, 197, 94, 0.35) !important;
+    opacity: 0.88;
+}
+
+.warranty-ro-wrap.warranty-ro-card-focus [data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: rgba(0, 212, 255, 0.75) !important;
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.18);
+}
+
+.warranty-review-badge {
+    display: inline-block;
+    margin-left: 0.45rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.warranty-review-badge.pending {
+    color: #fde68a;
+    background: rgba(251, 191, 36, 0.16);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.warranty-review-badge.done {
+    color: #86efac;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.warranty-review-resume {
+    margin: 0.35rem 0 0.85rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 12px;
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.22);
+    color: #cbd5e1;
+    font-size: 0.88rem;
+}
+
+.warranty-review-resume-ro {
+    color: #67e8f9;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+}
+
 /* ── Payroll grid legend ── */
 .legend-chip {
     display: inline-block;

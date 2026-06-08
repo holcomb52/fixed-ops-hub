@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import streamlit as st
 import pandas as pd
 
@@ -16,6 +18,7 @@ from lib.warranty_labor_calc import (
     get_builtin_exclusion_values,
     get_exclusion_select_options,
     label_to_exclusion,
+    review_widget_key,
     rows_to_display_dicts,
     summarize_rows,
 )
@@ -41,6 +44,42 @@ def _clear_exclusion_widgets():
     for key in list(st.session_state.keys()):
         if key.startswith("warranty_exc_"):
             del st.session_state[key]
+
+
+def _clear_review_widgets():
+    for key in list(st.session_state.keys()):
+        if key.startswith("warranty_ro_reviewed_"):
+            del st.session_state[key]
+
+
+def _init_review_widgets(recids: list[str]):
+    reviewed_seed = st.session_state.get("warranty_reviewed_ros", set())
+    for recid in recids:
+        key = review_widget_key(recid)
+        if key not in st.session_state:
+            st.session_state[key] = recid in reviewed_seed
+
+
+def _collect_reviewed_recids(recids: list[str]) -> set[str]:
+    return {
+        recid
+        for recid in recids
+        if st.session_state.get(review_widget_key(recid), False)
+    }
+
+
+def _sort_ro_groups(
+    ro_groups: list[tuple[str, list[WarrantyLaborRow]]],
+    reviewed_recids: set[str],
+    jump_ro: str | None = None,
+) -> list[tuple[str, list[WarrantyLaborRow]]]:
+    def sort_key(item: tuple[str, list[WarrantyLaborRow]]):
+        recid = item[0]
+        if jump_ro and recid == jump_ro:
+            return (0, 0, recid)
+        return (1, recid in reviewed_recids, recid)
+
+    return sorted(ro_groups, key=sort_key)
 
 
 def _sync_row_exclusions(rows, custom_exclusions):
@@ -73,20 +112,42 @@ def _elr_class(elr: float, excluded: bool) -> str:
     return ""
 
 
-def _render_ro_card(recid: str, ro_lines: list[WarrantyLaborRow], select_options: list[str]):
+def _render_ro_card(
+    recid: str,
+    ro_lines: list[WarrantyLaborRow],
+    select_options: list[str],
+    *,
+    is_reviewed: bool,
+    is_focus: bool,
+):
     included_lines = [line for line in ro_lines if not (line.exclusion or "").strip()]
     ro_labor = sum(line.lbr_sale for line in included_lines)
     ro_hours = sum(line.tech_hrs for line in included_lines)
     all_excluded = len(included_lines) == 0
     header = ro_lines[0]
+    card_class = "warranty-ro-card-reviewed" if is_reviewed else "warranty-ro-card-pending"
+    if is_focus:
+        card_class += " warranty-ro-card-focus"
 
+    st.markdown(f'<div class="warranty-ro-wrap {card_class}">', unsafe_allow_html=True)
     with st.container(border=True):
-        title_col, total_col = st.columns([1.6, 1])
+        title_col, review_col, total_col = st.columns([1.35, 0.75, 1])
         with title_col:
-            st.markdown(f"**RO {recid}**")
+            badge = (
+                '<span class="warranty-review-badge done">Reviewed</span>'
+                if is_reviewed
+                else '<span class="warranty-review-badge pending">Needs review</span>'
+            )
+            st.markdown(f"**RO {recid}** {badge}", unsafe_allow_html=True)
             st.caption(
                 f"{header.ro_date} · {len(ro_lines)} line{'s' if len(ro_lines) != 1 else ''}"
                 + (" · all lines excluded" if all_excluded else "")
+            )
+        with review_col:
+            st.checkbox(
+                "Reviewed",
+                key=review_widget_key(recid),
+                help="Check when you have finished reviewing this repair order.",
             )
         with total_col:
             st.markdown(
@@ -104,6 +165,7 @@ def _render_ro_card(recid: str, ro_lines: list[WarrantyLaborRow], select_options
             line_container = st.container(border=True) if len(ro_lines) > 1 else st.container()
             with line_container:
                 _render_ro_line(line, line_title, select_options)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_ro_line(line: WarrantyLaborRow, line_title: str, select_options: list[str]):
@@ -202,10 +264,61 @@ def _render_custom_exclusions_editor():
         st.caption("No custom exclusions yet.")
 
 
+def _render_review_progress(ro_groups: list[tuple[str, list[WarrantyLaborRow]]]):
+    recids = [recid for recid, _ in ro_groups]
+    reviewed = _collect_reviewed_recids(recids)
+    total = len(ro_groups)
+    reviewed_count = len(reviewed)
+    remaining = total - reviewed_count
+    progress = reviewed_count / total if total else 0.0
+
+    st.markdown("##### Review progress")
+    st.progress(progress, text=f"{reviewed_count} of {total} repair orders reviewed")
+    if remaining:
+        ordered = _sort_ro_groups(ro_groups, reviewed)
+        next_ro = next(recid for recid, _ in ordered if recid not in reviewed)
+        st.markdown(
+            f'<div class="warranty-review-resume">'
+            f"<strong>{remaining}</strong> RO{'s' if remaining != 1 else ''} left · "
+            f'Resume at <span class="warranty-review-resume-ro">RO {next_ro}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.success("All repair orders reviewed for this import.")
+
+    jump_col, filter_col = st.columns([1.2, 1.8])
+    with jump_col:
+        unreviewed = [recid for recid in recids if recid not in reviewed]
+        jump_options = ["— Jump to RO —"] + [f"RO {recid}" for recid in unreviewed]
+        picked = st.selectbox(
+            "Resume here",
+            jump_options,
+            key="warranty_jump_ro_pick",
+            label_visibility="collapsed",
+        )
+        if picked != jump_options[0]:
+            st.session_state.warranty_jump_ro = picked.replace("RO ", "").strip()
+        elif st.session_state.get("warranty_jump_ro") and st.session_state.warranty_jump_ro not in unreviewed:
+            st.session_state.warranty_jump_ro = None
+    with filter_col:
+        st.radio(
+            "Show",
+            ["All (unreviewed first)", "Still to review", "Reviewed"],
+            horizontal=True,
+            key="warranty_review_filter",
+            label_visibility="collapsed",
+        )
+
+    return reviewed
+
+
 def _render_labor_rows(rows, custom_exclusions):
     active_exclusions = [row.exclusion for row in rows if row.exclusion]
     select_options = get_exclusion_select_options(custom_exclusions, active_exclusions)
     ro_groups = _group_rows_by_ro(rows)
+    recids = [recid for recid, _ in ro_groups]
+    _init_review_widgets(recids)
 
     multi_line_ros = sum(1 for _, ro_lines in ro_groups if len(ro_lines) > 1)
 
@@ -213,11 +326,32 @@ def _render_labor_rows(rows, custom_exclusions):
     st.caption(
         f"{len(ro_groups)} repair orders · {len(rows)} lines · "
         f"{multi_line_ros} ROs with multiple lines · "
-        "All lines on the same RO stay in one box, each with its own exclusion dropdown."
+        "Check **Reviewed** on each RO when done — progress saves with **Save to Reports**."
     )
 
+    reviewed = _render_review_progress(ro_groups)
+
+    filter_mode = st.session_state.get("warranty_review_filter", "All (unreviewed first)")
+    if filter_mode == "Still to review":
+        ro_groups = [(recid, lines) for recid, lines in ro_groups if recid not in reviewed]
+    elif filter_mode == "Reviewed":
+        ro_groups = [(recid, lines) for recid, lines in ro_groups if recid in reviewed]
+
+    jump_ro = st.session_state.get("warranty_jump_ro")
+    ro_groups = _sort_ro_groups(ro_groups, reviewed, jump_ro=jump_ro)
+
+    if not ro_groups:
+        st.info("No repair orders match this filter.")
+        return
+
     for recid, ro_lines in ro_groups:
-        _render_ro_card(recid, ro_lines, select_options)
+        _render_ro_card(
+            recid,
+            ro_lines,
+            select_options,
+            is_reviewed=recid in reviewed,
+            is_focus=bool(jump_ro and recid == jump_ro),
+        )
 
 
 def render():
@@ -293,6 +427,9 @@ def render():
                     existing_by_index = [r.exclusion for r in st.session_state.warranty_labor_rows]
                 apply_import_exclusions(rows, existing_by_index=existing_by_index)
                 _clear_exclusion_widgets()
+                _clear_review_widgets()
+                st.session_state.warranty_reviewed_ros = set()
+                st.session_state.warranty_jump_ro = None
                 for row in rows:
                     st.session_state[exclusion_widget_key(row)] = exclusion_widget_label(row.exclusion)
                 st.session_state.warranty_labor_rows = rows
@@ -423,6 +560,9 @@ def render():
     )
 
     if st.button("💾 Save to Reports", type="primary", use_container_width=True):
+        reviewed_recids = sorted(
+            _collect_reviewed_recids([str(row.recid) for row in rows])
+        )
         run_id = save_warranty_labor_run(
             rows,
             source_name=source_name,
@@ -430,7 +570,9 @@ def render():
             custom_exclusions=custom_exclusions,
             upload_bytes=st.session_state.get("warranty_upload_bytes"),
             run_id=st.session_state.get("active_warranty_run_id"),
+            reviewed_recids=reviewed_recids,
         )
+        st.session_state.warranty_reviewed_ros = set(reviewed_recids)
         st.session_state.active_warranty_run_id = run_id
         st.session_state.warranty_run_label = st.session_state.get(
             "warranty_run_label",

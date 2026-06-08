@@ -16,6 +16,7 @@ from lib.warranty_labor_calc import (
     WarrantyLaborRow,
     exclusion_widget_key,
     exclusion_widget_label,
+    review_widget_key,
     summarize_rows,
 )
 from lib.supabase_client import get_supabase
@@ -49,6 +50,7 @@ def serialize_warranty_session(
     sheet_name: str,
     custom_exclusions: List[str],
     upload_bytes: bytes | None = None,
+    reviewed_recids: Optional[List[str]] = None,
 ) -> dict:
     summary = summarize_rows(rows)
     return {
@@ -57,6 +59,7 @@ def serialize_warranty_session(
         "run_label": f"{source_name} · {sheet_name}",
         "rows": [serialize_warranty_row(row) for row in rows],
         "custom_exclusions": list(custom_exclusions),
+        "reviewed_recids": list(reviewed_recids or []),
         "source_xlsx_b64": base64.b64encode(upload_bytes).decode("ascii") if upload_bytes else "",
         "totals": {
             "effective_labor_rate": summary.effective_labor_rate,
@@ -73,6 +76,12 @@ def serialize_warranty_session(
 def _clear_exclusion_widgets():
     for key in list(st.session_state.keys()):
         if key.startswith("warranty_exc_"):
+            del st.session_state[key]
+
+
+def _clear_review_widgets():
+    for key in list(st.session_state.keys()):
+        if key.startswith("warranty_ro_reviewed_"):
             del st.session_state[key]
 
 
@@ -103,9 +112,15 @@ def apply_warranty_snapshot_to_session(record: dict, run_id: str):
         st.session_state.warranty_upload_id = f"saved:{run_id}"
         st.session_state.warranty_parsed_id = f"saved:{run_id}:{st.session_state.warranty_sheet_name}"
 
+    reviewed_recids = set(snapshot.get("reviewed_recids", []))
+    st.session_state.warranty_reviewed_ros = reviewed_recids
+
     _clear_exclusion_widgets()
+    _clear_review_widgets()
     for row in rows:
         st.session_state[exclusion_widget_key(row)] = exclusion_widget_label(row.exclusion)
+    for recid in reviewed_recids:
+        st.session_state[review_widget_key(str(recid))] = True
 
     save_custom_exclusions(custom_exclusions)
 
@@ -144,6 +159,7 @@ def save_warranty_labor_run(
     custom_exclusions: List[str],
     upload_bytes: bytes | None = None,
     run_id: Optional[str] = None,
+    reviewed_recids: Optional[List[str]] = None,
 ) -> str:
     snapshot = serialize_warranty_session(
         rows,
@@ -151,6 +167,7 @@ def save_warranty_labor_run(
         sheet_name,
         custom_exclusions,
         upload_bytes=upload_bytes,
+        reviewed_recids=reviewed_recids,
     )
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()

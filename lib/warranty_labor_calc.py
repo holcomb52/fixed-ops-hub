@@ -113,6 +113,10 @@ def exclusion_widget_key(row: WarrantyLaborRow) -> str:
     return f"warranty_exc_{row.line_id or row.recid}"
 
 
+def review_widget_key(recid: str) -> str:
+    return f"warranty_ro_reviewed_{recid}"
+
+
 @dataclass
 class WarrantyLaborRow:
     line_id: str

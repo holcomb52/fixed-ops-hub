@@ -140,26 +140,21 @@ def _render_ro_card(
         review_col, status_col = st.columns([0.55, 1.45])
         with review_col:
             widget_key = review_widget_key(recid)
-            if is_reviewed:
-                if st.button(
-                    "✓  Reviewed",
-                    key=f"warranty_review_btn_{recid}",
-                    use_container_width=True,
-                    type="secondary",
-                    help="Click to mark this repair order as not reviewed.",
-                ):
-                    st.session_state[widget_key] = False
-                    st.rerun()
-            else:
-                if st.button(
-                    "Mark reviewed",
-                    key=f"warranty_review_btn_{recid}",
-                    use_container_width=True,
-                    type="primary",
-                    help="Click when you have finished reviewing this repair order.",
-                ):
-                    st.session_state[widget_key] = True
-                    st.rerun()
+            button_label = "✓  Reviewed" if is_reviewed else "Mark reviewed"
+            button_help = (
+                "Click to mark this repair order as not reviewed."
+                if is_reviewed
+                else "Click when you have finished reviewing this repair order."
+            )
+            if st.button(
+                button_label,
+                key=f"warranty_review_btn_{recid}",
+                use_container_width=True,
+                type="primary",
+                help=button_help,
+            ):
+                st.session_state[widget_key] = not is_reviewed
+                st.rerun()
         with status_col:
             if is_reviewed:
                 st.markdown(

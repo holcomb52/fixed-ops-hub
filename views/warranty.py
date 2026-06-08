@@ -137,13 +137,29 @@ def _render_ro_card(
             f'<div class="warranty-ro-review-strip {strip_class}">',
             unsafe_allow_html=True,
         )
-        review_col, status_col = st.columns([0.48, 1.52])
+        review_col, status_col = st.columns([0.55, 1.45])
         with review_col:
-            st.checkbox(
-                "Mark reviewed",
-                key=review_widget_key(recid),
-                help="Check when you have finished reviewing this repair order.",
-            )
+            widget_key = review_widget_key(recid)
+            if is_reviewed:
+                if st.button(
+                    "✓  Reviewed",
+                    key=f"warranty_review_btn_{recid}",
+                    use_container_width=True,
+                    type="secondary",
+                    help="Click to mark this repair order as not reviewed.",
+                ):
+                    st.session_state[widget_key] = False
+                    st.rerun()
+            else:
+                if st.button(
+                    "Mark reviewed",
+                    key=f"warranty_review_btn_{recid}",
+                    use_container_width=True,
+                    type="primary",
+                    help="Click when you have finished reviewing this repair order.",
+                ):
+                    st.session_state[widget_key] = True
+                    st.rerun()
         with status_col:
             if is_reviewed:
                 st.markdown(
@@ -151,7 +167,7 @@ def _render_ro_card(
                     '<span class="warranty-review-status-icon">✓</span>'
                     '<div class="warranty-review-status-copy">'
                     '<div class="warranty-review-headline">Reviewed</div>'
-                    '<div class="warranty-review-sub">You are done with this repair order</div>'
+                    '<div class="warranty-review-sub">Tap the button to undo if needed</div>'
                     "</div></div>",
                     unsafe_allow_html=True,
                 )
@@ -161,7 +177,7 @@ def _render_ro_card(
                     '<span class="warranty-review-status-icon">!</span>'
                     '<div class="warranty-review-status-copy">'
                     '<div class="warranty-review-headline">Needs review</div>'
-                    '<div class="warranty-review-sub">Check the box when you finish this RO</div>'
+                    '<div class="warranty-review-sub">Tap Mark reviewed when you finish this RO</div>'
                     "</div></div>",
                     unsafe_allow_html=True,
                 )

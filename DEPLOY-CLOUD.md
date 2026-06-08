@@ -39,15 +39,21 @@ git add .
 git commit -m "Prepare Fixed Ops Hub for cloud deployment"
 ```
 
-Create a new empty repo on GitHub (name it `fixed-ops-hub`), then:
+1. Go to [github.com/new](https://github.com/new)
+2. Repository name: `fixed-ops-hub`
+3. Leave it **Public** or **Private** (Streamlit works with both)
+4. **Do not** add a README — this project already has one
+5. Click **Create repository**
+
+Then on your Mac:
 
 ```bash
-git remote add origin https://github.com/YOUR_GITHUB_USERNAME/fixed-ops-hub.git
-git branch -M main
+cd ~/Projects/fixed-ops-hub
+git remote add origin https://github.com/holcomb52/fixed-ops-hub.git
 git push -u origin main
 ```
 
-Replace `YOUR_GITHUB_USERNAME` with your GitHub username.
+If your GitHub username is different, replace `holcomb52` in the URL.
 
 ---
 
@@ -56,13 +62,15 @@ Replace `YOUR_GITHUB_USERNAME` with your GitHub username.
 1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
 2. Click **Create app**.
 3. Choose your `fixed-ops-hub` repo, branch `main`, main file `app.py`.
-4. Click **Advanced settings → Secrets** and paste:
+4. Click **Advanced settings → Secrets** and paste (see `streamlit-cloud-secrets.example.toml`):
 
 ```toml
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
 SUPABASE_KEY = "your_service_role_key_here"
 APP_PASSWORD = "choose-a-strong-password"
 ```
+
+Use the **service_role** key from Supabase (not the anon key). Pick a strong `APP_PASSWORD` you will use to sign in.
 
 5. Click **Deploy**.
 

@@ -716,28 +716,71 @@ h2, h3 { font-family: 'Syne', sans-serif; }
     box-shadow: 0 0 18px rgba(0, 212, 255, 0.18);
 }
 
-.warranty-review-badge {
-    display: inline-block;
-    margin-left: 0.45rem;
-    padding: 0.12rem 0.5rem;
-    border-radius: 999px;
-    font-size: 0.68rem;
+.warranty-ro-review-strip {
+    margin: -0.15rem -0.15rem 0.85rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 12px 12px 10px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.warranty-ro-review-strip.pending {
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0.08));
+    border-color: rgba(251, 191, 36, 0.42);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.warranty-ro-review-strip.done {
+    background: linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.07));
+    border-color: rgba(34, 197, 94, 0.38);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.warranty-review-status {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 2rem;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.92rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    vertical-align: middle;
+    letter-spacing: 0.01em;
 }
 
-.warranty-review-badge.pending {
+.warranty-review-status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.warranty-review-status.pending {
     color: #fde68a;
-    background: rgba(251, 191, 36, 0.16);
-    border: 1px solid rgba(251, 191, 36, 0.35);
 }
 
-.warranty-review-badge.done {
-    color: #86efac;
-    background: rgba(34, 197, 94, 0.14);
-    border: 1px solid rgba(34, 197, 94, 0.35);
+.warranty-review-status.pending .warranty-review-status-icon {
+    color: #78350f;
+    background: #fbbf24;
+}
+
+.warranty-review-status.done {
+    color: #bbf7d0;
+}
+
+.warranty-review-status.done .warranty-review-status-icon {
+    color: #14532d;
+    background: #4ade80;
+}
+
+.warranty-ro-wrap .stCheckbox label p {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    color: #f8fafc !important;
 }
 
 .warranty-review-resume {

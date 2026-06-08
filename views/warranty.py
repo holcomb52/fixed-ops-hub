@@ -129,25 +129,45 @@ def _render_ro_card(
     if is_focus:
         card_class += " warranty-ro-card-focus"
 
+    strip_class = "done" if is_reviewed else "pending"
     st.markdown(f'<div class="warranty-ro-wrap {card_class}">', unsafe_allow_html=True)
     with st.container(border=True):
-        title_col, review_col, total_col = st.columns([1.35, 0.75, 1])
-        with title_col:
-            badge = (
-                '<span class="warranty-review-badge done">Reviewed</span>'
-                if is_reviewed
-                else '<span class="warranty-review-badge pending">Needs review</span>'
-            )
-            st.markdown(f"**RO {recid}** {badge}", unsafe_allow_html=True)
-            st.caption(
-                f"{header.ro_date} · {len(ro_lines)} line{'s' if len(ro_lines) != 1 else ''}"
-                + (" · all lines excluded" if all_excluded else "")
-            )
+        st.markdown(
+            f'<div class="warranty-ro-review-strip {strip_class}">',
+            unsafe_allow_html=True,
+        )
+        review_col, status_col = st.columns([0.42, 1.58])
         with review_col:
             st.checkbox(
                 "Reviewed",
                 key=review_widget_key(recid),
                 help="Check when you have finished reviewing this repair order.",
+            )
+        with status_col:
+            if is_reviewed:
+                st.markdown(
+                    '<div class="warranty-review-status done">'
+                    '<span class="warranty-review-status-icon">✓</span>'
+                    "<span>Reviewed — you are done with this RO</span>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="warranty-review-status pending">'
+                    '<span class="warranty-review-status-icon">!</span>'
+                    "<span>Needs review — check the box when finished</span>"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        title_col, total_col = st.columns([1.6, 1])
+        with title_col:
+            st.markdown(f'<div class="warranty-ro-title">RO {recid}</div>', unsafe_allow_html=True)
+            st.caption(
+                f"{header.ro_date} · {len(ro_lines)} line{'s' if len(ro_lines) != 1 else ''}"
+                + (" · all lines excluded" if all_excluded else "")
             )
         with total_col:
             st.markdown(

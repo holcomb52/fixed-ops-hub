@@ -62,7 +62,9 @@ If your GitHub username is different, replace `holcomb52` in the URL.
 1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
 2. Click **Create app**.
 3. Choose your `fixed-ops-hub` repo, branch `main`, main file `app.py`.
-4. Click **Advanced settings → Secrets** and paste (see `streamlit-cloud-secrets.example.toml`):
+4. Click **Advanced settings**:
+   - **Python version:** `3.11` (do not use 3.14)
+   - **Secrets:** paste (see `streamlit-cloud-secrets.example.toml`):
 
 ```toml
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"

@@ -23,6 +23,7 @@ from lib.warranty_labor_calc import (
     normalize_recid,
     review_widget_key,
     rows_to_display_dicts,
+    summarize_reviewed_running_total,
     summarize_rows,
 )
 from lib.warranty_labor_parser import list_sheet_names, parse_warranty_labor_report
@@ -205,6 +206,9 @@ def _render_ro_card(
                 type="primary",
                 help=button_help,
             ):
+                session_rows = st.session_state.warranty_labor_rows
+                session_custom = st.session_state.warranty_custom_exclusions
+                _sync_row_exclusions(session_rows, session_custom)
                 st.session_state[widget_key] = not is_reviewed
                 reviewed = set(st.session_state.get("warranty_reviewed_ros", set()))
                 if st.session_state[widget_key]:
@@ -213,9 +217,6 @@ def _render_ro_card(
                     reviewed.discard(normalize_recid(recid))
                 st.session_state.warranty_reviewed_ros = reviewed
                 if st.session_state.get("active_warranty_run_id"):
-                    session_rows = st.session_state.warranty_labor_rows
-                    session_custom = st.session_state.warranty_custom_exclusions
-                    _sync_row_exclusions(session_rows, session_custom)
                     _persist_warranty_run(session_rows, session_custom, quiet=True)
                 st.rerun()
         with status_col:
@@ -628,10 +629,23 @@ def render():
     _render_custom_exclusions_editor()
     _render_labor_rows(rows, custom_exclusions)
 
-    summary = summarize_rows(rows)
+    reviewed_recids = _collect_reviewed_recids(_unique_report_recids(rows))
+    running_rows = [
+        row for row in rows if normalize_recid(row.recid) in reviewed_recids
+    ]
+    summary = summarize_reviewed_running_total(rows, reviewed_recids)
+    total_ros = len(_unique_report_recids(rows))
+    reviewed_ro_count = len(reviewed_recids)
 
     st.markdown("---")
-    st.markdown("##### Effective labor rate summary")
+    st.markdown("##### Running shop ELR (reviewed repair orders)")
+    st.caption(
+        f"Counts **{reviewed_ro_count} of {total_ros}** repair orders you have marked reviewed. "
+        "Pick exclusions on each RO, then tap **Mark reviewed** — totals update immediately."
+    )
+
+    if reviewed_ro_count == 0:
+        st.info("No running total yet. Mark your first repair order reviewed to start building shop ELR.")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -651,35 +665,46 @@ def render():
         )
     with c4:
         st.markdown(
-            stat_card("Included Lines", f"{summary.included_rows}/{summary.total_rows}", "violet", "🧾"),
+            stat_card(
+                "Included Lines",
+                f"{summary.included_rows}/{summary.total_rows}",
+                "violet",
+                "🧾",
+            ),
             unsafe_allow_html=True,
         )
 
-    if summary.included_rows == 0:
-        st.warning("All lines are excluded — include at least one line to calculate shop ELR.")
+    if reviewed_ro_count == 0:
+        pass
+    elif summary.included_rows == 0:
+        st.warning(
+            "Reviewed repair orders have no included lines — adjust exclusions or include at least one line."
+        )
     elif summary.meets_threshold:
         st.markdown(
             status_banner(
-                f"Shop ELR {_money(summary.effective_labor_rate)} meets the "
+                f"Running shop ELR {_money(summary.effective_labor_rate)} meets the "
                 f"{_money(ELR_THRESHOLD)} threshold.",
                 "success",
             ),
             unsafe_allow_html=True,
         )
-    else:
+    elif reviewed_ro_count:
         st.markdown(
             status_banner(
-                f"Shop ELR {_money(summary.effective_labor_rate)} is below the "
+                f"Running shop ELR {_money(summary.effective_labor_rate)} is below the "
                 f"{_money(ELR_THRESHOLD)} threshold.",
                 "warn",
             ),
             unsafe_allow_html=True,
         )
 
-    st.caption(
-        f"{summary.excluded_rows} excluded · "
-        f"Formula: {_money(summary.total_lbr_sale)} labor sale ÷ {summary.total_tech_hrs:.2f} tech hours"
-    )
+    if reviewed_ro_count:
+        st.caption(
+            f"{summary.excluded_rows} excluded line(s) in reviewed ROs · "
+            f"Formula: {_money(summary.total_lbr_sale)} labor sale ÷ "
+            f"{summary.total_tech_hrs:.2f} tech hours"
+        )
 
     source_name = st.session_state.get("warranty_upload_name", "warranty_labor")
     sheet_name = st.session_state.get("warranty_sheet_name", "Sheet1")
@@ -697,7 +722,12 @@ def render():
             use_container_width=True,
         )
     with exp2:
-        analysis_pdf = generate_warranty_analysis_pdf(rows, summary, source_name, sheet_name)
+        analysis_pdf = generate_warranty_analysis_pdf(
+            running_rows if running_rows else rows,
+            summary,
+            source_name,
+            sheet_name,
+        )
         st.download_button(
             label="📄 Export analysis PDF (with exclusions)",
             data=analysis_pdf,

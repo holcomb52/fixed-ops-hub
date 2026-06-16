@@ -257,6 +257,25 @@ def summarize_rows(rows: List[WarrantyLaborRow]) -> WarrantyLaborSummary:
     )
 
 
+def filter_rows_by_reviewed_recids(
+    rows: List[WarrantyLaborRow],
+    reviewed_recids,
+) -> List[WarrantyLaborRow]:
+    """Keep lines belonging to repair orders marked reviewed."""
+    reviewed = {normalize_recid(recid) for recid in (reviewed_recids or [])}
+    if not reviewed:
+        return []
+    return [row for row in rows if normalize_recid(row.recid) in reviewed]
+
+
+def summarize_reviewed_running_total(
+    rows: List[WarrantyLaborRow],
+    reviewed_recids,
+) -> WarrantyLaborSummary:
+    """Shop ELR running total — reviewed ROs only, honoring line exclusions."""
+    return summarize_rows(filter_rows_by_reviewed_recids(rows, reviewed_recids))
+
+
 def rows_to_display_dicts(rows: List[WarrantyLaborRow]) -> list[dict]:
     out = []
     for row in rows:

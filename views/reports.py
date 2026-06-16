@@ -24,7 +24,7 @@ from lib.payroll_storage import (
     snapshot_to_teams,
 )
 from lib.supabase_client import is_configured
-from lib.warranty_labor_calc import summarize_rows
+from lib.warranty_labor_calc import summarize_reviewed_running_total, summarize_rows
 from lib.warranty_labor_storage import (
     apply_warranty_snapshot_to_session,
     deserialize_warranty_row,
@@ -116,11 +116,17 @@ def _render_warranty_runs():
                         deserialize_warranty_row(item, index=index)
                         for index, item in enumerate(snapshot.get("rows", []))
                     ]
-                    summary = summarize_rows(rows)
+                    reviewed = snapshot.get("reviewed_recids", [])
+                    summary = summarize_reviewed_running_total(rows, reviewed)
+                    running_rows = [
+                        row
+                        for row in rows
+                        if str(row.recid).strip() in {str(r).strip() for r in reviewed}
+                    ]
                     st.download_button(
                         "📄 Analysis PDF",
                         data=generate_warranty_analysis_pdf(
-                            rows,
+                            running_rows if running_rows else rows,
                             summary,
                             snapshot.get("source_name", "warranty_labor.xlsx"),
                             snapshot.get("sheet_name", "Sheet1"),

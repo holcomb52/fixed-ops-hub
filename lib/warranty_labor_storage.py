@@ -17,6 +17,7 @@ from lib.warranty_labor_calc import (
     exclusion_widget_key,
     exclusion_widget_label,
     review_widget_key,
+    summarize_reviewed_running_total,
     summarize_rows,
 )
 from lib.supabase_client import get_supabase
@@ -52,7 +53,7 @@ def serialize_warranty_session(
     upload_bytes: bytes | None = None,
     reviewed_recids: Optional[List[str]] = None,
 ) -> dict:
-    summary = summarize_rows(rows)
+    summary = summarize_reviewed_running_total(rows, reviewed_recids or [])
     return {
         "source_name": source_name,
         "sheet_name": sheet_name,

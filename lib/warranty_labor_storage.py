@@ -114,6 +114,7 @@ def apply_warranty_snapshot_to_session(record: dict, run_id: str):
 
     reviewed_recids = set(snapshot.get("reviewed_recids", []))
     st.session_state.warranty_reviewed_ros = reviewed_recids
+    st.session_state.warranty_last_upload_added_recids = set()
 
     _clear_exclusion_widgets()
     _clear_review_widgets()

@@ -109,6 +109,76 @@ def apply_import_exclusions(
     return rows
 
 
+def _line_id_index(line_id: str) -> int:
+    prefix = str(line_id or "").split("-", 1)[0]
+    try:
+        return int(prefix)
+    except ValueError:
+        return 0
+
+
+def build_saved_exclusion_map(rows: List[WarrantyLaborRow]) -> dict[str, str]:
+    """Map line_id and recid to saved exclusion choices."""
+    saved: dict[str, str] = {}
+    for row in rows:
+        if row.line_id:
+            saved[row.line_id] = row.exclusion
+        saved[str(row.recid).strip()] = row.exclusion
+    return saved
+
+
+def merge_warranty_rows(
+    existing: List[WarrantyLaborRow],
+    incoming: List[WarrantyLaborRow],
+) -> tuple[List[WarrantyLaborRow], int, int, List[WarrantyLaborRow]]:
+    """Append incoming rows whose RECID is not already in existing.
+
+    Returns (merged_rows, added_recid_count, skipped_recid_count, newly_added_rows).
+    """
+    if not existing:
+        deduped_incoming = _dedupe_incoming_by_recid(incoming)
+        return deduped_incoming, _count_recids(deduped_incoming), 0, list(deduped_incoming)
+
+    existing_recids = {str(row.recid).strip() for row in existing}
+    skipped_recids: set[str] = set()
+    pending: dict[str, list[WarrantyLaborRow]] = {}
+
+    for row in incoming:
+        recid = str(row.recid).strip()
+        if not recid:
+            continue
+        if recid in existing_recids:
+            skipped_recids.add(recid)
+            continue
+        pending.setdefault(recid, []).append(row)
+
+    next_index = max((_line_id_index(row.line_id) for row in existing), default=-1) + 1
+    added_rows: list[WarrantyLaborRow] = []
+    line_counter = 0
+    for recid in sorted(pending.keys()):
+        for row in pending[recid]:
+            row.line_id = f"{next_index + line_counter:04d}-{recid}"
+            line_counter += 1
+            added_rows.append(row)
+
+    merged = list(existing) + added_rows
+    return merged, len(pending), len(skipped_recids), added_rows
+
+
+def _dedupe_incoming_by_recid(rows: List[WarrantyLaborRow]) -> List[WarrantyLaborRow]:
+    """First import — assign stable line_ids; keep all lines per RECID."""
+    out: list[WarrantyLaborRow] = []
+    for index, row in enumerate(rows):
+        recid = str(row.recid).strip()
+        row.line_id = f"{index:04d}-{recid}"
+        out.append(row)
+    return out
+
+
+def _count_recids(rows: List[WarrantyLaborRow]) -> int:
+    return len({str(row.recid).strip() for row in rows if str(row.recid).strip()})
+
+
 def exclusion_widget_key(row: WarrantyLaborRow) -> str:
     return f"warranty_exc_{row.line_id or row.recid}"
 

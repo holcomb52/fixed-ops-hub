@@ -13,11 +13,13 @@ from lib.warranty_labor_calc import (
     ELR_THRESHOLD,
     WarrantyLaborRow,
     apply_import_exclusions,
+    build_saved_exclusion_map,
     exclusion_widget_key,
     exclusion_widget_label,
     get_builtin_exclusion_values,
     get_exclusion_select_options,
     label_to_exclusion,
+    merge_warranty_rows,
     review_widget_key,
     rows_to_display_dicts,
     summarize_rows,
@@ -38,6 +40,8 @@ def _init_warranty_session():
         st.session_state.warranty_labor_rows = []
     if "warranty_custom_exclusions" not in st.session_state:
         st.session_state.warranty_custom_exclusions = load_custom_exclusions()
+    if "warranty_last_upload_added_recids" not in st.session_state:
+        st.session_state.warranty_last_upload_added_recids = set()
 
 
 def _clear_exclusion_widgets():
@@ -340,7 +344,7 @@ def _render_review_progress(ro_groups: list[tuple[str, list[WarrantyLaborRow]]])
     with filter_col:
         st.radio(
             "Show",
-            ["All (unreviewed first)", "Still to review", "Reviewed"],
+            ["All (unreviewed first)", "Still to review", "Reviewed", "New from last upload"],
             horizontal=True,
             key="warranty_review_filter",
             label_visibility="collapsed",
@@ -372,6 +376,9 @@ def _render_labor_rows(rows, custom_exclusions):
         ro_groups = [(recid, lines) for recid, lines in ro_groups if recid not in reviewed]
     elif filter_mode == "Reviewed":
         ro_groups = [(recid, lines) for recid, lines in ro_groups if recid in reviewed]
+    elif filter_mode == "New from last upload":
+        new_recids = st.session_state.get("warranty_last_upload_added_recids") or set()
+        ro_groups = [(recid, lines) for recid, lines in ro_groups if recid in new_recids]
 
     jump_ro = st.session_state.get("warranty_jump_ro")
     ro_groups = _sort_ro_groups(ro_groups, reviewed, jump_ro=jump_ro)
@@ -415,7 +422,27 @@ def render():
             "warranty_run_label",
             st.session_state.get("warranty_upload_name", "Saved analysis"),
         )
-        st.info(f"Editing saved analysis: **{run_label}** — reopen anytime from **Reports**.")
+        st.info(
+            f"Editing saved analysis: **{run_label}** — reopen anytime from **Reports**. "
+            "Upload another spreadsheet below to **add new repair orders**; RO numbers already "
+            "in this analysis are skipped automatically."
+        )
+
+    incremental_mode = bool(
+        st.session_state.get("active_warranty_run_id") and st.session_state.warranty_labor_rows
+    )
+    upload_help = (
+        "Add more customer-pay ROs to this saved analysis. Duplicate RO numbers are ignored."
+        if incremental_mode
+        else "Import customer-pay RO lines with labor sale and tech flagged hours."
+    )
+
+    uploaded = st.file_uploader(
+        "Upload warranty labor rate spreadsheet (.xlsx)",
+        type=["xlsx"],
+        help=upload_help,
+        key="warranty_labor_upload",
+    )
 
     notice = st.session_state.pop("warranty_exclusion_notice", None)
     if notice:
@@ -429,12 +456,6 @@ def render():
         st.success(f"Warranty ELR analysis saved — find it in **Reports → Warranty ELR Analysis** ({saved_label}).")
         st.balloons()
 
-    uploaded = st.file_uploader(
-        "Upload warranty labor rate spreadsheet (.xlsx)",
-        type=["xlsx"],
-        help="Import customer-pay RO lines with labor sale and tech flagged hours.",
-    )
-
     if uploaded:
         try:
             file_id = f"{uploaded.name}:{uploaded.size}"
@@ -443,7 +464,8 @@ def render():
                 st.session_state.warranty_sheet_names = list_sheet_names(uploaded)
                 st.session_state.warranty_upload_id = file_id
                 st.session_state.warranty_upload_name = uploaded.name
-                st.session_state.warranty_run_label = uploaded.name
+                if not incremental_mode:
+                    st.session_state.warranty_run_label = uploaded.name
 
             sheet_names = st.session_state.get("warranty_sheet_names", ["Sheet1"])
             sheet = sheet_names[0] if len(sheet_names) == 1 else st.selectbox(
@@ -457,26 +479,75 @@ def render():
                 uploaded.seek(0)
                 st.session_state.warranty_upload_bytes = uploaded.read()
                 uploaded.seek(0)
-                rows = parse_warranty_labor_report(uploaded, sheet_name=sheet)
-                existing_by_index = None
-                if st.session_state.get("active_warranty_run_id"):
-                    existing_by_index = [r.exclusion for r in st.session_state.warranty_labor_rows]
-                apply_import_exclusions(rows, existing_by_index=existing_by_index)
-                _clear_exclusion_widgets()
-                _clear_review_widgets()
-                st.session_state.warranty_reviewed_ros = set()
-                st.session_state.warranty_jump_ro = None
-                for row in rows:
-                    st.session_state[exclusion_widget_key(row)] = exclusion_widget_label(row.exclusion)
-                st.session_state.warranty_labor_rows = rows
-                st.session_state.warranty_parsed_id = parse_id
-                st.session_state.warranty_sheet_name = sheet
-                st.session_state.warranty_run_label = f"{uploaded.name} · {sheet}"
-                load_msg = f"✓ Loaded {len(rows)} lines from {uploaded.name} · {sheet}"
-                st.markdown(
-                    status_banner(load_msg, "success"),
-                    unsafe_allow_html=True,
-                )
+                incoming = parse_warranty_labor_report(uploaded, sheet_name=sheet)
+
+                if incremental_mode:
+                    existing_rows = list(st.session_state.warranty_labor_rows)
+                    merged, added_ros, skipped_ros, added_rows = merge_warranty_rows(
+                        existing_rows,
+                        incoming,
+                    )
+                    st.session_state.warranty_parsed_id = parse_id
+                    st.session_state.warranty_sheet_name = sheet
+
+                    if not added_rows:
+                        if skipped_ros:
+                            load_msg = (
+                                f"No new repair orders in {uploaded.name} · {sheet} — "
+                                f"{skipped_ros} RO{'s' if skipped_ros != 1 else ''} already in this analysis."
+                            )
+                            banner_level = "warn"
+                        else:
+                            load_msg = f"No repair orders found in {uploaded.name} · {sheet}."
+                            banner_level = "warn"
+                    else:
+                        apply_import_exclusions(
+                            added_rows,
+                            existing_exclusions=build_saved_exclusion_map(existing_rows),
+                        )
+                        for row in added_rows:
+                            st.session_state[exclusion_widget_key(row)] = exclusion_widget_label(
+                                row.exclusion
+                            )
+                        new_recids = sorted({str(row.recid).strip() for row in added_rows})
+                        st.session_state.warranty_last_upload_added_recids = set(new_recids)
+                        _init_review_widgets(new_recids)
+                        st.session_state.warranty_labor_rows = merged
+                        st.session_state.warranty_review_filter = "New from last upload"
+                        st.session_state.warranty_jump_ro = None
+                        load_msg = (
+                            f"✓ Added {added_ros} repair order{'s' if added_ros != 1 else ''} "
+                            f"({len(added_rows)} lines)"
+                        )
+                        if skipped_ros:
+                            load_msg += (
+                                f" · skipped {skipped_ros} duplicate RO"
+                                f"{'s' if skipped_ros != 1 else ''}"
+                            )
+                        load_msg += f" from {uploaded.name} · {sheet}"
+                        banner_level = "success"
+                else:
+                    merged, _, _, added_rows = merge_warranty_rows([], incoming)
+                    apply_import_exclusions(added_rows)
+                    _clear_exclusion_widgets()
+                    _clear_review_widgets()
+                    st.session_state.warranty_reviewed_ros = set()
+                    st.session_state.warranty_jump_ro = None
+                    st.session_state.warranty_last_upload_added_recids = set()
+                    for row in added_rows:
+                        st.session_state[exclusion_widget_key(row)] = exclusion_widget_label(row.exclusion)
+                    st.session_state.warranty_labor_rows = added_rows
+                    st.session_state.warranty_parsed_id = parse_id
+                    st.session_state.warranty_sheet_name = sheet
+                    st.session_state.warranty_run_label = f"{uploaded.name} · {sheet}"
+                    load_msg = f"✓ Loaded {len(added_rows)} lines from {uploaded.name} · {sheet}"
+                    banner_level = "success"
+
+                if st.session_state.get("warranty_parsed_id") == parse_id:
+                    st.markdown(
+                        status_banner(load_msg, banner_level),
+                        unsafe_allow_html=True,
+                    )
         except Exception as exc:
             st.markdown(status_banner(f"Import failed: {exc}", "warn"), unsafe_allow_html=True)
 
@@ -591,7 +662,8 @@ def render():
     st.markdown(
         '<div class="glass-panel"><p style="color:#94a3b8;margin:0;">'
         "Saves this warranty ELR run to <strong>Reports → Warranty ELR Analysis</strong>. "
-        "Reopen anytime to pick up exactly where you left off — exclusions, custom categories, and all.</p></div>",
+        "Reopen anytime to pick up exactly where you left off — exclusions, custom categories, "
+        "review progress, and incremental uploads.</p></div>",
         unsafe_allow_html=True,
     )
 

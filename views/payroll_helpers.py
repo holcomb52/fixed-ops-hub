@@ -94,9 +94,13 @@ def init_row_fields(team_name: str, idx: int, row: TechPayrollRow, overrides: Op
         "rate": row.hourly_rate,
         "train": row.training_hours,
         "spiff": row.spiff,
+        "notes": row.notes or "",
     }
     for fld, val in defaults.items():
-        st.session_state[field_key(team_name, idx, fld)] = float(overrides.get(fld, val) or 0)
+        if fld == "notes":
+            st.session_state[field_key(team_name, idx, fld)] = str(overrides.get(fld, val) or "")
+        else:
+            st.session_state[field_key(team_name, idx, fld)] = float(overrides.get(fld, val) or 0)
 
 
 def clear_payroll_field_keys():
@@ -116,6 +120,7 @@ def capture_tech_values(teams: dict) -> dict:
                 "rate": float(st.session_state.get(field_key(team_name, i, "rate"), row.hourly_rate) or 0),
                 "train": float(st.session_state.get(field_key(team_name, i, "train"), row.training_hours) or 0),
                 "spiff": float(st.session_state.get(field_key(team_name, i, "spiff"), row.spiff) or 0),
+                "notes": str(st.session_state.get(field_key(team_name, i, "notes"), row.notes) or ""),
                 "tech_number": row.tech_number,
             }
     return values
@@ -204,6 +209,7 @@ def sync_row(team_name: str, idx: int, row: TechPayrollRow) -> TechPayrollRow:
     row.hourly_rate = float(st.session_state[field_key(team_name, idx, "rate")])
     row.training_hours = float(st.session_state[field_key(team_name, idx, "train")])
     row.spiff = float(st.session_state[field_key(team_name, idx, "spiff")])
+    row.notes = str(st.session_state.get(field_key(team_name, idx, "notes"), "") or "")
     return row
 
 

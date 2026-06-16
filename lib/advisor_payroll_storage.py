@@ -50,6 +50,7 @@ def serialize_advisor_payroll_session(
             "cp_bump": advisor.cp_bump_qualified,
             "alignment_bonus": advisor.alignment_bonus_qualified,
             "csi_tier": advisor.csi_tier,
+            "notes": advisor.notes,
             "labor_pay": result.hourly_pay,
             "parts_pay": result.parts_pay,
             "csi_pay": result.csi_pay,
@@ -98,6 +99,7 @@ def apply_advisor_snapshot_to_session(
             "cp_bump": bool(adv.get("cp_bump", False)),
             "alignment_bonus": bool(adv.get("alignment_bonus", False)),
             "csi_tier": adv.get("csi_tier", "none"),
+            "notes": str(adv.get("notes", "") or ""),
         }
     apply_roster_to_session(roster, values_by_name)
     st.session_state.pending_payroll_tab = "advisors"

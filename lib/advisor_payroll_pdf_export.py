@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from io import BytesIO
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from lib.payroll_pdf_notes import append_employee_notes, payroll_pdf_header
 
 
 def generate_advisor_payroll_pdf(snapshot: dict) -> bytes:
@@ -24,31 +25,8 @@ def generate_advisor_payroll_pdf(snapshot: dict) -> bytes:
     )
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "Title",
-        parent=styles["Heading1"],
-        fontSize=16,
-        spaceAfter=6,
-        textColor=colors.HexColor("#0f172a"),
-    )
-    sub_style = ParagraphStyle(
-        "Sub",
-        parent=styles["Normal"],
-        fontSize=10,
-        textColor=colors.HexColor("#475569"),
-        spaceAfter=14,
-    )
 
-    weeks = snapshot.get("pay_period_weeks", 2.0)
-    story = [
-        Paragraph("Fixed Ops Hub — Service Advisor Payroll", title_style),
-        Paragraph(
-            f"Pay Period: <b>{snapshot['pay_period']}</b> &nbsp;|&nbsp; "
-            f"{weeks:.1f} weeks &nbsp;|&nbsp; "
-            f"Generated: {datetime.now().strftime('%m/%d/%Y %I:%M %p')}",
-            sub_style,
-        ),
-    ]
+    story = payroll_pdf_header(snapshot["pay_period"], styles)
 
     headers = [
         "ID",
@@ -114,6 +92,11 @@ def generate_advisor_payroll_pdf(snapshot: dict) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(table)
+    append_employee_notes(
+        story,
+        [(r["name"], r.get("notes", "")) for r in advisors],
+        styles,
+    )
     story.append(Spacer(1, 16))
 
     story.append(Paragraph(

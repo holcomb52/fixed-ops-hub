@@ -88,6 +88,7 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     dollars_earned=float(tech.get("dollars", 0) or 0),
                     training_hours=float(tech.get("train", tech.get("training_hours", 0)) or 0),
                     spiff=float(tech.get("spiff", 0) or 0),
+                    notes=str(tech.get("notes", "") or ""),
                     foreman_rule=tech.get("foreman_rule", "none"),
                     quick_lube_sources=list(tech.get("quick_lube_sources", [])),
                 )

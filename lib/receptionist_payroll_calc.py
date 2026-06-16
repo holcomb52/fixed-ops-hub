@@ -33,6 +33,7 @@ class ReceptionistPayrollRow:
     bonus_amount: float = 0.0
     bonus_label: str = ""
     spiff: float = 0.0
+    notes: str = ""
 
 
 @dataclass

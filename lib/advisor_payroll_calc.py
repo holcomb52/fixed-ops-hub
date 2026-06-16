@@ -86,6 +86,7 @@ class AdvisorPayrollRow:
     menu_presentation: float = 0.0
     parts_commission_rate: float = 0.03
     spiff: float = 0.0
+    notes: str = ""
     hourly_pay_override: Optional[float] = None
 
 

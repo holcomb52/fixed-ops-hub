@@ -46,6 +46,7 @@ def serialize_receptionist_payroll_session(
             "bonus_amount": employee.bonus_amount,
             "bonus_label": employee.bonus_label,
             "spiff": employee.spiff,
+            "notes": employee.notes,
             "warranty_bonus": employee.warranty_bonus_qualified,
             "appointment_pay": result.appointment_pay,
             "tire_pay": result.tire_pay,
@@ -92,6 +93,7 @@ def apply_receptionist_snapshot_to_session(
             "spiff": float(emp.get("spiff", 0) or 0),
             "appointment_rate": float(emp.get("appointment_rate", 0) or 0),
             "warranty_bonus": bool(emp.get("warranty_bonus", False)),
+            "notes": str(emp.get("notes", "") or ""),
         }
     apply_roster_to_session(roster, values_by_name)
     st.session_state.pending_payroll_tab = "receptionists"

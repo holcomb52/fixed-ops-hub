@@ -265,7 +265,7 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
         },
     )
 
-    st.markdown("##### ✏️ Enter training hours & SPIFF")
+    st.markdown("##### ✏️ Enter training hours, SPIFF & notes")
     m1, m2, m3, m4 = st.columns([0.7, 2, 1, 1])
     with m1:
         st.caption("Tech #")
@@ -277,26 +277,35 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
         st.caption("SPIFF $")
 
     for i, row in enumerate(rows):
-        c1, c2, c3, c4 = st.columns([0.7, 2, 1, 1])
-        with c1:
-            st.caption(row.tech_number or "—")
-        with c2:
-            st.write(row.name)
-        with c3:
-            st.number_input(
-                "Training hrs",
-                min_value=0.0,
-                step=0.1,
-                key=field_key(team_name, i, "train"),
-                label_visibility="collapsed",
-            )
-        with c4:
-            st.number_input(
-                "SPIFF",
-                min_value=0.0,
-                step=1.0,
-                key=field_key(team_name, i, "spiff"),
-                label_visibility="collapsed",
+        sync_row(team_name, i, row)
+        th = _team_hours(team_name, count)
+        with st.container():
+            c1, c2, c3, c4 = st.columns([0.7, 2, 1, 1])
+            with c1:
+                st.caption(row.tech_number or "—")
+            with c2:
+                st.write(f"**{row.name}**")
+            with c3:
+                st.number_input(
+                    "Training hrs",
+                    min_value=0.0,
+                    step=0.1,
+                    key=field_key(team_name, i, "train"),
+                    label_visibility="collapsed",
+                )
+            with c4:
+                st.number_input(
+                    "SPIFF",
+                    min_value=0.0,
+                    step=1.0,
+                    key=field_key(team_name, i, "spiff"),
+                    label_visibility="collapsed",
+                )
+            st.text_area(
+                "Notes for payroll clerk",
+                key=field_key(team_name, i, "notes"),
+                placeholder="Optional — prints on the payroll PDF for accounting",
+                height=68,
             )
 
     st.markdown(
@@ -312,7 +321,7 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
 
 def render():
     st.markdown(
-        '<span class="legend-chip chip-manual">You enter: training hrs & SPIFF</span> '
+        '<span class="legend-chip chip-manual">You enter: training hrs, SPIFF & notes</span> '
         '<span class="legend-chip chip-calc">Hours & dollars from flag sheet PDF + auto-calc</span>',
         unsafe_allow_html=True,
     )
@@ -479,7 +488,7 @@ def render():
             - Noah quick lube — selected tech hrs × $1
             - Training pay — training hrs × hourly rate
 
-            **You enter:** Pay period dates, training hours, and SPIFF.
+            **You enter:** Pay period dates, training hours, SPIFF, and optional notes for accounting.
 
             **Export:** Download the payroll PDF and submit to accounting.
             **Flag Sheet tab:** View the original uploaded PDF anytime.

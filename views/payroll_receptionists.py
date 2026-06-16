@@ -189,6 +189,13 @@ def _render_receptionist_section(row) -> None:
 
     st.number_input("SPIFF ($)", min_value=0.0, step=1.0, key=rec_key(row.name, "spiff"))
 
+    st.text_area(
+        "Notes for payroll clerk",
+        key=rec_key(row.name, "notes"),
+        placeholder="Optional — prints on the payroll PDF for accounting",
+        height=72,
+    )
+
     pay_rows = [
         {
             "Pay": "Appointment pay",
@@ -223,7 +230,7 @@ def render():
     init_receptionist_payroll_session()
 
     st.markdown(
-        '<span class="legend-chip chip-manual">Click a name to edit · tires, warranty bonus & SPIFF each period</span> '
+        '<span class="legend-chip chip-manual">Click a name to edit · tires, warranty bonus, SPIFF & notes each period</span> '
         '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span>',
         unsafe_allow_html=True,
     )

@@ -51,6 +51,7 @@ def build_payroll_snapshot(teams: Dict[str, List[TechPayrollRow]], pay_period: s
                 "training_hours": row.training_hours,
                 "training_pay": row.training_pay,
                 "spiff": row.spiff,
+                "notes": row.notes,
                 "total_pay": total,
                 "combined_pay": total + bonus_amt if row.quick_lube_sources else total,
             })

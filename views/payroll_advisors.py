@@ -275,6 +275,13 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
     with c2:
         st.number_input("SPIFF ($)", min_value=0.0, step=1.0, key=adv_key(advisor_idx, "spiff"))
 
+    st.text_area(
+        "Notes for payroll clerk",
+        key=adv_key(advisor_idx, "notes"),
+        placeholder="Optional — prints on the payroll PDF for accounting",
+        height=72,
+    )
+
     _render_csi_buttons(advisor_idx)
 
     synced = all_advisors_synced()[advisor_idx]

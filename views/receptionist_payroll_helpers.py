@@ -46,6 +46,9 @@ def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
     warranty_key = rec_key(row.name, "warranty_bonus")
     if warranty_key in st.session_state:
         entry["warranty_bonus"] = st.session_state[warranty_key]
+    notes_key = rec_key(row.name, "notes")
+    if notes_key in st.session_state:
+        entry["notes"] = st.session_state[notes_key]
     return entry
 
 
@@ -132,6 +135,7 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
             ),
             "spiff": float(st.session_state.get(rec_key(row.name, "spiff"), row.spiff) or 0),
             "warranty_bonus": bool(st.session_state.get(rec_key(row.name, "warranty_bonus"), False)),
+            "notes": str(st.session_state.get(rec_key(row.name, "notes"), row.notes) or ""),
         }
     return values
 
@@ -151,6 +155,7 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
     st.session_state[rec_key(row.name, "warranty_bonus")] = bool(
         overrides.get("warranty_bonus", False)
     )
+    st.session_state[rec_key(row.name, "notes")] = overrides.get("notes", row.notes or "")
 
 
 def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None):
@@ -188,6 +193,8 @@ def init_receptionist_payroll_session():
             st.session_state[rec_key(row.name, "bonus_label")] = row.bonus_label or "Bonus"
         if rec_key(row.name, "warranty_bonus") not in st.session_state:
             st.session_state[rec_key(row.name, "warranty_bonus")] = False
+        if rec_key(row.name, "notes") not in st.session_state:
+            st.session_state[rec_key(row.name, "notes")] = row.notes or ""
         if rec_key(row.name, "expanded") not in st.session_state:
             st.session_state[rec_key(row.name, "expanded")] = False
 
@@ -236,6 +243,7 @@ def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
         warranty_bonus_qualified=bool(st.session_state.get(rec_key(row.name, "warranty_bonus"), False)),
         bonus_label=str(st.session_state.get(rec_key(row.name, "bonus_label"), row.bonus_label or "Bonus")),
         spiff=float(st.session_state.get(rec_key(row.name, "spiff"), 0) or 0),
+        notes=str(st.session_state.get(rec_key(row.name, "notes"), "") or ""),
     )
 
 

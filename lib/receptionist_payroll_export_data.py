@@ -38,6 +38,7 @@ def build_receptionist_payroll_snapshot(
             "bonus_label": employee.bonus_label,
             "bonus_pay": result.bonus_pay,
             "spiff": result.spiff_pay,
+            "notes": employee.notes,
             "total_pay": result.total_pay,
         })
 

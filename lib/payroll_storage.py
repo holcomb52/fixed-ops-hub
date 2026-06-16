@@ -40,6 +40,7 @@ def serialize_payroll_session(synced_teams: Dict[str, List[TechPayrollRow]], pay
                 "rate": row.hourly_rate,
                 "train": row.training_hours,
                 "spiff": row.spiff,
+                "notes": row.notes,
                 "foreman_rule": row.foreman_rule,
                 "quick_lube_sources": row.quick_lube_sources,
             })
@@ -88,6 +89,7 @@ def apply_snapshot_to_session(
                 "rate": float(tech.get("rate", 0) or 0),
                 "train": float(tech.get("train", 0) or 0),
                 "spiff": float(tech.get("spiff", 0) or 0),
+                "notes": str(tech.get("notes", "") or ""),
                 "tech_number": str(tech.get("tech_number", "") or ""),
             }
     apply_teams_to_session(teams, values_by_name)

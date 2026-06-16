@@ -56,6 +56,9 @@ def _capture_advisor_store_entry(i: int, row: AdvisorPayrollRow) -> dict:
         key = adv_key(i, field)
         if key in st.session_state:
             entry[field] = st.session_state[key]
+    notes_key = adv_key(i, "notes")
+    if notes_key in st.session_state:
+        entry["notes"] = st.session_state[notes_key]
     return entry
 
 
@@ -110,6 +113,7 @@ def capture_advisor_values(rows: list[AdvisorPayrollRow]) -> dict:
                 st.session_state.get(adv_key(i, "alignment_bonus"), row.alignment_bonus_qualified)
             ),
             "csi_tier": st.session_state.get(adv_key(i, "csi_tier"), row.csi_tier or "none"),
+            "notes": str(st.session_state.get(adv_key(i, "notes"), row.notes) or ""),
         }
     return values
 
@@ -129,6 +133,7 @@ def _init_advisor_fields(i: int, row: AdvisorPayrollRow, overrides: Optional[dic
     st.session_state[adv_key(i, "alignment_bonus")] = overrides.get(
         "alignment_bonus", row.alignment_bonus_qualified
     )
+    st.session_state[adv_key(i, "notes")] = overrides.get("notes", row.notes or "")
 
 
 def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None):
@@ -161,6 +166,8 @@ def init_advisor_payroll_session():
             st.session_state[adv_key(i, "alignment_bonus")] = bool(
                 getattr(row, "alignment_bonus_qualified", False)
             )
+        if adv_key(i, "notes") not in st.session_state:
+            st.session_state[adv_key(i, "notes")] = row.notes or ""
 
 
 def apply_advisor_report_to_session(report_rows) -> int:
@@ -212,6 +219,7 @@ def sync_advisor(idx: int, row: AdvisorPayrollRow) -> AdvisorPayrollRow:
         menu_presentation=float(st.session_state[adv_key(idx, "menu_presentation")]),
         parts_commission_rate=float(st.session_state[adv_key(idx, "parts_commission_rate")]),
         spiff=float(st.session_state[adv_key(idx, "spiff")]),
+        notes=str(st.session_state.get(adv_key(idx, "notes"), "") or ""),
         hourly_pay_override=override if override > 0 else None,
     )
 

@@ -16,6 +16,7 @@ class TechPayrollRow:
     dollars_earned: float = 0.0
     training_hours: float = 0.0
     spiff: float = 0.0
+    notes: str = ""
     foreman_rule: str = "none"  # none | team_per_hr_2 | team_per_hr_1
     quick_lube_sources: List[str] = field(default_factory=list)
 

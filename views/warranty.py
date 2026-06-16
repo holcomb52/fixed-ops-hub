@@ -20,6 +20,7 @@ from lib.warranty_labor_calc import (
     get_exclusion_select_options,
     label_to_exclusion,
     merge_warranty_rows,
+    normalize_recid,
     review_widget_key,
     rows_to_display_dicts,
     summarize_rows,
@@ -57,19 +58,66 @@ def _clear_review_widgets():
 
 
 def _init_review_widgets(recids: list[str]):
-    reviewed_seed = st.session_state.get("warranty_reviewed_ros", set())
+    reviewed_seed = {
+        normalize_recid(recid) for recid in st.session_state.get("warranty_reviewed_ros", set())
+    }
     for recid in recids:
         key = review_widget_key(recid)
         if key not in st.session_state:
-            st.session_state[key] = recid in reviewed_seed
+            st.session_state[key] = normalize_recid(recid) in reviewed_seed
 
 
 def _collect_reviewed_recids(recids: list[str]) -> set[str]:
     return {
-        recid
+        normalize_recid(recid)
         for recid in recids
         if st.session_state.get(review_widget_key(recid), False)
     }
+
+
+def _unique_report_recids(rows: list[WarrantyLaborRow]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for recid, _ in _group_rows_by_ro(rows):
+        if recid not in seen:
+            seen.add(recid)
+            ordered.append(recid)
+    return ordered
+
+
+def _persist_warranty_run(
+    rows: list[WarrantyLaborRow],
+    custom_exclusions: list[str],
+    *,
+    quiet: bool = True,
+) -> str | None:
+    run_id = st.session_state.get("active_warranty_run_id")
+    if not run_id or not rows:
+        return None
+
+    recids = _unique_report_recids(rows)
+    reviewed_recids = sorted(_collect_reviewed_recids(recids))
+    source_name = st.session_state.get("warranty_upload_name", "warranty_labor.xlsx")
+    sheet_name = st.session_state.get("warranty_sheet_name", "Sheet1")
+
+    saved_id = save_warranty_labor_run(
+        rows,
+        source_name=source_name,
+        sheet_name=sheet_name,
+        custom_exclusions=custom_exclusions,
+        upload_bytes=st.session_state.get("warranty_upload_bytes"),
+        run_id=run_id,
+        reviewed_recids=reviewed_recids,
+    )
+    st.session_state.warranty_reviewed_ros = set(reviewed_recids)
+    st.session_state.active_warranty_run_id = saved_id
+    st.session_state.warranty_run_label = st.session_state.get(
+        "warranty_run_label",
+        f"{source_name} · {sheet_name}",
+    )
+    if not quiet:
+        st.session_state["_warranty_saved_label"] = st.session_state.warranty_run_label
+    return saved_id
 
 
 def _sort_ro_groups(
@@ -98,7 +146,7 @@ def _group_rows_by_ro(rows: list[WarrantyLaborRow]) -> list[tuple[str, list[Warr
     grouped: dict[str, list[WarrantyLaborRow]] = {}
     order: list[str] = []
     for row in rows:
-        recid = str(row.recid).strip()
+        recid = normalize_recid(row.recid)
         if recid not in grouped:
             grouped[recid] = []
             order.append(recid)
@@ -158,6 +206,17 @@ def _render_ro_card(
                 help=button_help,
             ):
                 st.session_state[widget_key] = not is_reviewed
+                reviewed = set(st.session_state.get("warranty_reviewed_ros", set()))
+                if st.session_state[widget_key]:
+                    reviewed.add(normalize_recid(recid))
+                else:
+                    reviewed.discard(normalize_recid(recid))
+                st.session_state.warranty_reviewed_ros = reviewed
+                if st.session_state.get("active_warranty_run_id"):
+                    session_rows = st.session_state.warranty_labor_rows
+                    session_custom = st.session_state.warranty_custom_exclusions
+                    _sync_row_exclusions(session_rows, session_custom)
+                    _persist_warranty_run(session_rows, session_custom, quiet=True)
                 st.rerun()
         with status_col:
             if is_reviewed:
@@ -560,10 +619,14 @@ def render():
         return
 
     custom_exclusions = st.session_state.warranty_custom_exclusions
-    _render_custom_exclusions_editor()
-    _render_labor_rows(rows, custom_exclusions)
     _sync_row_exclusions(rows, custom_exclusions)
     st.session_state.warranty_labor_rows = rows
+
+    if st.session_state.get("active_warranty_run_id"):
+        st.caption("Review and exclusion changes save automatically while this report is open.")
+
+    _render_custom_exclusions_editor()
+    _render_labor_rows(rows, custom_exclusions)
 
     summary = summarize_rows(rows)
 
@@ -657,19 +720,21 @@ def render():
         hide_index=True,
     )
 
+    if st.session_state.get("active_warranty_run_id"):
+        _persist_warranty_run(rows, custom_exclusions, quiet=True)
+
     st.markdown("---")
     st.markdown("##### Save analysis")
     st.markdown(
         '<div class="glass-panel"><p style="color:#94a3b8;margin:0;">'
-        "Saves this warranty ELR run to <strong>Reports → Warranty ELR Analysis</strong>. "
-        "Reopen anytime to pick up exactly where you left off — exclusions, custom categories, "
-        "review progress, and incremental uploads.</p></div>",
+        "First time? Click save to create this run in <strong>Reports → Warranty ELR Analysis</strong>. "
+        "After that, review progress and exclusions save automatically whenever you reopen the report.</p></div>",
         unsafe_allow_html=True,
     )
 
     if st.button("💾 Save to Reports", type="primary", use_container_width=True):
         reviewed_recids = sorted(
-            _collect_reviewed_recids([str(row.recid) for row in rows])
+            _collect_reviewed_recids(_unique_report_recids(rows))
         )
         run_id = save_warranty_labor_run(
             rows,

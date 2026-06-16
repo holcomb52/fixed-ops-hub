@@ -183,8 +183,12 @@ def exclusion_widget_key(row: WarrantyLaborRow) -> str:
     return f"warranty_exc_{row.line_id or row.recid}"
 
 
+def normalize_recid(recid) -> str:
+    return str(recid or "").strip()
+
+
 def review_widget_key(recid: str) -> str:
-    return f"warranty_ro_reviewed_{recid}"
+    return f"warranty_ro_reviewed_{normalize_recid(recid)}"
 
 
 @dataclass

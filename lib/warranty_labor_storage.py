@@ -112,7 +112,9 @@ def apply_warranty_snapshot_to_session(record: dict, run_id: str):
         st.session_state.warranty_upload_id = f"saved:{run_id}"
         st.session_state.warranty_parsed_id = f"saved:{run_id}:{st.session_state.warranty_sheet_name}"
 
-    reviewed_recids = set(snapshot.get("reviewed_recids", []))
+    reviewed_recids = {
+        normalize_recid(recid) for recid in snapshot.get("reviewed_recids", [])
+    }
     st.session_state.warranty_reviewed_ros = reviewed_recids
     st.session_state.warranty_last_upload_added_recids = set()
 
@@ -121,7 +123,7 @@ def apply_warranty_snapshot_to_session(record: dict, run_id: str):
     for row in rows:
         st.session_state[exclusion_widget_key(row)] = exclusion_widget_label(row.exclusion)
     for recid in reviewed_recids:
-        st.session_state[review_widget_key(str(recid))] = True
+        st.session_state[review_widget_key(recid)] = True
 
     save_custom_exclusions(custom_exclusions)
 

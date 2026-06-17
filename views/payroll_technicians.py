@@ -29,6 +29,7 @@ from views.payroll_helpers import (
     all_rows_synced,
     apply_teams_to_session,
     capture_tech_values,
+    ensure_all_row_fields,
     field_key,
     init_payroll_session,
     parse_period_token,
@@ -47,6 +48,7 @@ def _money(v: float) -> str:
 
 
 def _apply_pdf_to_state(flag_map: dict):
+    ensure_all_row_fields()
     for team_name, rows in st.session_state.tech_teams.items():
         for i, row in enumerate(rows):
             if row.name in flag_map:

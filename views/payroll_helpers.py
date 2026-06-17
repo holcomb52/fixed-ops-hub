@@ -86,6 +86,25 @@ def field_key(team_name: str, idx: int, field: str) -> str:
     return f"pay_{safe_team}_{idx}_{field}"
 
 
+PAYROLL_ROW_FIELDS = ("hours", "dollars", "rate", "train", "spiff", "notes")
+
+
+def ensure_row_fields(team_name: str, idx: int, row: TechPayrollRow, overrides: Optional[Dict] = None):
+    """Ensure every payroll widget key exists before reading session state."""
+    missing = any(
+        field_key(team_name, idx, fld) not in st.session_state
+        for fld in PAYROLL_ROW_FIELDS
+    )
+    if missing:
+        init_row_fields(team_name, idx, row, overrides=overrides)
+
+
+def ensure_all_row_fields():
+    for team_name, rows in st.session_state.tech_teams.items():
+        for i, row in enumerate(rows):
+            ensure_row_fields(team_name, i, row)
+
+
 def init_row_fields(team_name: str, idx: int, row: TechPayrollRow, overrides: Optional[Dict] = None):
     overrides = overrides or {}
     defaults = {
@@ -195,25 +214,26 @@ def init_payroll_session():
         st.session_state.receptionist_payroll_completed = False
 
     init_pay_period_state()
+    ensure_all_row_fields()
 
-    for team_name, rows in st.session_state.tech_teams.items():
-        for i, row in enumerate(rows):
-            key = field_key(team_name, i, "hours")
-            if key not in st.session_state:
-                init_row_fields(team_name, i, row)
+
+def _field_float(team_name: str, idx: int, field: str, default: float = 0.0) -> float:
+    return float(st.session_state.get(field_key(team_name, idx, field), default) or 0)
 
 
 def sync_row(team_name: str, idx: int, row: TechPayrollRow) -> TechPayrollRow:
-    row.flat_rate_hours = float(st.session_state[field_key(team_name, idx, "hours")])
-    row.dollars_earned = float(st.session_state[field_key(team_name, idx, "dollars")])
-    row.hourly_rate = float(st.session_state[field_key(team_name, idx, "rate")])
-    row.training_hours = float(st.session_state[field_key(team_name, idx, "train")])
-    row.spiff = float(st.session_state[field_key(team_name, idx, "spiff")])
-    row.notes = str(st.session_state.get(field_key(team_name, idx, "notes"), "") or "")
+    ensure_row_fields(team_name, idx, row)
+    row.flat_rate_hours = _field_float(team_name, idx, "hours", row.flat_rate_hours)
+    row.dollars_earned = _field_float(team_name, idx, "dollars", row.dollars_earned)
+    row.hourly_rate = _field_float(team_name, idx, "rate", row.hourly_rate)
+    row.training_hours = _field_float(team_name, idx, "train", row.training_hours)
+    row.spiff = _field_float(team_name, idx, "spiff", row.spiff)
+    row.notes = str(st.session_state.get(field_key(team_name, idx, "notes"), row.notes) or "")
     return row
 
 
 def all_rows_synced() -> dict:
+    ensure_all_row_fields()
     synced = {}
     for team_name, rows in st.session_state.tech_teams.items():
         synced[team_name] = [

@@ -27,16 +27,17 @@ from views.receptionist_payroll_helpers import (
     apply_roster_to_session,
     capture_open_receptionist_inputs,
     capture_receptionist_values,
+    form_key,
     init_receptionist_payroll_session,
-    persist_receptionist_changes,
-    _appointment_rate_text_key,
-    _commit_appointment_rate_input,
-    _commit_tires_input,
     rec_key,
     refresh_receptionist_value_store,
+    save_receptionist_form,
+    section_open_key,
+    section_toggle_key,
     sync_all_appointment_rates_to_roster,
     sync_receptionist,
     toggle_receptionist_section,
+    _appointment_rate_text_key,
     _read_appointment_rate,
     _tires_text_key,
 )
@@ -158,57 +159,55 @@ def _summary_row(row, synced, result) -> dict:
 
 
 def _render_receptionist_section(row) -> None:
-    st.text_input(
-        "$ per appointment set",
-        key=_appointment_rate_text_key(row.name),
-        on_change=_commit_appointment_rate_input,
-        args=(row.name,),
-        help="Type the dollars paid per appointment (e.g. 3 or 3.00). Press Tab or Enter to save.",
-    )
+    st.caption("Enter all values, then click **Save entries** — the section stays open and both fields save together.")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        appointments_set = sync_receptionist(row).appointments_set
-        st.metric(
-            "Appointments set",
-            f"{appointments_set:.0f}",
-            help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
-        )
-    with c2:
+    with st.form(key=form_key(row.name), clear_on_submit=False):
         st.text_input(
-            f"Tires sold (${TIRE_PAY_RATE:.0f} each)",
-            key=_tires_text_key(row.name),
-            on_change=_commit_tires_input,
-            args=(row.name,),
-            help="Type the number of tires sold this pay period.",
+            "$ per appointment set",
+            key=_appointment_rate_text_key(row.name),
+            help="Type the dollars paid per appointment (e.g. 3 or 3.00).",
         )
 
-    if row.has_warranty_bonus:
-        st.toggle(
-            f"Extended warranty schedule bonus — {_money(row.warranty_bonus_amount)}",
-            key=rec_key(row.name, "warranty_bonus"),
-            on_change=persist_receptionist_changes,
-            args=(row.name,),
-            help="Turn on when this receptionist earned the monthly extended warranty bonus.",
+        c1, c2 = st.columns(2)
+        with c1:
+            appointments_set = sync_receptionist(row).appointments_set
+            st.metric(
+                "Appointments set",
+                f"{appointments_set:.0f}",
+                help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
+            )
+        with c2:
+            st.text_input(
+                f"Tires sold (${TIRE_PAY_RATE:.0f} each)",
+                key=_tires_text_key(row.name),
+                help="Type the number of tires sold this pay period.",
+            )
+
+        if row.has_warranty_bonus:
+            st.checkbox(
+                f"Extended warranty schedule bonus — {_money(row.warranty_bonus_amount)}",
+                key=rec_key(row.name, "warranty_bonus"),
+                help="Turn on when this receptionist earned the monthly extended warranty bonus.",
+            )
+
+        st.number_input(
+            "SPIFF ($)",
+            min_value=0.0,
+            step=1.0,
+            key=rec_key(row.name, "spiff"),
         )
 
-    st.number_input(
-        "SPIFF ($)",
-        min_value=0.0,
-        step=1.0,
-        key=rec_key(row.name, "spiff"),
-        on_change=persist_receptionist_changes,
-        args=(row.name,),
-    )
+        st.text_area(
+            "Notes for payroll clerk",
+            key=rec_key(row.name, "notes"),
+            placeholder="Optional — prints on the payroll PDF for accounting",
+            height=68,
+        )
 
-    st.text_area(
-        "Notes for payroll clerk",
-        key=rec_key(row.name, "notes"),
-        on_change=persist_receptionist_changes,
-        args=(row.name,),
-        placeholder="Optional — prints on the payroll PDF for accounting",
-        height=72,
-    )
+        submitted = st.form_submit_button("Save entries", use_container_width=True, type="primary")
+
+    if submitted:
+        save_receptionist_form(row.name)
 
     synced = sync_receptionist(row)
     result = calculate_receptionist_payroll(synced)
@@ -247,7 +246,7 @@ def render():
     init_receptionist_payroll_session()
 
     st.markdown(
-        '<span class="legend-chip chip-manual">Click a name to edit · tires, warranty bonus, SPIFF & notes each period</span> '
+        '<span class="legend-chip chip-manual">Click a name · enter values · click Save entries</span> '
         '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span> '
         '<span class="legend-chip chip-live">Changes save automatically</span>',
         unsafe_allow_html=True,
@@ -295,7 +294,7 @@ def render():
 
     employee_names = [row.name for row in employee_rows]
     for row in employee_rows:
-        open_key = rec_key(row.name, "expanded")
+        open_key = section_open_key(row.name)
         is_open = bool(st.session_state.get(open_key, False))
         synced = next(s for s in all_receptionists_synced() if s.name == row.name)
         result = calculate_receptionist_payroll(synced)
@@ -307,7 +306,7 @@ def render():
         )
         if st.button(
             button_label,
-            key=rec_key(row.name, "name_toggle"),
+            key=section_toggle_key(row.name),
             use_container_width=True,
             type="primary" if is_open else "secondary",
         ):

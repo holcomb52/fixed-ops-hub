@@ -28,8 +28,25 @@ def rec_key(name: str, field: str) -> str:
     return f"rec_{slug}_{field}"
 
 
+def section_open_key(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    return f"receptionist_open_{slug}"
+
+
+def section_toggle_key(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    return f"receptionist_toggle_{slug}"
+
+
+def form_key(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    return f"receptionist_form_{slug}"
+
+
 def clear_receptionist_field_keys():
     for key in list(st.session_state.keys()):
+        if key.startswith("receptionist_open_") or key.startswith("receptionist_toggle_"):
+            continue
         if key.startswith("rec_"):
             del st.session_state[key]
 
@@ -123,31 +140,33 @@ def refresh_receptionist_value_store():
 
 
 def _commit_tires_input(name: str):
+    save_receptionist_form(name)
+
+
+def _commit_appointment_rate_input(name: str):
+    save_receptionist_form(name)
+
+
+def save_receptionist_form(name: str):
+    """Commit all pay-period fields for one receptionist."""
     row = next(
         (item for item in flatten_roster(st.session_state.receptionist_roster) if item.name == name),
         None,
     )
-    tires = _parse_tires_value(name, row)
+    if row is None:
+        return
     rate = _parse_appointment_rate(name, row)
-    st.session_state[rec_key(name, "tires_sold")] = tires
-    st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
+    tires = _parse_tires_value(name, row)
     st.session_state[rec_key(name, "appointment_rate")] = rate
+    st.session_state[rec_key(name, "tires_sold")] = tires
     st.session_state[_appointment_rate_text_key(name)] = _format_rate_text(rate)
+    st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
+    st.session_state[section_open_key(name)] = True
+    persist_appointment_rate(name)
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
-
-
-def _commit_appointment_rate_input(name: str):
-    row = next(
-        (item for item in flatten_roster(st.session_state.receptionist_roster) if item.name == name),
-        None,
-    )
-    rate = _parse_appointment_rate(name, row)
-    st.session_state[rec_key(name, "appointment_rate")] = rate
-    st.session_state[_appointment_rate_text_key(name)] = _format_rate_text(rate)
-    persist_appointment_rate_change(name)
 
 
 def capture_open_receptionist_inputs():
@@ -363,8 +382,12 @@ def init_receptionist_payroll_session():
     apply_roster_appointment_rates_to_session()
     apply_receptionist_value_store()
     for row in flatten_roster(st.session_state.receptionist_roster):
-        if rec_key(row.name, "expanded") not in st.session_state:
-            st.session_state[rec_key(row.name, "expanded")] = False
+        legacy_open = rec_key(row.name, "expanded")
+        open_key = section_open_key(row.name)
+        if legacy_open in st.session_state and open_key not in st.session_state:
+            st.session_state[open_key] = bool(st.session_state.get(legacy_open, False))
+        if open_key not in st.session_state:
+            st.session_state[open_key] = False
 
 
 def apply_cashiers_report_to_session(report_rows) -> int:
@@ -420,15 +443,11 @@ def all_receptionists_synced() -> list:
 
 
 def toggle_receptionist_section(name: str, employee_names: list[str]):
-    open_key = rec_key(name, "expanded")
+    open_key = section_open_key(name)
     is_open = st.session_state.get(open_key, False)
     if is_open:
-        persist_receptionist_changes(name)
         st.session_state[open_key] = False
     else:
         for other in employee_names:
-            other_key = rec_key(other, "expanded")
-            if st.session_state.get(other_key, False):
-                persist_receptionist_changes(other)
-            st.session_state[other_key] = False
+            st.session_state[section_open_key(other)] = False
         st.session_state[open_key] = True

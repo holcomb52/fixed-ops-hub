@@ -29,14 +29,15 @@ from views.receptionist_payroll_helpers import (
     capture_receptionist_values,
     init_receptionist_payroll_session,
     persist_receptionist_changes,
-    persist_appointment_rate_change,
+    _appointment_rate_text_key,
+    _commit_appointment_rate_input,
+    _commit_tires_input,
     rec_key,
     refresh_receptionist_value_store,
     sync_all_appointment_rates_to_roster,
     sync_receptionist,
     toggle_receptionist_section,
-    _commit_tires_input,
-    _session_float,
+    _read_appointment_rate,
     _tires_text_key,
 )
 
@@ -157,19 +158,17 @@ def _summary_row(row, synced, result) -> dict:
 
 
 def _render_receptionist_section(row) -> None:
-    st.number_input(
+    st.text_input(
         "$ per appointment set",
-        min_value=0.0,
-        step=0.25,
-        key=rec_key(row.name, "appointment_rate"),
-        on_change=persist_appointment_rate_change,
+        key=_appointment_rate_text_key(row.name),
+        on_change=_commit_appointment_rate_input,
         args=(row.name,),
-        help="Saved automatically when you change this value.",
+        help="Type the dollars paid per appointment (e.g. 3 or 3.00). Press Tab or Enter to save.",
     )
 
     c1, c2 = st.columns(2)
     with c1:
-        appointments_set = _session_float(row, "appointments_set", row.appointments_set)
+        appointments_set = sync_receptionist(row).appointments_set
         st.metric(
             "Appointments set",
             f"{appointments_set:.0f}",
@@ -404,12 +403,7 @@ def render():
                 update_employee(
                     st.session_state.receptionist_roster,
                     row.name,
-                    appointment_rate=float(
-                        st.session_state.get(
-                            rec_key(row.name, "appointment_rate"), row.appointment_rate
-                        )
-                        or 0
-                    ),
+                    appointment_rate=_read_appointment_rate(row.name, row),
                 )
             save_roster(st.session_state.receptionist_roster)
             run_id = save_receptionist_payroll_run(

@@ -223,8 +223,10 @@ def all_rows_synced() -> dict:
     return synced
 
 
-def store_flag_pdf(uploaded_file):
+def store_flag_pdf(uploaded_file, pdf_bytes: bytes | None = None):
     """Save uploaded flag sheet bytes for viewing on Flag Sheet tab."""
-    uploaded_file.seek(0)
-    st.session_state.flag_pdf_bytes = uploaded_file.read()
+    if pdf_bytes is None:
+        uploaded_file.seek(0)
+        pdf_bytes = uploaded_file.read()
+    st.session_state.flag_pdf_bytes = pdf_bytes
     st.session_state.flag_pdf_filename = uploaded_file.name

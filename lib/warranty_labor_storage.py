@@ -16,6 +16,7 @@ from lib.warranty_labor_calc import (
     WarrantyLaborRow,
     exclusion_widget_key,
     exclusion_widget_label,
+    normalize_recid,
     review_widget_key,
     summarize_reviewed_running_total,
     summarize_rows,

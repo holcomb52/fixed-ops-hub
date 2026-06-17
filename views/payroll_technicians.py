@@ -216,25 +216,8 @@ def _bonus_label(row, team_hrs, global_hours):
     return "—"
 
 
-def _render_team(team_name: str, rows: list, global_hours: dict):
+def _team_summary_rows(team_name: str, rows: list, global_hours: dict) -> list:
     count = len(rows)
-    for i, row in enumerate(rows):
-        sync_row(team_name, i, row)
-
-    team_hrs = _team_hours(team_name, count)
-    totals = team_totals(rows, global_hours)
-
-    st.markdown(
-        f'<div class="section-title"><h2>{team_name}</h2>'
-        f'<p class="section-sub">Team hours: <strong>{team_hrs:.2f}</strong> · '
-        f'Team pay: <strong>{_money(totals["total_pay"])}</strong></p></div>',
-        unsafe_allow_html=True,
-    )
-
-    if not st.session_state.pdf_loaded:
-        st.info("Upload the flag sheet PDF above to auto-fill hours and dollars.")
-        return
-
     summary_rows = []
     for i, row in enumerate(rows):
         sync_row(team_name, i, row)
@@ -250,20 +233,25 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
             "SPIFF": row.spiff,
             "Total Pay": row.total_pay(th, global_hours),
         })
+    return summary_rows
 
-    st.dataframe(
-        pd.DataFrame(summary_rows),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Hours": st.column_config.NumberColumn(format="%.2f"),
-            "Dollars": st.column_config.NumberColumn(format="$%.2f"),
-            "Prod Bonus": st.column_config.NumberColumn(format="$%.2f"),
-            "Training Pay": st.column_config.NumberColumn(format="$%.2f"),
-            "SPIFF": st.column_config.NumberColumn(format="$%.2f"),
-            "Total Pay": st.column_config.NumberColumn(format="$%.2f"),
-        },
+
+def _render_team(team_name: str, rows: list, global_hours: dict):
+    count = len(rows)
+    for i, row in enumerate(rows):
+        sync_row(team_name, i, row)
+
+    team_hrs = _team_hours(team_name, count)
+
+    st.markdown(
+        f'<div class="section-title"><h2>{team_name}</h2>'
+        f'<p class="section-sub">Team hours: <strong>{team_hrs:.2f}</strong></p></div>',
+        unsafe_allow_html=True,
     )
+
+    if not st.session_state.pdf_loaded:
+        st.info("Upload the flag sheet PDF above to auto-fill hours and dollars.")
+        return
 
     st.markdown("##### ✏️ Enter training hours, SPIFF & notes")
     m1, m2, m3, m4 = st.columns([0.7, 2, 1, 1])
@@ -277,8 +265,6 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
         st.caption("SPIFF $")
 
     for i, row in enumerate(rows):
-        sync_row(team_name, i, row)
-        th = _team_hours(team_name, count)
         with st.container():
             c1, c2, c3, c4 = st.columns([0.7, 2, 1, 1])
             with c1:
@@ -308,11 +294,29 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                 height=68,
             )
 
+    summary_rows = _team_summary_rows(team_name, rows, global_hours)
+    totals = team_totals(rows, global_hours)
+
+    st.markdown("##### Payroll summary")
+    st.dataframe(
+        pd.DataFrame(summary_rows),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Hours": st.column_config.NumberColumn(format="%.2f"),
+            "Dollars": st.column_config.NumberColumn(format="$%.2f"),
+            "Prod Bonus": st.column_config.NumberColumn(format="$%.2f"),
+            "Training Pay": st.column_config.NumberColumn(format="$%.2f"),
+            "SPIFF": st.column_config.NumberColumn(format="$%.2f"),
+            "Total Pay": st.column_config.NumberColumn(format="$%.2f"),
+        },
+    )
+
     st.markdown(
         f"""
         <div class="team-total-bar">
             <span>TEAM TOTAL</span>
-            <span class="team-total-val">{_team_hours(team_name, count):.2f} hrs · {_money(team_totals(rows, global_hours)['total_pay'])}</span>
+            <span class="team-total-val">{_team_hours(team_name, count):.2f} hrs · {_money(totals["total_pay"])}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -348,56 +352,58 @@ def render():
 
     if pdf_file:
         try:
-            store_flag_pdf(pdf_file)
             pdf_file.seek(0)
-            parsed = parse_flag_sheet(pdf_file)
-            flag_map = {t.display_name: (t.flat_rate_hours, t.dollars_earned) for t in parsed.technicians}
-            number_map = {t.display_name: t.tech_number for t in parsed.technicians if t.tech_number}
+            pdf_bytes = pdf_file.read()
+            pdf_sig = f"{pdf_file.name}:{len(pdf_bytes)}"
+            if st.session_state.get("flag_pdf_processed_sig") != pdf_sig:
+                store_flag_pdf(pdf_file, pdf_bytes)
+                pdf_file.seek(0)
+                parsed = parse_flag_sheet(pdf_file)
+                flag_map = {t.display_name: (t.flat_rate_hours, t.dollars_earned) for t in parsed.technicians}
+                number_map = {t.display_name: t.tech_number for t in parsed.technicians if t.tech_number}
 
-            _apply_pdf_to_state(flag_map)
-            numbers_updated = 0
-            for team_rows in st.session_state.tech_teams.values():
-                apply_flag_data(team_rows, flag_map)
-                numbers_updated += apply_tech_numbers(team_rows, number_map)
-            if numbers_updated:
-                save_roster(st.session_state.tech_teams)
-            st.session_state.pdf_loaded = True
+                _apply_pdf_to_state(flag_map)
+                numbers_updated = 0
+                for team_rows in st.session_state.tech_teams.values():
+                    apply_flag_data(team_rows, flag_map)
+                    numbers_updated += apply_tech_numbers(team_rows, number_map)
+                if numbers_updated:
+                    save_roster(st.session_state.tech_teams)
+                st.session_state.pdf_loaded = True
+                st.session_state.flag_pdf_processed_sig = pdf_sig
 
-            dates_updated = False
-            if parsed.pay_period_start and parsed.pay_period_end:
-                pdf_start = parse_period_token(parsed.pay_period_start)
-                pdf_end = parse_period_token(parsed.pay_period_end)
-                if pdf_start and pdf_end:
-                    st.session_state.pending_pay_period_start = pdf_start
-                    st.session_state.pending_pay_period_end = pdf_end
-                    dates_updated = True
+                dates_updated = False
+                if parsed.pay_period_start and parsed.pay_period_end:
+                    pdf_start = parse_period_token(parsed.pay_period_start)
+                    pdf_end = parse_period_token(parsed.pay_period_end)
+                    if pdf_start and pdf_end:
+                        st.session_state.pending_pay_period_start = pdf_start
+                        st.session_state.pending_pay_period_end = pdf_end
+                        dates_updated = True
 
-            matched = sum(1 for team in st.session_state.tech_teams.values() for r in team if r.name in flag_map)
-            number_note = f" · {numbers_updated} tech numbers synced" if numbers_updated else ""
+                matched = sum(1 for team in st.session_state.tech_teams.values() for r in team if r.name in flag_map)
+                number_note = f" · {numbers_updated} tech numbers synced" if numbers_updated else ""
 
-            period_note = ""
-            if dates_updated:
-                period_note = " · Pay dates updated from PDF"
-            elif st.session_state.pay_period:
-                period_note = f" · {st.session_state.pay_period}"
+                period_note = ""
+                if dates_updated:
+                    period_note = " · Pay dates updated from PDF"
+                elif st.session_state.pay_period:
+                    period_note = f" · {st.session_state.pay_period}"
 
-            st.markdown(
-                status_banner(
-                    f"✓ {matched} techs loaded{number_note} · Flag sheet saved — view anytime on **Flag Sheet** tab"
-                    + period_note,
-                    "success",
-                ),
-                unsafe_allow_html=True,
-            )
-            if dates_updated:
-                st.rerun()
+                st.markdown(
+                    status_banner(
+                        f"✓ {matched} techs loaded{number_note} · Flag sheet saved — view anytime on **Flag Sheet** tab"
+                        + period_note,
+                        "success",
+                    ),
+                    unsafe_allow_html=True,
+                )
+                if dates_updated:
+                    st.rerun()
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)
 
     if st.session_state.pdf_loaded:
-        synced = all_rows_synced()
-        snapshot = build_payroll_snapshot(synced, st.session_state.pay_period)
-        export_pdf = generate_payroll_pdf(snapshot)
         period_slug = (st.session_state.pay_period or "payroll").replace("/", "-")
         export_name = f"TECH_PAYROLL_{period_slug}.pdf"
 
@@ -405,7 +411,9 @@ def render():
         with col_a:
             st.download_button(
                 label="📄 Export payroll PDF for accounting",
-                data=export_pdf,
+                data=generate_payroll_pdf(
+                    build_payroll_snapshot(all_rows_synced(), st.session_state.pay_period)
+                ),
                 file_name=export_name,
                 mime="application/pdf",
                 use_container_width=True,
@@ -419,14 +427,18 @@ def render():
     synced = all_rows_synced()
     global_hours = all_hours_by_name(synced)
 
-    grand_total = 0.0
-    grand_hours = 0.0
     for team_name, team_rows in synced.items():
         _render_team(team_name, team_rows, global_hours)
+        st.markdown("---")
+
+    synced = all_rows_synced()
+    global_hours = all_hours_by_name(synced)
+    grand_total = 0.0
+    grand_hours = 0.0
+    for team_rows in synced.values():
         t = team_totals(team_rows, global_hours)
         grand_total += t["total_pay"]
         grand_hours += t["hours"]
-        st.markdown("---")
 
     if st.session_state.pdf_loaded:
         c1, c2, c3 = st.columns(3)
@@ -465,7 +477,7 @@ def render():
             use_container_width=True,
         ):
             run_id = save_payroll_run(
-                synced,
+                all_rows_synced(),
                 st.session_state.pay_period,
                 st.session_state.get("flag_pdf_bytes"),
                 st.session_state.get("flag_pdf_filename", "flag_sheet.pdf"),

@@ -31,6 +31,7 @@ from views.receptionist_payroll_helpers import (
     rec_key,
     refresh_receptionist_value_store,
     sync_all_appointment_rates_to_roster,
+    sync_receptionist,
     toggle_receptionist_section,
     _session_float,
 )
@@ -208,7 +209,7 @@ def _render_receptionist_section(row) -> None:
         height=72,
     )
 
-    synced = next(s for s in all_receptionists_synced() if s.name == row.name)
+    synced = sync_receptionist(row)
     result = calculate_receptionist_payroll(synced)
 
     pay_rows = [

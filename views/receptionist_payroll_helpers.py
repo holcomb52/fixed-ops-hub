@@ -63,9 +63,11 @@ def refresh_receptionist_value_store():
 
 
 def apply_roster_appointment_rates_to_session():
-    """$/appointment is stored on the roster and restored every run."""
+    """$/appointment is stored on the roster and restored before widgets render."""
     for row in flatten_roster(st.session_state.receptionist_roster):
-        st.session_state[rec_key(row.name, "appointment_rate")] = float(row.appointment_rate or 0)
+        key = rec_key(row.name, "appointment_rate")
+        if key not in st.session_state:
+            st.session_state[key] = float(row.appointment_rate or 0)
 
 
 def persist_appointment_rate(name: str):
@@ -151,7 +153,6 @@ def persist_receptionist_changes(name: str | None = None):
     if name:
         persist_appointment_rate(name)
     refresh_receptionist_value_store()
-    apply_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
@@ -291,7 +292,6 @@ def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
 
 
 def all_receptionists_synced() -> list:
-    apply_receptionist_value_store()
     return [sync_receptionist(row) for row in flatten_roster(st.session_state.receptionist_roster)]
 
 

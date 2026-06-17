@@ -29,6 +29,7 @@ from views.receptionist_payroll_helpers import (
     capture_receptionist_values,
     init_receptionist_payroll_session,
     persist_receptionist_changes,
+    persist_appointment_rate_change,
     rec_key,
     refresh_receptionist_value_store,
     sync_all_appointment_rates_to_roster,
@@ -161,7 +162,7 @@ def _render_receptionist_section(row) -> None:
         min_value=0.0,
         step=0.25,
         key=rec_key(row.name, "appointment_rate"),
-        on_change=persist_receptionist_changes,
+        on_change=persist_appointment_rate_change,
         args=(row.name,),
         help="Saved automatically when you change this value.",
     )

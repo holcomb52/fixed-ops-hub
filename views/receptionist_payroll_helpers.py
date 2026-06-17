@@ -114,23 +114,45 @@ def capture_open_receptionist_inputs():
 
 
 def apply_roster_appointment_rates_to_session():
-    """$/appointment is stored on the roster and restored before widgets render."""
+    """Restore $/appointment from the value store or roster before widgets render."""
+    store = st.session_state.get("receptionist_value_store", {})
     for row in flatten_roster(st.session_state.receptionist_roster):
         key = rec_key(row.name, "appointment_rate")
         if key not in st.session_state:
-            st.session_state[key] = float(row.appointment_rate or 0)
+            saved = store.get(row.name, {})
+            rate = float(saved.get("appointment_rate", row.appointment_rate) or 0)
+            st.session_state[key] = rate
+
+
+def _read_appointment_rate(name: str, row: ReceptionistPayrollRow) -> float:
+    key = rec_key(name, "appointment_rate")
+    if key in st.session_state:
+        return float(st.session_state.get(key, 0) or 0)
+    store = st.session_state.get("receptionist_value_store", {}).get(name, {})
+    if "appointment_rate" in store:
+        return float(store["appointment_rate"] or 0)
+    return float(row.appointment_rate or 0)
 
 
 def persist_appointment_rate(name: str):
     for row in flatten_roster(st.session_state.receptionist_roster):
         if row.name != name:
             continue
-        rate = float(st.session_state.get(rec_key(name, "appointment_rate"), row.appointment_rate) or 0)
+        rate = _read_appointment_rate(name, row)
         update_employee(st.session_state.receptionist_roster, name, appointment_rate=rate)
         save_roster(st.session_state.receptionist_roster)
         store = st.session_state.setdefault("receptionist_value_store", {})
         store[name] = {**store.get(name, {}), "appointment_rate": rate}
         return
+
+
+def persist_appointment_rate_change(name: str):
+    """Save only when the $/appointment field changes."""
+    persist_appointment_rate(name)
+    refresh_receptionist_value_store()
+    from lib.payroll_autosave import autosave_receptionist_payroll
+
+    autosave_receptionist_payroll()
 
 
 def sync_all_appointment_rates_to_roster():
@@ -158,6 +180,8 @@ def _saved_field(row: ReceptionistPayrollRow, field: str, default):
 def _session_float(row: ReceptionistPayrollRow, field: str, default: float = 0.0) -> float:
     if field == "tires_sold":
         return _parse_tires_value(row.name, row)
+    if field == "appointment_rate":
+        return _read_appointment_rate(row.name, row)
     key = rec_key(row.name, field)
     if key in st.session_state:
         return float(st.session_state.get(key, default) or 0)
@@ -206,9 +230,7 @@ def apply_receptionist_value_store():
 
 
 def persist_receptionist_changes(name: str | None = None):
-    """Capture widget values and auto-save the in-progress receptionist payroll."""
-    if name:
-        persist_appointment_rate(name)
+    """Capture pay-period field edits without touching $/appointment."""
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
@@ -225,8 +247,9 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
             "tires_sold": float(
                 st.session_state.get(rec_key(row.name, "tires_sold"), _parse_tires_value(row.name)) or 0
             ),
-            "appointment_rate": float(
-                st.session_state.get(rec_key(row.name, "appointment_rate"), row.appointment_rate) or 0
+            "appointment_rate": _read_appointment_rate(
+                row.name,
+                row,
             ),
             "bonus_amount": float(
                 st.session_state.get(rec_key(row.name, "bonus_amount"), row.bonus_amount) or 0

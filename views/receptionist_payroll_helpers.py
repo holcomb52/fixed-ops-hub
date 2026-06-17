@@ -112,6 +112,19 @@ def apply_receptionist_value_store():
         warranty_key = rec_key(row.name, "warranty_bonus")
         if warranty_key not in st.session_state:
             st.session_state[warranty_key] = bool(saved.get("warranty_bonus", False))
+        notes_key = rec_key(row.name, "notes")
+        if notes_key not in st.session_state:
+            st.session_state[notes_key] = str(saved.get("notes", row.notes) or "")
+
+
+def persist_receptionist_changes(name: str | None = None):
+    """Capture widget values and auto-save the in-progress receptionist payroll."""
+    if name:
+        persist_appointment_rate(name)
+    refresh_receptionist_value_store()
+    from lib.payroll_autosave import autosave_receptionist_payroll
+
+    autosave_receptionist_payroll()
 
 
 def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
@@ -220,6 +233,9 @@ def apply_cashiers_report_to_session(report_rows) -> int:
 
     st.session_state.receptionist_report_loaded = matched > 0
     refresh_receptionist_value_store()
+    from lib.payroll_autosave import autosave_receptionist_payroll
+
+    autosave_receptionist_payroll()
     return matched
 
 
@@ -255,9 +271,12 @@ def toggle_receptionist_section(name: str, employee_names: list[str]):
     open_key = rec_key(name, "expanded")
     is_open = st.session_state.get(open_key, False)
     if is_open:
-        persist_appointment_rate(name)
+        persist_receptionist_changes(name)
         st.session_state[open_key] = False
     else:
         for other in employee_names:
-            st.session_state[rec_key(other, "expanded")] = False
+            other_key = rec_key(other, "expanded")
+            if st.session_state.get(other_key, False):
+                persist_receptionist_changes(other)
+            st.session_state[other_key] = False
         st.session_state[open_key] = True

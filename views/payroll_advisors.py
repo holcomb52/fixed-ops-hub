@@ -39,7 +39,9 @@ from views.advisor_payroll_helpers import (
     apply_roster_to_session,
     capture_advisor_values,
     init_advisor_payroll_session,
+    persist_advisor_changes,
     refresh_advisor_value_store,
+    toggle_advisor_section,
 )
 from views.payroll_helpers import pay_period_weeks
 
@@ -216,6 +218,7 @@ def _render_csi_buttons(advisor_idx: int):
                 type="primary" if selected else "secondary",
             ):
                 st.session_state[adv_key(advisor_idx, "csi_tier")] = tier_key
+                persist_advisor_changes(advisor_idx)
 
 
 def _summary_row(row, synced, result) -> dict:
@@ -239,6 +242,8 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         min_value=0.0,
         step=0.1,
         key=adv_key(advisor_idx, "hours_sold"),
+        on_change=persist_advisor_changes,
+        args=(advisor_idx,),
         help="Auto-filled from PAYROLL.xlsx, or enter manually.",
     )
 
@@ -246,12 +251,16 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — bump to ${TOM_JOEY_CP_BUMP_RATE:.0f}/hr",
             key=adv_key(advisor_idx, "cp_bump"),
+            on_change=persist_advisor_changes,
+            args=(advisor_idx,),
             help="Turn on when they averaged more than 2.25 customer-pay hours per RO.",
         )
     elif row.plan_type != PLAN_NEW_HIRES:
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
             key=adv_key(advisor_idx, "cp_bump"),
+            on_change=persist_advisor_changes,
+            args=(advisor_idx,),
             help=(
                 "Turn on when they averaged more than 2.25 customer-pay hours per RO. "
                 "Bumps their current hour tier rate (e.g. $6.50 → $7.50)."
@@ -261,6 +270,8 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
             key=adv_key(advisor_idx, "cp_bump"),
+            on_change=persist_advisor_changes,
+            args=(advisor_idx,),
             help="Commission pay mirrors New Advisors plan with optional CP bump.",
         )
 
@@ -270,14 +281,25 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         st.toggle(
             f"Alignment bonus — {_money(ALIGNMENT_BONUS_AMOUNT)}",
             key=adv_key(advisor_idx, "alignment_bonus"),
+            on_change=persist_advisor_changes,
+            args=(advisor_idx,),
             help="Turn on when the advisor earned the alignment bonus this pay period.",
         )
     with c2:
-        st.number_input("SPIFF ($)", min_value=0.0, step=1.0, key=adv_key(advisor_idx, "spiff"))
+        st.number_input(
+            "SPIFF ($)",
+            min_value=0.0,
+            step=1.0,
+            key=adv_key(advisor_idx, "spiff"),
+            on_change=persist_advisor_changes,
+            args=(advisor_idx,),
+        )
 
     st.text_area(
         "Notes for payroll clerk",
         key=adv_key(advisor_idx, "notes"),
+        on_change=persist_advisor_changes,
+        args=(advisor_idx,),
         placeholder="Optional — prints on the payroll PDF for accounting",
         height=72,
     )
@@ -381,7 +403,8 @@ def render():
 
     st.markdown(
         '<span class="legend-chip chip-manual">You enter: CP bump, alignment bonus, CSI tier, SPIFF</span> '
-        '<span class="legend-chip chip-calc">Hours & parts sales from PAYROLL report · pay auto-calc</span>',
+        '<span class="legend-chip chip-calc">Hours & parts sales from PAYROLL report · pay auto-calc</span> '
+        '<span class="legend-chip chip-live">Changes save automatically</span>',
         unsafe_allow_html=True,
     )
 
@@ -449,7 +472,7 @@ def render():
                 key=adv_key(i, "toggle"),
                 help="Expand or collapse",
             ):
-                st.session_state[open_key] = not st.session_state.get(open_key, False)
+                toggle_advisor_section(i)
         with col_label:
             st.markdown(exp_label, unsafe_allow_html=True)
 
@@ -538,10 +561,11 @@ def render():
         ):
             save_roster(st.session_state.advisor_roster)
             run_id = save_advisor_payroll_run(
-                synced_advisors,
+                all_advisors_synced(),
                 st.session_state.pay_period,
                 weeks,
                 run_id=st.session_state.get("active_advisor_run_id"),
+                status="completed",
             )
             st.session_state.active_advisor_run_id = run_id
             st.session_state.advisor_payroll_completed = True

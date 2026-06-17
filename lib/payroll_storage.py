@@ -135,8 +135,9 @@ def save_payroll_run(
     flag_pdf_bytes: Optional[bytes],
     flag_pdf_filename: str,
     run_id: Optional[str] = None,
+    status: str = "completed",
 ) -> str:
-    """Save or update a completed payroll run. Returns run id."""
+    """Save or update a payroll run. Returns run id."""
     snapshot = serialize_payroll_session(synced_teams, pay_period)
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()
@@ -144,7 +145,7 @@ def save_payroll_run(
     record = {
         "id": run_id,
         "pay_period": pay_period,
-        "status": "completed",
+        "status": status,
         "snapshot": snapshot,
         "flag_pdf_filename": flag_pdf_filename,
         "grand_total": snapshot["totals"]["grand_total"],
@@ -160,7 +161,7 @@ def save_payroll_run(
         row = {
             "id": run_id,
             "pay_period": pay_period,
-            "status": "completed",
+            "status": status,
             "snapshot": snapshot,
             "flag_pdf_filename": flag_pdf_filename,
             "grand_total": snapshot["totals"]["grand_total"],

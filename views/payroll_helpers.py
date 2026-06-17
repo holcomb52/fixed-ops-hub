@@ -243,6 +243,13 @@ def all_rows_synced() -> dict:
     return synced
 
 
+def persist_technician_changes(team_name: str | None = None, idx: int | None = None):
+    """Auto-save the in-progress technician payroll."""
+    from lib.payroll_autosave import autosave_technician_payroll
+
+    autosave_technician_payroll()
+
+
 def store_flag_pdf(uploaded_file, pdf_bytes: bytes | None = None):
     """Save uploaded flag sheet bytes for viewing on Flag Sheet tab."""
     if pdf_bytes is None:

@@ -33,6 +33,7 @@ from views.payroll_helpers import (
     field_key,
     init_payroll_session,
     parse_period_token,
+    persist_technician_changes,
     set_pay_period_dates,
     store_flag_pdf,
     sync_row,
@@ -279,6 +280,8 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                     min_value=0.0,
                     step=0.1,
                     key=field_key(team_name, i, "train"),
+                    on_change=persist_technician_changes,
+                    args=(team_name, i),
                     label_visibility="collapsed",
                 )
             with c4:
@@ -287,11 +290,15 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                     min_value=0.0,
                     step=1.0,
                     key=field_key(team_name, i, "spiff"),
+                    on_change=persist_technician_changes,
+                    args=(team_name, i),
                     label_visibility="collapsed",
                 )
             st.text_area(
                 "Notes for payroll clerk",
                 key=field_key(team_name, i, "notes"),
+                on_change=persist_technician_changes,
+                args=(team_name, i),
                 placeholder="Optional — prints on the payroll PDF for accounting",
                 height=68,
             )
@@ -328,7 +335,8 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
 def render():
     st.markdown(
         '<span class="legend-chip chip-manual">You enter: training hrs, SPIFF & notes</span> '
-        '<span class="legend-chip chip-calc">Hours & dollars from flag sheet PDF + auto-calc</span>',
+        '<span class="legend-chip chip-calc">Hours & dollars from flag sheet PDF + auto-calc</span> '
+        '<span class="legend-chip chip-live">Changes save automatically</span>',
         unsafe_allow_html=True,
     )
     if st.session_state.get("active_run_id"):
@@ -402,6 +410,10 @@ def render():
                 )
                 if dates_updated:
                     st.rerun()
+                else:
+                    from lib.payroll_autosave import autosave_technician_payroll
+
+                    autosave_technician_payroll()
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)
 
@@ -484,6 +496,7 @@ def render():
                 st.session_state.get("flag_pdf_bytes"),
                 st.session_state.get("flag_pdf_filename", "flag_sheet.pdf"),
                 run_id=st.session_state.get("active_run_id"),
+                status="completed",
             )
             st.session_state.active_run_id = run_id
             st.session_state.payroll_completed = True

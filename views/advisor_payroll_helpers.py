@@ -93,6 +93,24 @@ def apply_advisor_value_store():
             st.session_state[adv_key(i, "alignment_bonus")] = bool(
                 saved.get("alignment_bonus", row.alignment_bonus_qualified)
             )
+        if adv_key(i, "notes") not in st.session_state:
+            st.session_state[adv_key(i, "notes")] = str(saved.get("notes", row.notes) or "")
+
+
+def persist_advisor_changes(advisor_idx: int | None = None):
+    """Capture widget values and auto-save the in-progress advisor payroll."""
+    refresh_advisor_value_store()
+    from lib.payroll_autosave import autosave_advisor_payroll
+
+    autosave_advisor_payroll()
+
+
+def toggle_advisor_section(advisor_idx: int):
+    """Collapse or expand an advisor section without losing entered values."""
+    open_key = adv_key(advisor_idx, "expanded")
+    if st.session_state.get(open_key, False):
+        persist_advisor_changes(advisor_idx)
+    st.session_state[open_key] = not st.session_state.get(open_key, False)
 
 
 def capture_advisor_values(rows: list[AdvisorPayrollRow]) -> dict:
@@ -187,6 +205,9 @@ def apply_advisor_report_to_session(report_rows) -> int:
         matched += 1
     st.session_state.advisor_report_loaded = matched > 0
     refresh_advisor_value_store()
+    from lib.payroll_autosave import autosave_advisor_payroll
+
+    autosave_advisor_payroll()
     return matched
 
 

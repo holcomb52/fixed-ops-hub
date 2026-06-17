@@ -96,6 +96,9 @@ def apply_receptionist_snapshot_to_session(
             "notes": str(emp.get("notes", "") or ""),
         }
     apply_roster_to_session(roster, values_by_name)
+    from views.receptionist_payroll_helpers import refresh_receptionist_value_store
+
+    refresh_receptionist_value_store()
     st.session_state.pending_payroll_tab = "receptionists"
 
 
@@ -130,6 +133,7 @@ def save_receptionist_payroll_run(
     employees: List[ReceptionistPayrollRow],
     pay_period: str,
     run_id: Optional[str] = None,
+    status: str = "completed",
 ) -> str:
     snapshot = serialize_receptionist_payroll_session(employees, pay_period)
     run_id = run_id or str(uuid.uuid4())
@@ -138,7 +142,7 @@ def save_receptionist_payroll_run(
     record = {
         "id": run_id,
         "pay_period": pay_period,
-        "status": "completed",
+        "status": status,
         "snapshot": snapshot,
         "grand_total": snapshot["totals"]["grand_total"],
         "employee_count": snapshot["totals"]["employee_count"],
@@ -153,7 +157,7 @@ def save_receptionist_payroll_run(
         row = {
             "id": run_id,
             "pay_period": pay_period,
-            "status": "completed",
+            "status": status,
             "snapshot": snapshot,
             "grand_total": snapshot["totals"]["grand_total"],
             "employee_count": snapshot["totals"]["employee_count"],

@@ -27,7 +27,7 @@ from views.receptionist_payroll_helpers import (
     apply_roster_to_session,
     capture_receptionist_values,
     init_receptionist_payroll_session,
-    persist_appointment_rate,
+    persist_receptionist_changes,
     rec_key,
     refresh_receptionist_value_store,
     sync_all_appointment_rates_to_roster,
@@ -159,7 +159,7 @@ def _render_receptionist_section(row) -> None:
         min_value=0.0,
         step=0.25,
         key=rec_key(row.name, "appointment_rate"),
-        on_change=persist_appointment_rate,
+        on_change=persist_receptionist_changes,
         args=(row.name,),
         help="Saved automatically when you change this value.",
     )
@@ -177,6 +177,8 @@ def _render_receptionist_section(row) -> None:
             min_value=0.0,
             step=1.0,
             key=rec_key(row.name, "tires_sold"),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
             help="Enter manually each pay period.",
         )
 
@@ -184,14 +186,25 @@ def _render_receptionist_section(row) -> None:
         st.toggle(
             f"Extended warranty schedule bonus — {_money(row.warranty_bonus_amount)}",
             key=rec_key(row.name, "warranty_bonus"),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
             help="Turn on when this receptionist earned the monthly extended warranty bonus.",
         )
 
-    st.number_input("SPIFF ($)", min_value=0.0, step=1.0, key=rec_key(row.name, "spiff"))
+    st.number_input(
+        "SPIFF ($)",
+        min_value=0.0,
+        step=1.0,
+        key=rec_key(row.name, "spiff"),
+        on_change=persist_receptionist_changes,
+        args=(row.name,),
+    )
 
     st.text_area(
         "Notes for payroll clerk",
         key=rec_key(row.name, "notes"),
+        on_change=persist_receptionist_changes,
+        args=(row.name,),
         placeholder="Optional — prints on the payroll PDF for accounting",
         height=72,
     )
@@ -231,7 +244,8 @@ def render():
 
     st.markdown(
         '<span class="legend-chip chip-manual">Click a name to edit · tires, warranty bonus, SPIFF & notes each period</span> '
-        '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span>',
+        '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span> '
+        '<span class="legend-chip chip-live">Changes save automatically</span>',
         unsafe_allow_html=True,
     )
 
@@ -387,9 +401,10 @@ def render():
                 )
             save_roster(st.session_state.receptionist_roster)
             run_id = save_receptionist_payroll_run(
-                synced_employees,
+                all_receptionists_synced(),
                 st.session_state.pay_period,
                 run_id=st.session_state.get("active_receptionist_run_id"),
+                status="completed",
             )
             st.session_state.active_receptionist_run_id = run_id
             st.session_state.receptionist_payroll_completed = True

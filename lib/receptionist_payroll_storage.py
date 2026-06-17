@@ -96,6 +96,19 @@ def apply_receptionist_snapshot_to_session(
             "notes": str(emp.get("notes", "") or ""),
         }
     apply_roster_to_session(roster, values_by_name)
+    value_store = {}
+    for emp in snapshot.get("employees", []):
+        value_store[emp["name"]] = {
+            "appointments_set": float(emp.get("appointments_set", 0) or 0),
+            "tires_sold": float(emp.get("tires_sold", 0) or 0),
+            "appointment_rate": float(emp.get("appointment_rate", 0) or 0),
+            "bonus_amount": float(emp.get("bonus_amount", 0) or 0),
+            "bonus_label": emp.get("bonus_label", "Bonus"),
+            "spiff": float(emp.get("spiff", 0) or 0),
+            "warranty_bonus": bool(emp.get("warranty_bonus", False)),
+            "notes": str(emp.get("notes", "") or ""),
+        }
+    st.session_state.receptionist_value_store = value_store
     from views.receptionist_payroll_helpers import refresh_receptionist_value_store
 
     refresh_receptionist_value_store()

@@ -32,6 +32,7 @@ from views.receptionist_payroll_helpers import (
     refresh_receptionist_value_store,
     sync_all_appointment_rates_to_roster,
     toggle_receptionist_section,
+    _session_float,
 )
 
 
@@ -151,9 +152,6 @@ def _summary_row(row, synced, result) -> dict:
 
 
 def _render_receptionist_section(row) -> None:
-    synced = next(s for s in all_receptionists_synced() if s.name == row.name)
-    result = calculate_receptionist_payroll(synced)
-
     st.number_input(
         "$ per appointment set",
         min_value=0.0,
@@ -166,9 +164,10 @@ def _render_receptionist_section(row) -> None:
 
     c1, c2 = st.columns(2)
     with c1:
+        appointments_set = _session_float(row, "appointments_set", row.appointments_set)
         st.metric(
             "Appointments set",
-            f"{synced.appointments_set:.0f}",
+            f"{appointments_set:.0f}",
             help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
         )
     with c2:
@@ -208,6 +207,9 @@ def _render_receptionist_section(row) -> None:
         placeholder="Optional — prints on the payroll PDF for accounting",
         height=72,
     )
+
+    synced = next(s for s in all_receptionists_synced() if s.name == row.name)
+    result = calculate_receptionist_payroll(synced)
 
     pay_rows = [
         {
@@ -288,23 +290,15 @@ def render():
 
     employee_rows = flatten_roster(st.session_state.receptionist_roster)
     apply_receptionist_value_store()
-    synced_employees = all_receptionists_synced()
-    employee_results = [calculate_receptionist_payroll(e) for e in synced_employees]
-
-    summary_rows = [
-        _summary_row(row, synced_employees[i], employee_results[i])
-        for i, row in enumerate(employee_rows)
-    ]
-    grand_total = sum(r["Total Pay"] for r in summary_rows)
 
     employee_names = [row.name for row in employee_rows]
-    for i, row in enumerate(employee_rows):
-        result = employee_results[i]
-        synced = synced_employees[i]
+    for row in employee_rows:
         open_key = rec_key(row.name, "expanded")
         is_open = bool(st.session_state.get(open_key, False))
+        synced = next(s for s in all_receptionists_synced() if s.name == row.name)
+        result = calculate_receptionist_payroll(synced)
         arrow = "▼" if is_open else "▶"
-        display_rate = float(row.appointment_rate or synced.appointment_rate or 0)
+        display_rate = float(synced.appointment_rate or row.appointment_rate or 0)
         button_label = (
             f"{arrow}  {row.name}  ·  {_money(display_rate)}/appt  ·  "
             f"Total {_money(result.total_pay)}"
@@ -319,6 +313,14 @@ def render():
 
         if is_open:
             _render_receptionist_section(row)
+
+    synced_employees = all_receptionists_synced()
+    employee_results = [calculate_receptionist_payroll(e) for e in synced_employees]
+    summary_rows = [
+        _summary_row(row, synced_employees[i], employee_results[i])
+        for i, row in enumerate(employee_rows)
+    ]
+    grand_total = sum(r["Total Pay"] for r in summary_rows)
 
     st.markdown("---")
     st.markdown("##### Receptionist payroll summary")
@@ -348,16 +350,18 @@ def render():
         st.markdown(stat_card("Total Pay", _money(grand_total), "green", "💰"), unsafe_allow_html=True)
 
     if employee_rows and st.session_state.get("pay_period"):
-        snapshot = build_receptionist_payroll_snapshot(
-            synced_employees,
-            employee_results,
-            st.session_state.pay_period,
-        )
-        export_pdf = generate_receptionist_payroll_pdf(snapshot)
         period_slug = (st.session_state.pay_period or "payroll").replace("/", "-")
+        export_synced = all_receptionists_synced()
+        export_results = [calculate_receptionist_payroll(e) for e in export_synced]
         st.download_button(
             label="📄 Export receptionist payroll PDF for accounting",
-            data=export_pdf,
+            data=generate_receptionist_payroll_pdf(
+                build_receptionist_payroll_snapshot(
+                    export_synced,
+                    export_results,
+                    st.session_state.pay_period,
+                )
+            ),
             file_name=f"RECEPTIONIST_PAYROLL_{period_slug}.pdf",
             mime="application/pdf",
             use_container_width=True,
@@ -388,6 +392,7 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
+            refresh_receptionist_value_store()
             for row in employee_rows:
                 update_employee(
                     st.session_state.receptionist_roster,

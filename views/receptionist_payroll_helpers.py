@@ -94,6 +94,35 @@ def sync_all_appointment_rates_to_roster():
         save_roster(st.session_state.receptionist_roster)
 
 
+def _saved_field(row: ReceptionistPayrollRow, field: str, default):
+    store = st.session_state.get("receptionist_value_store", {})
+    saved = store.get(row.name, {})
+    if field in saved:
+        return saved[field]
+    return getattr(row, field, default)
+
+
+def _session_float(row: ReceptionistPayrollRow, field: str, default: float = 0.0) -> float:
+    key = rec_key(row.name, field)
+    if key in st.session_state:
+        return float(st.session_state.get(key, default) or 0)
+    return float(_saved_field(row, field, default) or 0)
+
+
+def _session_bool(row: ReceptionistPayrollRow, field: str, default: bool = False) -> bool:
+    key = rec_key(row.name, field)
+    if key in st.session_state:
+        return bool(st.session_state.get(key, default))
+    return bool(_saved_field(row, field, default))
+
+
+def _session_text(row: ReceptionistPayrollRow, field: str, default: str = "") -> str:
+    key = rec_key(row.name, field)
+    if key in st.session_state:
+        return str(st.session_state.get(key, default) or "")
+    return str(_saved_field(row, field, default) or "")
+
+
 def apply_receptionist_value_store():
     apply_roster_appointment_rates_to_session()
     store = st.session_state.get("receptionist_value_store", {})
@@ -122,6 +151,7 @@ def persist_receptionist_changes(name: str | None = None):
     if name:
         persist_appointment_rate(name)
     refresh_receptionist_value_store()
+    apply_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
@@ -240,30 +270,28 @@ def apply_cashiers_report_to_session(report_rows) -> int:
 
 
 def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
-    rate = float(row.appointment_rate or 0)
-    rate_key = rec_key(row.name, "appointment_rate")
-    if rate_key in st.session_state:
-        rate = float(st.session_state.get(rate_key, rate) or rate)
+    rate = _session_float(row, "appointment_rate", row.appointment_rate)
     return ReceptionistPayrollRow(
         name=row.name,
         last_name=row.last_name,
         employee_type=row.employee_type,
         taker_codes=list(row.taker_codes),
         appointment_rate=rate,
-        appointments_set=float(st.session_state.get(rec_key(row.name, "appointments_set"), 0) or 0),
-        tires_sold=float(st.session_state.get(rec_key(row.name, "tires_sold"), 0) or 0),
+        appointments_set=_session_float(row, "appointments_set", row.appointments_set),
+        tires_sold=_session_float(row, "tires_sold", row.tires_sold),
         tire_rate=TIRE_PAY_RATE,
-        bonus_amount=float(st.session_state.get(rec_key(row.name, "bonus_amount"), 0) or 0),
+        bonus_amount=_session_float(row, "bonus_amount", row.bonus_amount),
         has_warranty_bonus=row.has_warranty_bonus,
         warranty_bonus_amount=float(row.warranty_bonus_amount or 0),
-        warranty_bonus_qualified=bool(st.session_state.get(rec_key(row.name, "warranty_bonus"), False)),
-        bonus_label=str(st.session_state.get(rec_key(row.name, "bonus_label"), row.bonus_label or "Bonus")),
-        spiff=float(st.session_state.get(rec_key(row.name, "spiff"), 0) or 0),
-        notes=str(st.session_state.get(rec_key(row.name, "notes"), "") or ""),
+        warranty_bonus_qualified=_session_bool(row, "warranty_bonus", row.warranty_bonus_qualified),
+        bonus_label=_session_text(row, "bonus_label", row.bonus_label or "Bonus"),
+        spiff=_session_float(row, "spiff", row.spiff),
+        notes=_session_text(row, "notes", row.notes),
     )
 
 
 def all_receptionists_synced() -> list:
+    apply_receptionist_value_store()
     return [sync_receptionist(row) for row in flatten_roster(st.session_state.receptionist_roster)]
 
 

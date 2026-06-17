@@ -34,12 +34,26 @@ def clear_receptionist_field_keys():
             del st.session_state[key]
 
 
+def _parse_tires_value(name: str) -> float:
+    text_key = _tires_text_key(name)
+    if text_key in st.session_state:
+        raw = str(st.session_state.get(text_key, "")).strip()
+        try:
+            return max(float(raw) if raw else 0.0, 0.0)
+        except ValueError:
+            return 0.0
+    return float(st.session_state.get(rec_key(name, "tires_sold"), 0) or 0)
+
+
 def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
     entry: Dict[str, object] = {}
     for field in RECEPTIONIST_FIELDS:
+        if field == "tires_sold":
+            continue
         key = rec_key(row.name, field)
         if key in st.session_state:
             entry[field] = st.session_state[key]
+    entry["tires_sold"] = _parse_tires_value(row.name)
     label_key = rec_key(row.name, "bonus_label")
     if label_key in st.session_state:
         entry["bonus_label"] = st.session_state[label_key]
@@ -57,9 +71,28 @@ def refresh_receptionist_value_store():
     store = st.session_state.setdefault("receptionist_value_store", {})
     for row in rows:
         entry = _capture_store_entry(row)
-        entry["appointment_rate"] = float(row.appointment_rate or 0)
         if entry:
             store[row.name] = {**store.get(row.name, {}), **entry}
+        elif row.name not in store:
+            store[row.name] = {}
+
+
+def _tires_text_key(name: str) -> str:
+    return rec_key(name, "tires_sold_input")
+
+
+def _commit_tires_input(name: str):
+    tires = _parse_tires_value(name)
+    st.session_state[rec_key(name, "tires_sold")] = tires
+    st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
+    persist_receptionist_changes(name)
+
+
+def capture_open_receptionist_inputs():
+    """Snapshot widget values before unrelated controls (e.g. confirm checkbox) rerun."""
+    for row in flatten_roster(st.session_state.receptionist_roster):
+        st.session_state[rec_key(row.name, "tires_sold")] = _parse_tires_value(row.name)
+    refresh_receptionist_value_store()
 
 
 def apply_roster_appointment_rates_to_session():
@@ -137,6 +170,10 @@ def apply_receptionist_value_store():
             if key not in st.session_state:
                 val = saved.get(field, getattr(row, field, default))
                 st.session_state[key] = float(val if val is not None else default)
+        tires = float(saved.get("tires_sold", st.session_state.get(rec_key(row.name, "tires_sold"), 0)) or 0)
+        text_key = _tires_text_key(row.name)
+        if text_key not in st.session_state:
+            st.session_state[text_key] = str(int(tires)) if tires else ""
         label_key = rec_key(row.name, "bonus_label")
         if label_key not in st.session_state:
             st.session_state[label_key] = saved.get("bonus_label", row.bonus_label or "Bonus")
@@ -166,7 +203,7 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
                 st.session_state.get(rec_key(row.name, "appointments_set"), row.appointments_set) or 0
             ),
             "tires_sold": float(
-                st.session_state.get(rec_key(row.name, "tires_sold"), row.tires_sold) or 0
+                st.session_state.get(rec_key(row.name, "tires_sold"), _parse_tires_value(row.name)) or 0
             ),
             "appointment_rate": float(
                 st.session_state.get(rec_key(row.name, "appointment_rate"), row.appointment_rate) or 0
@@ -200,6 +237,8 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
         overrides.get("warranty_bonus", False)
     )
     st.session_state[rec_key(row.name, "notes")] = overrides.get("notes", row.notes or "")
+    tires = float(overrides.get("tires_sold", st.session_state.get(rec_key(row.name, "tires_sold"), 0)) or 0)
+    st.session_state[_tires_text_key(row.name)] = str(int(tires)) if tires else ""
 
 
 def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None):
@@ -225,20 +264,8 @@ def init_receptionist_payroll_session():
         st.session_state.receptionist_report_loaded = False
 
     apply_roster_appointment_rates_to_session()
+    apply_receptionist_value_store()
     for row in flatten_roster(st.session_state.receptionist_roster):
-        for field, default in RECEPTIONIST_FIELDS.items():
-            if field == "appointment_rate":
-                continue
-            key = rec_key(row.name, field)
-            if key not in st.session_state:
-                val = getattr(row, field, default)
-                st.session_state[key] = float(val if val is not None else default)
-        if rec_key(row.name, "bonus_label") not in st.session_state:
-            st.session_state[rec_key(row.name, "bonus_label")] = row.bonus_label or "Bonus"
-        if rec_key(row.name, "warranty_bonus") not in st.session_state:
-            st.session_state[rec_key(row.name, "warranty_bonus")] = False
-        if rec_key(row.name, "notes") not in st.session_state:
-            st.session_state[rec_key(row.name, "notes")] = row.notes or ""
         if rec_key(row.name, "expanded") not in st.session_state:
             st.session_state[rec_key(row.name, "expanded")] = False
 

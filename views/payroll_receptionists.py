@@ -25,6 +25,7 @@ from views.receptionist_payroll_helpers import (
     apply_cashiers_report_to_session,
     apply_receptionist_value_store,
     apply_roster_to_session,
+    capture_open_receptionist_inputs,
     capture_receptionist_values,
     init_receptionist_payroll_session,
     persist_receptionist_changes,
@@ -33,7 +34,9 @@ from views.receptionist_payroll_helpers import (
     sync_all_appointment_rates_to_roster,
     sync_receptionist,
     toggle_receptionist_section,
+    _commit_tires_input,
     _session_float,
+    _tires_text_key,
 )
 
 
@@ -172,14 +175,12 @@ def _render_receptionist_section(row) -> None:
             help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
         )
     with c2:
-        st.number_input(
+        st.text_input(
             f"Tires sold (${TIRE_PAY_RATE:.0f} each)",
-            min_value=0.0,
-            step=1.0,
-            key=rec_key(row.name, "tires_sold"),
-            on_change=persist_receptionist_changes,
+            key=_tires_text_key(row.name),
+            on_change=_commit_tires_input,
             args=(row.name,),
-            help="Enter manually each pay period.",
+            help="Type the number of tires sold this pay period.",
         )
 
     if row.has_warranty_bonus:
@@ -385,6 +386,7 @@ def render():
         confirm = st.checkbox(
             "This receptionist payroll is complete and ready to save",
             key="receptionist_payroll_complete_confirm",
+            on_change=capture_open_receptionist_inputs,
         )
 
         if st.button(
@@ -393,6 +395,7 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
+            capture_open_receptionist_inputs()
             refresh_receptionist_value_store()
             for row in employee_rows:
                 update_employee(

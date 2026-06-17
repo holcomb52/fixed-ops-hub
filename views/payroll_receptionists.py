@@ -353,17 +353,19 @@ def render():
 
     if employee_rows and st.session_state.get("pay_period"):
         period_slug = (st.session_state.pay_period or "payroll").replace("/", "-")
+        capture_open_receptionist_inputs()
         export_synced = all_receptionists_synced()
         export_results = [calculate_receptionist_payroll(e) for e in export_synced]
+        export_pdf = generate_receptionist_payroll_pdf(
+            build_receptionist_payroll_snapshot(
+                export_synced,
+                export_results,
+                st.session_state.pay_period,
+            )
+        )
         st.download_button(
             label="📄 Export receptionist payroll PDF for accounting",
-            data=generate_receptionist_payroll_pdf(
-                build_receptionist_payroll_snapshot(
-                    export_synced,
-                    export_results,
-                    st.session_state.pay_period,
-                )
-            ),
+            data=export_pdf,
             file_name=f"RECEPTIONIST_PAYROLL_{period_slug}.pdf",
             mime="application/pdf",
             use_container_width=True,
@@ -422,4 +424,4 @@ def render():
             st.rerun()
 
     sync_all_appointment_rates_to_roster()
-    refresh_receptionist_value_store()
+    capture_open_receptionist_inputs()

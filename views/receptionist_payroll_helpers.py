@@ -34,7 +34,7 @@ def clear_receptionist_field_keys():
             del st.session_state[key]
 
 
-def _parse_tires_value(name: str) -> float:
+def _parse_tires_value(name: str, row: ReceptionistPayrollRow | None = None) -> float:
     text_key = _tires_text_key(name)
     if text_key in st.session_state:
         raw = str(st.session_state.get(text_key, "")).strip()
@@ -42,7 +42,19 @@ def _parse_tires_value(name: str) -> float:
             return max(float(raw) if raw else 0.0, 0.0)
         except ValueError:
             return 0.0
-    return float(st.session_state.get(rec_key(name, "tires_sold"), 0) or 0)
+    num_key = rec_key(name, "tires_sold")
+    if num_key in st.session_state:
+        return float(st.session_state.get(num_key, 0) or 0)
+    store = st.session_state.get("receptionist_value_store", {})
+    if name in store and "tires_sold" in store[name]:
+        return float(store[name]["tires_sold"] or 0)
+    if row is not None:
+        return float(row.tires_sold or 0)
+    return 0.0
+
+
+def _tires_widgets_active(name: str) -> bool:
+    return _tires_text_key(name) in st.session_state or rec_key(name, "tires_sold") in st.session_state
 
 
 def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
@@ -53,7 +65,8 @@ def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
         key = rec_key(row.name, field)
         if key in st.session_state:
             entry[field] = st.session_state[key]
-    entry["tires_sold"] = _parse_tires_value(row.name)
+    if _tires_widgets_active(row.name):
+        entry["tires_sold"] = _parse_tires_value(row.name, row)
     label_key = rec_key(row.name, "bonus_label")
     if label_key in st.session_state:
         entry["bonus_label"] = st.session_state[label_key]
@@ -82,16 +95,21 @@ def _tires_text_key(name: str) -> str:
 
 
 def _commit_tires_input(name: str):
-    tires = _parse_tires_value(name)
+    row = next(
+        (item for item in flatten_roster(st.session_state.receptionist_roster) if item.name == name),
+        None,
+    )
+    tires = _parse_tires_value(name, row)
     st.session_state[rec_key(name, "tires_sold")] = tires
     st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
     persist_receptionist_changes(name)
 
 
 def capture_open_receptionist_inputs():
-    """Snapshot widget values before unrelated controls (e.g. confirm checkbox) rerun."""
+    """Snapshot widget values before unrelated controls (export, confirm) rerun."""
     for row in flatten_roster(st.session_state.receptionist_roster):
-        st.session_state[rec_key(row.name, "tires_sold")] = _parse_tires_value(row.name)
+        if _tires_widgets_active(row.name):
+            st.session_state[rec_key(row.name, "tires_sold")] = _parse_tires_value(row.name, row)
     refresh_receptionist_value_store()
 
 
@@ -138,6 +156,8 @@ def _saved_field(row: ReceptionistPayrollRow, field: str, default):
 
 
 def _session_float(row: ReceptionistPayrollRow, field: str, default: float = 0.0) -> float:
+    if field == "tires_sold":
+        return _parse_tires_value(row.name, row)
     key = rec_key(row.name, field)
     if key in st.session_state:
         return float(st.session_state.get(key, default) or 0)

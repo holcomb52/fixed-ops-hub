@@ -191,12 +191,13 @@ def _render_roster_manager():
             pick = st.selectbox("Select technician", labels, key="roster_edit_pick")
             pick_idx = labels.index(pick)
             team_name, row_idx, row = tech_choices[pick_idx]
+            edit_scope = f"{team_name}_{row_idx}"
             e1, e2, e3, e4 = st.columns([1, 1, 1, 1])
             with e1:
                 edit_number = st.text_input(
                     "Tech #",
                     value=row.tech_number,
-                    key="roster_edit_number",
+                    key=f"roster_edit_number_{edit_scope}",
                 )
             with e2:
                 edit_rate = st.number_input(
@@ -204,7 +205,7 @@ def _render_roster_manager():
                     min_value=0.0,
                     step=0.25,
                     value=float(row.hourly_rate),
-                    key="roster_edit_rate",
+                    key=f"roster_edit_rate_{edit_scope}",
                 )
             with e3:
                 role_keys = list(ROLE_OPTIONS.keys())
@@ -213,12 +214,12 @@ def _render_roster_manager():
                     "Role",
                     role_keys,
                     index=role_keys.index(default_role),
-                    key="roster_edit_role",
+                    key=f"roster_edit_role_{edit_scope}",
                 )
             with e4:
                 st.write("")
                 st.write("")
-                if st.button("Save changes", key="roster_edit_save", use_container_width=True):
+                if st.button("Save changes", key=f"roster_edit_save_{edit_scope}", use_container_width=True):
                     _apply_roster_change(
                         lambda teams, tn=team_name, idx=row_idx, num=edit_number, rt=edit_rate, rl=edit_role: update_technician(
                             teams, tn, idx, rt, num, rl

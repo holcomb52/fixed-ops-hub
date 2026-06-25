@@ -7,15 +7,23 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from lib.tech_payroll_calc import DEFAULT_TEAMS, DEFAULT_TECH_NUMBERS, QUICK_LUBE_TECHS, TechPayrollRow
+from lib.tech_payroll_calc import (
+    DEFAULT_TEAMS,
+    DEFAULT_TECH_NUMBERS,
+    QUICK_LUBE_TECHS,
+    TechPayrollRow,
+    infer_tech_category,
+)
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "tech_roster.json"
 
+# (tech_category, foreman_rule, quick_lube_sources)
 ROLE_OPTIONS = {
-    "Regular": ("none", []),
-    "Foreman ($2/hr team bonus)": ("team_per_hr_2", []),
-    "Foreman ($1/hr team bonus)": ("team_per_hr_1", []),
-    "Quick lube bonus recipient": ("none", list(QUICK_LUBE_TECHS)),
+    "Shop Tech": ("shop", "none", []),
+    "Quick Lube Tech": ("quick_lube", "none", []),
+    "Foreman ($2/hr team bonus)": ("shop", "team_per_hr_2", []),
+    "Foreman ($1/hr team bonus)": ("shop", "team_per_hr_1", []),
+    "Quick lube bonus recipient": ("shop", "none", list(QUICK_LUBE_TECHS)),
 }
 
 
@@ -26,7 +34,9 @@ def role_label(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr)"
     if row.quick_lube_sources:
         return "Quick lube bonus"
-    return "Regular"
+    if row.tech_category == "quick_lube":
+        return "Quick Lube Tech"
+    return "Shop Tech"
 
 
 def role_option_key(row: TechPayrollRow) -> str:
@@ -36,7 +46,9 @@ def role_option_key(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr team bonus)"
     if row.quick_lube_sources:
         return "Quick lube bonus recipient"
-    return "Regular"
+    if row.tech_category == "quick_lube":
+        return "Quick Lube Tech"
+    return "Shop Tech"
 
 
 def _clone_row(row: TechPayrollRow) -> TechPayrollRow:
@@ -58,6 +70,7 @@ def _serialize_row(row: TechPayrollRow) -> dict:
         "hourly_rate": row.hourly_rate,
         "foreman_rule": row.foreman_rule,
         "quick_lube_sources": list(row.quick_lube_sources),
+        "tech_category": row.tech_category,
     }
 
 
@@ -91,6 +104,10 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     notes=str(tech.get("notes", "") or ""),
                     foreman_rule=tech.get("foreman_rule", "none"),
                     quick_lube_sources=list(tech.get("quick_lube_sources", [])),
+                    tech_category=infer_tech_category(
+                        tech["name"],
+                        str(tech.get("tech_category", "") or ""),
+                    ),
                     cp_hours=float(tech.get("cp_hours", 0) or 0),
                     cp_ro_count=int(tech.get("cp_ro_count", 0) or 0),
                     cp_hrs_per_ro=float(tech.get("cp_hrs_per_ro", 0) or 0),
@@ -146,7 +163,8 @@ def _validate_tech_number(
 
 
 def _apply_role(row: TechPayrollRow, role_label_key: str, team_rows: List[TechPayrollRow], row_index: int) -> None:
-    foreman_rule, quick_lube_sources = ROLE_OPTIONS[role_label_key]
+    tech_category, foreman_rule, quick_lube_sources = ROLE_OPTIONS[role_label_key]
+    row.tech_category = tech_category
     if foreman_rule != "none":
         for i, other in enumerate(team_rows):
             if i != row_index and other.foreman_rule in ("team_per_hr_2", "team_per_hr_1"):
@@ -170,7 +188,7 @@ def add_technician(
     name: str,
     hourly_rate: float,
     tech_number: str,
-    role: str = "Regular",
+    role: str = "Shop Tech",
 ) -> Tuple[bool, str]:
     clean_name = " ".join(name.split())
     if not clean_name:
@@ -227,8 +245,6 @@ def move_technician(
             if other.foreman_rule in ("team_per_hr_2", "team_per_hr_1"):
                 row.foreman_rule = "none"
                 break
-        else:
-            pass
     if row.quick_lube_sources:
         for other in teams[to_team]:
             if other.quick_lube_sources:

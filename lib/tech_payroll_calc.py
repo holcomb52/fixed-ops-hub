@@ -19,6 +19,7 @@ class TechPayrollRow:
     notes: str = ""
     foreman_rule: str = "none"  # none | team_per_hr_2 | team_per_hr_1
     quick_lube_sources: List[str] = field(default_factory=list)
+    tech_category: str = "shop"  # shop | quick_lube — supplemental bonus is shop only
     cp_hours: float = 0.0
     cp_ro_count: int = 0
     cp_hrs_per_ro: float = 0.0
@@ -104,6 +105,32 @@ QUICK_LUBE_TECHS = [
     "Zihair Busch",
 ]
 
+# Techs in the Quick Lube Tech role (supplemental hrs/RO bonus does not apply).
+QUICK_LUBE_TECH_CATEGORY_NAMES = [
+    "Charles Hinxman",
+    "Christopher Ingram",
+    "Gary Freeze",
+    "Armand Liebes",
+    "Zihair Busch",
+]
+
+
+def supplemental_bonus_eligible(row: TechPayrollRow) -> bool:
+    """Supplemental CP/close bonus applies to Shop Techs only."""
+    return (
+        row.tech_category == "shop"
+        and row.foreman_rule == "none"
+        and not row.quick_lube_sources
+    )
+
+
+def infer_tech_category(name: str, saved_category: str = "") -> str:
+    if saved_category in ("shop", "quick_lube"):
+        return saved_category
+    if name in QUICK_LUBE_TECH_CATEGORY_NAMES:
+        return "quick_lube"
+    return "shop"
+
 # Tech numbers from flag sheet PDF (Tech# column)
 DEFAULT_TECH_NUMBERS = {
     "Derrick Opp": "900798",
@@ -153,9 +180,9 @@ DEFAULT_TEAMS = {
         _default_row("Kenneth Peterson", "Derrick's Team", 35),
         _default_row("Damian Blair", "Derrick's Team", 30),
         _default_row("John Richardson", "Derrick's Team", 25),
-        _default_row("Charles Hinxman", "Derrick's Team", 22.75),
-        _default_row("Christopher Ingram", "Derrick's Team", 15),
-        _default_row("Gary Freeze", "Derrick's Team", 17.5),
+        _default_row("Charles Hinxman", "Derrick's Team", 22.75, tech_category="quick_lube"),
+        _default_row("Christopher Ingram", "Derrick's Team", 15, tech_category="quick_lube"),
+        _default_row("Gary Freeze", "Derrick's Team", 17.5, tech_category="quick_lube"),
         _default_row("Michael Holland", "Derrick's Team", 15),
     ],
     "Olan's Team": [
@@ -170,10 +197,10 @@ DEFAULT_TEAMS = {
         ),
         _default_row("Dennis Pino", "Olan's Team", 29),
         _default_row("Thomas Wyke", "Olan's Team", 30),
-        _default_row("Armand Liebes", "Olan's Team", 22.75),
+        _default_row("Armand Liebes", "Olan's Team", 22.75, tech_category="quick_lube"),
         _default_row("Dax Rosencrantz", "Olan's Team", 27),
         _default_row("Zachary Daniels", "Olan's Team", 14),
-        _default_row("Zihair Busch", "Olan's Team", 15),
+        _default_row("Zihair Busch", "Olan's Team", 15, tech_category="quick_lube"),
     ],
 }
 
@@ -248,6 +275,10 @@ def recalc_supplemental_bonuses(rows: List[TechPayrollRow]) -> None:
     from lib.tech_supplemental_bonus import calc_supplemental_bonus
 
     for row in rows:
+        if not supplemental_bonus_eligible(row):
+            row.supplemental_bonus = 0.0
+            row.supplemental_tier = ""
+            continue
         bonus, tier = calc_supplemental_bonus(row.cp_hrs_per_ro, row.closing_pct)
         row.supplemental_bonus = bonus
         row.supplemental_tier = tier

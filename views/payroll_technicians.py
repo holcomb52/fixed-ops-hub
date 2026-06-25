@@ -11,6 +11,7 @@ from lib.tech_payroll_calc import (
     apply_flag_data,
     apply_supplemental_metrics,
     apply_tech_numbers,
+    supplemental_bonus_eligible,
     team_totals,
 )
 from lib.tech_supplemental_bonus import SUPPLEMENTAL_BONUS_MATRIX, supplemental_bonus_label
@@ -302,7 +303,7 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                 st.caption(row.tech_number or "—")
             with c2:
                 st.write(f"**{row.name}**")
-                if row.cp_hrs_per_ro or row.closing_pct:
+                if supplemental_bonus_eligible(row) and (row.cp_hrs_per_ro or row.closing_pct):
                     st.caption(
                         supplemental_bonus_label(
                             row.cp_hrs_per_ro,
@@ -311,6 +312,8 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                             row.supplemental_tier,
                         )
                     )
+                elif not supplemental_bonus_eligible(row):
+                    st.caption("Supplemental bonus — Shop Techs only.")
                 elif st.session_state.get("upsell_loaded") or st.session_state.get("tech_cp_metrics_by_name"):
                     st.caption("Upload flag sheet + upsell report to calculate supplemental bonus.")
             with c3:
@@ -600,7 +603,7 @@ def render():
 
             **Calculated (automatic):**
             - Production bonus — hours × tier $/hr when 80+ hrs
-            - **Supplemental bonus** — CP hrs/RO (Customer pay only, from flag sheet) × closing % (from upsell report). Both must qualify.
+            - **Supplemental bonus** — Shop Techs only: CP hrs/RO (flag sheet) × closing % (upsell report). Both must qualify.
             - Foreman bonus — Derrick: team hrs × $2, Olan: team hrs × $1
             - Noah quick lube — selected tech hrs × $1
             - Training pay — training hrs × hourly rate

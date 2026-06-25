@@ -43,6 +43,7 @@ def serialize_payroll_session(synced_teams: Dict[str, List[TechPayrollRow]], pay
                 "notes": row.notes,
                 "foreman_rule": row.foreman_rule,
                 "quick_lube_sources": row.quick_lube_sources,
+                "tech_category": row.tech_category,
                 "cp_hours": row.cp_hours,
                 "cp_ro_count": row.cp_ro_count,
                 "cp_hrs_per_ro": row.cp_hrs_per_ro,

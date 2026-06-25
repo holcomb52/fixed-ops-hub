@@ -5,63 +5,72 @@
       "tech_number": "900798",
       "hourly_rate": 45.0,
       "foreman_rule": "team_per_hr_2",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Quran Henry",
       "tech_number": "3707",
       "hourly_rate": 25.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Carson Linker",
       "tech_number": "3788",
       "hourly_rate": 17.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Kenneth Peterson",
       "tech_number": "3638",
       "hourly_rate": 35.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Damian Blair",
       "tech_number": "3802",
       "hourly_rate": 30.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "John Richardson",
       "tech_number": "3811",
       "hourly_rate": 25.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Charles Hinxman",
       "tech_number": "3520",
       "hourly_rate": 22.75,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "quick_lube"
     },
     {
       "name": "Christopher Ingram",
       "tech_number": "3824",
       "hourly_rate": 15.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "quick_lube"
     },
     {
       "name": "Gary Freeze",
       "tech_number": "3849",
       "hourly_rate": 17.5,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "quick_lube"
     }
   ],
   "Olan's Team": [
@@ -70,21 +79,24 @@
       "tech_number": "46251",
       "hourly_rate": 45.0,
       "foreman_rule": "team_per_hr_1",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "George Webb",
       "tech_number": "3741",
       "hourly_rate": 32.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Marvin Granick",
       "tech_number": "3694",
       "hourly_rate": 30.5,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Noah Ihnken",
@@ -98,56 +110,64 @@
         "Noah Ihnken",
         "Armand Liebes",
         "Zihair Busch"
-      ]
+      ],
+      "tech_category": "shop"
     },
     {
       "name": "Dennis Pino",
       "tech_number": "3836",
       "hourly_rate": 29.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Thomas Wyke",
       "tech_number": "3600",
       "hourly_rate": 30.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Armand Liebes",
       "tech_number": "3662",
       "hourly_rate": 22.75,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "quick_lube"
     },
     {
       "name": "Dax Rosencrantz",
       "tech_number": "3851",
       "hourly_rate": 27.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Zachary Daniels",
       "tech_number": "3854",
       "hourly_rate": 14.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     },
     {
       "name": "Zihair Busch",
       "tech_number": "3814",
       "hourly_rate": 15.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "quick_lube"
     },
     {
       "name": "Michael Holland",
       "tech_number": "3820",
       "hourly_rate": 15.0,
       "foreman_rule": "none",
-      "quick_lube_sources": []
+      "quick_lube_sources": [],
+      "tech_category": "shop"
     }
   ]
 }

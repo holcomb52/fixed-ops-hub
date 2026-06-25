@@ -19,6 +19,7 @@ ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "tech_roster.jso
 
 # (tech_category, foreman_rule, quick_lube_sources)
 ROLE_OPTIONS = {
+    "Shop Apprentice": ("apprentice", "none", []),
     "Shop Tech": ("shop", "none", []),
     "Quick Lube Tech": ("quick_lube", "none", []),
     "Foreman ($2/hr team bonus)": ("shop", "team_per_hr_2", []),
@@ -34,6 +35,8 @@ def role_label(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr)"
     if row.quick_lube_sources:
         return "Quick lube bonus"
+    if row.tech_category == "apprentice":
+        return "Shop Apprentice"
     if row.tech_category == "quick_lube":
         return "Quick Lube Tech"
     return "Shop Tech"
@@ -46,6 +49,8 @@ def role_option_key(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr team bonus)"
     if row.quick_lube_sources:
         return "Quick lube bonus recipient"
+    if row.tech_category == "apprentice":
+        return "Shop Apprentice"
     if row.tech_category == "quick_lube":
         return "Quick Lube Tech"
     return "Shop Tech"

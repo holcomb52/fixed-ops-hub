@@ -19,7 +19,7 @@ class TechPayrollRow:
     notes: str = ""
     foreman_rule: str = "none"  # none | team_per_hr_2 | team_per_hr_1
     quick_lube_sources: List[str] = field(default_factory=list)
-    tech_category: str = "shop"  # shop | quick_lube — supplemental bonus is shop only
+    tech_category: str = "shop"  # shop | apprentice | quick_lube — supplemental bonus is shop only
     cp_hours: float = 0.0
     cp_ro_count: int = 0
     cp_hrs_per_ro: float = 0.0
@@ -125,7 +125,7 @@ def supplemental_bonus_eligible(row: TechPayrollRow) -> bool:
 
 
 def infer_tech_category(name: str, saved_category: str = "") -> str:
-    if saved_category in ("shop", "quick_lube"):
+    if saved_category in ("shop", "apprentice", "quick_lube"):
         return saved_category
     if name in QUICK_LUBE_TECH_CATEGORY_NAMES:
         return "quick_lube"

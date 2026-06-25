@@ -43,6 +43,12 @@ def serialize_payroll_session(synced_teams: Dict[str, List[TechPayrollRow]], pay
                 "notes": row.notes,
                 "foreman_rule": row.foreman_rule,
                 "quick_lube_sources": row.quick_lube_sources,
+                "cp_hours": row.cp_hours,
+                "cp_ro_count": row.cp_ro_count,
+                "cp_hrs_per_ro": row.cp_hrs_per_ro,
+                "closing_pct": row.closing_pct,
+                "supplemental_bonus": row.supplemental_bonus,
+                "supplemental_tier": row.supplemental_tier,
             })
 
     snapshot = build_payroll_snapshot(synced_teams, pay_period)
@@ -91,8 +97,33 @@ def apply_snapshot_to_session(
                 "spiff": float(tech.get("spiff", 0) or 0),
                 "notes": str(tech.get("notes", "") or ""),
                 "tech_number": str(tech.get("tech_number", "") or ""),
+                "cp_hours": float(tech.get("cp_hours", 0) or 0),
+                "cp_ro_count": int(tech.get("cp_ro_count", 0) or 0),
+                "cp_hrs_per_ro": float(tech.get("cp_hrs_per_ro", 0) or 0),
+                "closing_pct": float(tech.get("closing_pct", 0) or 0),
+                "supplemental_bonus": float(tech.get("supplemental_bonus", 0) or 0),
+                "supplemental_tier": str(tech.get("supplemental_tier", "") or ""),
             }
     apply_teams_to_session(teams, values_by_name)
+
+    cp_by_name = {}
+    closing_by_name = {}
+    for techs in snapshot.get("teams", {}).values():
+        for tech in techs:
+            name = tech["name"]
+            cp_hrs_per_ro = float(tech.get("cp_hrs_per_ro", 0) or 0)
+            if cp_hrs_per_ro or tech.get("cp_hours"):
+                cp_by_name[name] = {
+                    "cp_hours": float(tech.get("cp_hours", 0) or 0),
+                    "cp_ro_count": int(tech.get("cp_ro_count", 0) or 0),
+                    "cp_hrs_per_ro": cp_hrs_per_ro,
+                }
+            closing_pct = float(tech.get("closing_pct", 0) or 0)
+            if closing_pct:
+                closing_by_name[name] = closing_pct
+    st.session_state.tech_cp_metrics_by_name = cp_by_name
+    st.session_state.tech_closing_by_name = closing_by_name
+    st.session_state.upsell_loaded = bool(closing_by_name)
 
 
 def _local_path(run_id: str) -> Path:

@@ -208,6 +208,12 @@ def init_payroll_session():
         st.session_state.advisor_payroll_completed = False
     if "payroll_completed" not in st.session_state:
         st.session_state.payroll_completed = False
+    if "tech_cp_metrics_by_name" not in st.session_state:
+        st.session_state.tech_cp_metrics_by_name = {}
+    if "tech_closing_by_name" not in st.session_state:
+        st.session_state.tech_closing_by_name = {}
+    if "upsell_loaded" not in st.session_state:
+        st.session_state.upsell_loaded = False
     if "active_receptionist_run_id" not in st.session_state:
         st.session_state.active_receptionist_run_id = None
     if "receptionist_payroll_completed" not in st.session_state:
@@ -248,6 +254,19 @@ def persist_technician_changes(team_name: str | None = None, idx: int | None = N
     from lib.payroll_autosave import autosave_technician_payroll
 
     autosave_technician_payroll()
+
+
+def refresh_tech_supplemental_bonuses():
+    """Reapply CP + closing metrics and recalculate supplemental bonuses."""
+    from lib.tech_payroll_calc import apply_supplemental_metrics
+
+    if "tech_teams" not in st.session_state:
+        return
+    apply_supplemental_metrics(
+        st.session_state.tech_teams,
+        cp_by_name=st.session_state.get("tech_cp_metrics_by_name", {}),
+        closing_by_name=st.session_state.get("tech_closing_by_name", {}),
+    )
 
 
 def store_flag_pdf(uploaded_file, pdf_bytes: bytes | None = None):

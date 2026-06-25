@@ -49,6 +49,7 @@ class FlagLineItem:
     booked_hours: float
     st_rate: float
     extended: float
+    bill_type: str = ""
 
 
 @dataclass
@@ -59,12 +60,20 @@ class TechFlagData:
     flat_rate_hours: float
     dollars_earned: float
     line_items: List[FlagLineItem] = field(default_factory=list)
+    cp_hours: float = 0.0
+    cp_ro_count: int = 0
 
     @property
     def effective_rate(self) -> float:
         if self.flat_rate_hours <= 0:
             return 0.0
         return self.dollars_earned / self.flat_rate_hours
+
+    @property
+    def cp_hrs_per_ro(self) -> float:
+        if self.cp_ro_count <= 0:
+            return 0.0
+        return self.cp_hours / self.cp_ro_count
 
 
 @dataclass
@@ -77,6 +86,25 @@ class FlagSheetParseResult:
 def normalize_tech_name(pdf_name: str) -> str:
     key = pdf_name.strip().upper()
     return PDF_NAME_MAP.get(key, pdf_name.strip().title())
+
+
+def compute_cp_metrics(line_items: List[FlagLineItem]) -> tuple[float, int]:
+    """CP hours and unique CP RO count — Customer bill type only."""
+    cp_ros: set[str] = set()
+    cp_hours = 0.0
+    for item in line_items:
+        if item.bill_type.lower() != "customer":
+            continue
+        cp_ros.add(item.ro_number)
+        cp_hours += item.booked_hours
+    return cp_hours, len(cp_ros)
+
+
+def _bill_type_from_line(line: str) -> str:
+    parts = line.split()
+    if len(parts) >= 12:
+        return parts[-2]
+    return ""
 
 
 def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult:
@@ -133,12 +161,15 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
                     booked_hours=float(lm.group(7)),
                     st_rate=float(lm.group(8)),
                     extended=float(lm.group(9)),
+                    bill_type=_bill_type_from_line(line),
                 )
             )
 
     for pdf_name, data in tech_buffer.items():
         if data["hours"] == 0 and data["dollars"] == 0:
             continue
+        lines = data.get("lines", [])
+        cp_hours, cp_ro_count = compute_cp_metrics(lines)
         result.technicians.append(
             TechFlagData(
                 pdf_name=pdf_name,
@@ -146,7 +177,9 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
                 tech_number=data.get("tech_number", ""),
                 flat_rate_hours=data["hours"],
                 dollars_earned=data["dollars"],
-                line_items=data.get("lines", []),
+                line_items=lines,
+                cp_hours=cp_hours,
+                cp_ro_count=cp_ro_count,
             )
         )
 

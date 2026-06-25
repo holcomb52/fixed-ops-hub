@@ -34,6 +34,7 @@ def generate_payroll_pdf(snapshot: dict) -> bytes:
         "Hours",
         "Dollars",
         "Prod Bonus",
+        "Suppl Bonus",
         "Foreman / QL",
         "Train Hrs",
         "Training",
@@ -52,12 +53,17 @@ def generate_payroll_pdf(snapshot: dict) -> bytes:
             bonus_cell = ""
             if t["bonus_amount"]:
                 bonus_cell = f"{t['bonus_label']}\n${t['bonus_amount']:,.2f}"
+            suppl_cell = ""
+            if t.get("supplemental_bonus"):
+                tier = t.get("supplemental_tier") or "Bonus"
+                suppl_cell = f"{tier}\n${t['supplemental_bonus']:,.0f}"
             table_data.append([
                 t.get("tech_number") or "—",
                 t["name"],
                 f"{t['hours']:.2f}",
                 f"${t['dollars']:,.2f}",
                 f"${t['prod_bonus']:,.2f}",
+                suppl_cell,
                 bonus_cell,
                 f"{t['training_hours']:.1f}" if t["training_hours"] else "—",
                 f"${t['training_pay']:,.2f}",
@@ -69,13 +75,13 @@ def generate_payroll_pdf(snapshot: dict) -> bytes:
             "",
             "TEAM TOTAL",
             f"{team['team_hours']:.2f}",
-            "", "", "", "", "",
+            "", "", "", "", "", "",
             "",
             f"${team['team_total']:,.2f}",
         ])
 
-        col_widths = [0.5 * inch, 1.2 * inch, 0.55 * inch, 0.7 * inch, 0.65 * inch, 0.8 * inch,
-                      0.5 * inch, 0.6 * inch, 0.5 * inch, 0.7 * inch]
+        col_widths = [0.5 * inch, 1.15 * inch, 0.5 * inch, 0.65 * inch, 0.6 * inch, 0.65 * inch,
+                      0.75 * inch, 0.45 * inch, 0.55 * inch, 0.45 * inch, 0.65 * inch]
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),

@@ -9,9 +9,12 @@ from lib.tech_payroll_calc import (
     PROD_BONUS_TIERS,
     all_hours_by_name,
     apply_flag_data,
+    apply_supplemental_metrics,
     apply_tech_numbers,
     team_totals,
 )
+from lib.tech_supplemental_bonus import SUPPLEMENTAL_BONUS_MATRIX, supplemental_bonus_label
+from lib.tech_upsell_parser import parse_upsell_report
 from lib.payroll_storage import save_payroll_run
 from lib.tech_roster import (
     ROLE_OPTIONS,
@@ -34,6 +37,7 @@ from views.payroll_helpers import (
     init_payroll_session,
     parse_period_token,
     persist_technician_changes,
+    refresh_tech_supplemental_bonuses,
     set_pay_period_dates,
     store_flag_pdf,
     sync_row,
@@ -46,6 +50,27 @@ def _team_hours(team_name: str, count: int) -> float:
 
 def _money(v: float) -> str:
     return f"${v:,.2f}"
+
+
+def _roster_names() -> list[str]:
+    return [row.name for rows in st.session_state.tech_teams.values() for row in rows]
+
+
+def _store_cp_metrics_from_flag(parsed) -> int:
+    cp_by_name = {}
+    for tech in parsed.technicians:
+        cp_by_name[tech.display_name] = {
+            "cp_hours": tech.cp_hours,
+            "cp_ro_count": tech.cp_ro_count,
+            "cp_hrs_per_ro": tech.cp_hrs_per_ro,
+        }
+    st.session_state.tech_cp_metrics_by_name = cp_by_name
+    apply_supplemental_metrics(
+        st.session_state.tech_teams,
+        cp_by_name=cp_by_name,
+        closing_by_name=st.session_state.get("tech_closing_by_name", {}),
+    )
+    return len(cp_by_name)
 
 
 def _apply_pdf_to_state(flag_map: dict):
@@ -231,6 +256,9 @@ def _team_summary_rows(team_name: str, rows: list, global_hours: dict) -> list:
             "Hours": row.flat_rate_hours,
             "Dollars": row.dollars_earned,
             "Prod Bonus": row.production_bonus,
+            "CP hrs/RO": row.cp_hrs_per_ro if row.cp_hrs_per_ro else None,
+            "Close %": row.closing_pct if row.closing_pct else None,
+            "Suppl Bonus": row.supplemental_bonus,
             "Foreman / Quick Lube": _bonus_label(row, th, global_hours),
             "Training Pay": row.training_pay,
             "SPIFF": row.spiff,
@@ -274,6 +302,17 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                 st.caption(row.tech_number or "—")
             with c2:
                 st.write(f"**{row.name}**")
+                if row.cp_hrs_per_ro or row.closing_pct:
+                    st.caption(
+                        supplemental_bonus_label(
+                            row.cp_hrs_per_ro,
+                            row.closing_pct,
+                            row.supplemental_bonus,
+                            row.supplemental_tier,
+                        )
+                    )
+                elif st.session_state.get("upsell_loaded") or st.session_state.get("tech_cp_metrics_by_name"):
+                    st.caption("Upload flag sheet + upsell report to calculate supplemental bonus.")
             with c3:
                 st.number_input(
                     "Training hrs",
@@ -315,6 +354,9 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
             "Hours": st.column_config.NumberColumn(format="%.2f"),
             "Dollars": st.column_config.NumberColumn(format="$%.2f"),
             "Prod Bonus": st.column_config.NumberColumn(format="$%.2f"),
+            "CP hrs/RO": st.column_config.NumberColumn(format="%.2f"),
+            "Close %": st.column_config.NumberColumn(format="%.1f"),
+            "Suppl Bonus": st.column_config.NumberColumn(format="$%.2f"),
             "Training Pay": st.column_config.NumberColumn(format="$%.2f"),
             "SPIFF": st.column_config.NumberColumn(format="$%.2f"),
             "Total Pay": st.column_config.NumberColumn(format="$%.2f"),
@@ -335,7 +377,7 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
 def render():
     st.markdown(
         '<span class="legend-chip chip-manual">You enter: training hrs, SPIFF & notes</span> '
-        '<span class="legend-chip chip-calc">Hours & dollars from flag sheet PDF + auto-calc</span> '
+        '<span class="legend-chip chip-calc">Flag sheet + upsell report auto-calc supplemental bonus</span> '
         '<span class="legend-chip chip-live">Changes save automatically</span>',
         unsafe_allow_html=True,
     )
@@ -379,6 +421,7 @@ def render():
                     numbers_updated += apply_tech_numbers(team_rows, number_map)
                 if numbers_updated:
                     save_roster(st.session_state.tech_teams)
+                cp_count = _store_cp_metrics_from_flag(parsed)
                 st.session_state.pdf_loaded = True
                 st.session_state.flag_pdf_processed_sig = pdf_sig
 
@@ -402,7 +445,8 @@ def render():
 
                 st.markdown(
                     status_banner(
-                        f"✓ {matched} techs loaded{number_note} · Flag sheet saved — view anytime on **Flag Sheet** tab"
+                        f"✓ {matched} techs loaded{number_note} · {cp_count} CP metrics · "
+                        "Flag sheet saved — view anytime on **Flag Sheet** tab"
                         + period_note,
                         "success",
                     ),
@@ -416,6 +460,51 @@ def render():
                     autosave_technician_payroll()
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)
+
+    upsell_file = st.file_uploader(
+        "Upload Ignite upsell analysis (.xlsx)",
+        type=["xlsx", "xls"],
+        help="Closing % per tech — combined with CP hrs/RO from the flag sheet to calculate supplemental bonus.",
+    )
+
+    if upsell_file:
+        try:
+            upsell_file.seek(0)
+            upsell_bytes = upsell_file.read()
+            upsell_sig = f"{upsell_file.name}:{len(upsell_bytes)}"
+            if st.session_state.get("upsell_processed_sig") != upsell_sig:
+                parsed_upsell = parse_upsell_report(upsell_bytes, _roster_names())
+                closing_by_name = {
+                    metrics.display_name: metrics.closing_pct
+                    for metrics in parsed_upsell.values()
+                    if not str(metrics.display_name).startswith("#")
+                }
+                st.session_state.tech_closing_by_name = closing_by_name
+                st.session_state.upsell_loaded = True
+                st.session_state.upsell_processed_sig = upsell_sig
+                apply_supplemental_metrics(
+                    st.session_state.tech_teams,
+                    cp_by_name=st.session_state.get("tech_cp_metrics_by_name", {}),
+                    closing_by_name=closing_by_name,
+                )
+                matched = sum(
+                    1 for rows in st.session_state.tech_teams.values()
+                    for row in rows if row.name in closing_by_name
+                )
+                st.markdown(
+                    status_banner(
+                        f"✓ {matched} techs matched on closing % · supplemental bonus updated",
+                        "success",
+                    ),
+                    unsafe_allow_html=True,
+                )
+                from lib.payroll_autosave import autosave_technician_payroll
+
+                autosave_technician_payroll()
+        except Exception as exc:
+            st.markdown(status_banner(f"Upsell report parse failed: {exc}", "warn"), unsafe_allow_html=True)
+
+    refresh_tech_supplemental_bonuses()
 
     if st.session_state.pdf_loaded:
         period_slug = (st.session_state.pay_period or "payroll").replace("/", "-")
@@ -511,9 +600,12 @@ def render():
 
             **Calculated (automatic):**
             - Production bonus — hours × tier $/hr when 80+ hrs
+            - **Supplemental bonus** — CP hrs/RO (Customer pay only, from flag sheet) × closing % (from upsell report). Both must qualify.
             - Foreman bonus — Derrick: team hrs × $2, Olan: team hrs × $1
             - Noah quick lube — selected tech hrs × $1
             - Training pay — training hrs × hourly rate
+
+            **You upload:** Flag sheet PDF + Ignite upsell analysis Excel.
 
             **You enter:** Pay period dates, training hours, SPIFF, and optional notes for accounting.
 
@@ -525,3 +617,14 @@ def render():
             [{"Hours": f"{h}+", "Bonus": f"${m}/hr retro"} for h, m, _ in PROD_BONUS_TIERS]
         )
         st.dataframe(tier_df, hide_index=True)
+        st.markdown("**Supplemental bonus matrix (bi-weekly)**")
+        suppl_rows = []
+        for (hr_min, hr_max), (close_min, close_max), amount, tier in SUPPLEMENTAL_BONUS_MATRIX:
+            hr_label = f"{hr_min:.2f}+" if hr_max >= 100 else f"{hr_min:.2f}–{hr_max:.2f}"
+            suppl_rows.append({
+                "CP hrs/RO": hr_label,
+                "Closing %": f"{close_min:.0f}–{close_max:.0f}%",
+                "Bonus": f"${amount:.0f}",
+                "Tier": tier,
+            })
+        st.dataframe(pd.DataFrame(suppl_rows), hide_index=True)

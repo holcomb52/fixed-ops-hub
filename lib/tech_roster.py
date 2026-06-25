@@ -91,6 +91,12 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     notes=str(tech.get("notes", "") or ""),
                     foreman_rule=tech.get("foreman_rule", "none"),
                     quick_lube_sources=list(tech.get("quick_lube_sources", [])),
+                    cp_hours=float(tech.get("cp_hours", 0) or 0),
+                    cp_ro_count=int(tech.get("cp_ro_count", 0) or 0),
+                    cp_hrs_per_ro=float(tech.get("cp_hrs_per_ro", 0) or 0),
+                    closing_pct=float(tech.get("closing_pct", 0) or 0),
+                    supplemental_bonus=float(tech.get("supplemental_bonus", 0) or 0),
+                    supplemental_tier=str(tech.get("supplemental_tier", "") or ""),
                 )
             )
     return teams

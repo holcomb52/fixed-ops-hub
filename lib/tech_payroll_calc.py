@@ -19,6 +19,12 @@ class TechPayrollRow:
     notes: str = ""
     foreman_rule: str = "none"  # none | team_per_hr_2 | team_per_hr_1
     quick_lube_sources: List[str] = field(default_factory=list)
+    cp_hours: float = 0.0
+    cp_ro_count: int = 0
+    cp_hrs_per_ro: float = 0.0
+    closing_pct: float = 0.0
+    supplemental_bonus: float = 0.0
+    supplemental_tier: str = ""
 
     @property
     def prod_tier(self) -> Optional[tuple]:
@@ -81,6 +87,7 @@ class TechPayrollRow:
         return (
             self.dollars_earned
             + self.production_bonus
+            + self.supplemental_bonus
             + self.training_pay
             + self.foreman_bonus(team_total_hours, hours_by_name)
             + self.spiff
@@ -216,6 +223,48 @@ def apply_tech_numbers(rows: List[TechPayrollRow], numbers_by_name: Dict[str, st
             row.tech_number = tech_number
             updated += 1
     return updated
+
+
+def apply_cp_metrics(rows: List[TechPayrollRow], cp_by_name: Dict[str, dict]) -> None:
+    """Apply CP hrs/RO metrics parsed from the flag sheet."""
+    for row in rows:
+        metrics = cp_by_name.get(row.name)
+        if not metrics:
+            continue
+        row.cp_hours = float(metrics.get("cp_hours", 0) or 0)
+        row.cp_ro_count = int(metrics.get("cp_ro_count", 0) or 0)
+        row.cp_hrs_per_ro = float(metrics.get("cp_hrs_per_ro", 0) or 0)
+
+
+def apply_closing_metrics(rows: List[TechPayrollRow], closing_by_name: Dict[str, float]) -> None:
+    """Apply closing % from the Ignite upsell report."""
+    for row in rows:
+        if row.name in closing_by_name:
+            row.closing_pct = float(closing_by_name[row.name] or 0)
+
+
+def recalc_supplemental_bonuses(rows: List[TechPayrollRow]) -> None:
+    """Calculate supplemental bonus from CP hrs/RO and closing % already on each row."""
+    from lib.tech_supplemental_bonus import calc_supplemental_bonus
+
+    for row in rows:
+        bonus, tier = calc_supplemental_bonus(row.cp_hrs_per_ro, row.closing_pct)
+        row.supplemental_bonus = bonus
+        row.supplemental_tier = tier
+
+
+def apply_supplemental_metrics(
+    teams: Dict[str, List[TechPayrollRow]],
+    cp_by_name: Optional[Dict[str, dict]] = None,
+    closing_by_name: Optional[Dict[str, float]] = None,
+) -> None:
+    """Merge CP and closing metrics, then recalculate supplemental bonuses."""
+    cp_by_name = cp_by_name or {}
+    closing_by_name = closing_by_name or {}
+    for rows in teams.values():
+        apply_cp_metrics(rows, cp_by_name)
+        apply_closing_metrics(rows, closing_by_name)
+        recalc_supplemental_bonuses(rows)
 
 
 def all_hours_by_name(teams: Dict[str, List[TechPayrollRow]]) -> Dict[str, float]:

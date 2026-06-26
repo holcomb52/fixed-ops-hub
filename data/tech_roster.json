@@ -22,20 +22,12 @@
       "hourly_rate": 17.0,
       "foreman_rule": "none",
       "quick_lube_sources": [],
-      "tech_category": "shop"
+      "tech_category": "apprentice"
     },
     {
       "name": "Kenneth Peterson",
       "tech_number": "3638",
       "hourly_rate": 35.0,
-      "foreman_rule": "none",
-      "quick_lube_sources": [],
-      "tech_category": "shop"
-    },
-    {
-      "name": "Damian Blair",
-      "tech_number": "3802",
-      "hourly_rate": 30.0,
       "foreman_rule": "none",
       "quick_lube_sources": [],
       "tech_category": "shop"
@@ -62,7 +54,7 @@
       "hourly_rate": 15.0,
       "foreman_rule": "none",
       "quick_lube_sources": [],
-      "tech_category": "quick_lube"
+      "tech_category": "apprentice"
     },
     {
       "name": "Gary Freeze",

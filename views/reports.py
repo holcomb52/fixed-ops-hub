@@ -55,6 +55,18 @@ def _money(v) -> str:
     return f"${float(v or 0):,.2f}"
 
 
+def _run_status_badge(run: dict) -> str:
+    if run.get("status") == "draft":
+        return '<span class="badge badge-soon">Draft</span>'
+    return '<span class="badge badge-live">Saved</span>'
+
+
+def _run_status_caption(run: dict, completed: str) -> str:
+    if run.get("status") == "draft":
+        return f"Draft · last updated {completed}"
+    return f"Completed {completed}"
+
+
 def _render_earnings_lookup():
     with st.expander("Employee earnings lookup — search by date range", expanded=False):
         st.caption(
@@ -300,7 +312,7 @@ def render():
     st.markdown("---")
 
     st.markdown(
-        section_title("Technician Payroll", "Completed pay periods"),
+        section_title("Technician Payroll", "Saved pay periods"),
         unsafe_allow_html=True,
     )
 
@@ -327,12 +339,17 @@ def render():
                 c1, c2, c3 = st.columns([2.5, 2, 1])
                 with c1:
                     st.markdown(f"### {pay_period}")
-                    st.caption(f"Completed {completed}")
+                    st.caption(_run_status_caption(run, completed))
                 with c2:
                     st.markdown(f"**{grand}**")
-                    st.caption(f"{float(run.get('grand_hours', 0)):.2f} hours · Completed")
+                    hours_caption = f"{float(run.get('grand_hours', 0)):.2f} hours"
+                    st.caption(
+                        f"{hours_caption} · Completed"
+                        if run.get("status") != "draft"
+                        else f"{hours_caption} · In progress"
+                    )
                 with c3:
-                    st.markdown('<span class="badge badge-live">Saved</span>', unsafe_allow_html=True)
+                    st.markdown(_run_status_badge(run), unsafe_allow_html=True)
 
                 a1, a2, a3, a4 = st.columns(4)
                 with a1:
@@ -371,7 +388,7 @@ def render():
                 st.markdown("---")
 
     st.markdown(
-        section_title("Service Advisor Payroll", "Completed pay periods"),
+        section_title("Service Advisor Payroll", "Saved pay periods"),
         unsafe_allow_html=True,
     )
 
@@ -380,8 +397,9 @@ def render():
     if not advisor_runs:
         st.markdown(
             status_banner(
-                "No completed advisor payroll yet. Finish on **Payroll → Service Advisors** "
-                "and click **Complete & Save**.",
+                "No saved advisor payroll in Reports yet. On Streamlit Cloud, payroll is stored in "
+                "the database when you click **Complete & Save** on **Payroll → Service Advisors**. "
+                "If you already finished that pay period, open it again and save once more.",
                 "warn",
             ),
             unsafe_allow_html=True,
@@ -398,14 +416,17 @@ def render():
                 c1, c2, c3 = st.columns([2.5, 2, 1])
                 with c1:
                     st.markdown(f"### {pay_period}")
-                    st.caption(f"Completed {completed}")
+                    st.caption(_run_status_caption(run, completed))
                 with c2:
                     st.markdown(f"**{grand}**")
+                    count = int(run.get("advisor_count", 0))
                     st.caption(
-                        f"{int(run.get('advisor_count', 0))} advisors · Completed"
+                        f"{count} advisors · Completed"
+                        if run.get("status") != "draft"
+                        else f"{count} advisors · In progress"
                     )
                 with c3:
-                    st.markdown('<span class="badge badge-live">Saved</span>', unsafe_allow_html=True)
+                    st.markdown(_run_status_badge(run), unsafe_allow_html=True)
 
                 a1, a2, a3 = st.columns(3)
                 with a1:
@@ -435,7 +456,7 @@ def render():
                 st.markdown("---")
 
     st.markdown(
-        section_title("Receptionist Payroll", "Completed pay periods"),
+        section_title("Receptionist Payroll", "Saved pay periods"),
         unsafe_allow_html=True,
     )
 
@@ -444,8 +465,9 @@ def render():
     if not receptionist_runs:
         st.markdown(
             status_banner(
-                "No completed receptionist payroll yet. Finish on **Payroll → Receptionists** "
-                "and click **Complete & Save**.",
+                "No saved receptionist payroll in Reports yet. On Streamlit Cloud, payroll is stored in "
+                "the database when you click **Complete & Save** on **Payroll → Receptionists**. "
+                "If you already finished that pay period, open it again and save once more.",
                 "warn",
             ),
             unsafe_allow_html=True,
@@ -462,14 +484,17 @@ def render():
                 c1, c2, c3 = st.columns([2.5, 2, 1])
                 with c1:
                     st.markdown(f"### {pay_period}")
-                    st.caption(f"Completed {completed}")
+                    st.caption(_run_status_caption(run, completed))
                 with c2:
                     st.markdown(f"**{grand}**")
+                    count = int(run.get("employee_count", 0))
                     st.caption(
-                        f"{int(run.get('employee_count', 0))} employees · Completed"
+                        f"{count} employees · Completed"
+                        if run.get("status") != "draft"
+                        else f"{count} employees · In progress"
                     )
                 with c3:
-                    st.markdown('<span class="badge badge-live">Saved</span>', unsafe_allow_html=True)
+                    st.markdown(_run_status_badge(run), unsafe_allow_html=True)
 
                 a1, a2, a3 = st.columns(3)
                 with a1:

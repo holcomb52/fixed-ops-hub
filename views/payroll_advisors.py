@@ -419,6 +419,12 @@ def render():
             unsafe_allow_html=True,
         )
 
+    if sync_err := st.session_state.get("_advisor_payroll_sync_error"):
+        st.error(
+            "Cloud backup failed — this payroll may disappear from Reports after you close the app. "
+            f"Details: {sync_err}"
+        )
+
     report_file = st.file_uploader(
         "Upload PAYROLL report (.xlsx)",
         type=["xlsx"],
@@ -545,8 +551,14 @@ def render():
         )
 
         if saved_period := st.session_state.pop("_advisor_payroll_saved_period", None):
-            st.success(f"Advisor payroll saved — find it in Reports under {saved_period}")
-            st.balloons()
+            if st.session_state.get("_advisor_payroll_sync_error"):
+                st.error(
+                    f"Advisor payroll for {saved_period} was saved on this session only — "
+                    "cloud backup failed. Open Reports after fixing the connection, or save again."
+                )
+            else:
+                st.success(f"Advisor payroll saved — find it in Reports under {saved_period}")
+                st.balloons()
 
         confirm = st.checkbox(
             "This advisor payroll is complete and ready to save",
@@ -560,7 +572,7 @@ def render():
             use_container_width=True,
         ):
             save_roster(st.session_state.advisor_roster)
-            run_id = save_advisor_payroll_run(
+            run_id, sync_error = save_advisor_payroll_run(
                 all_advisors_synced(),
                 st.session_state.pay_period,
                 weeks,
@@ -569,6 +581,10 @@ def render():
             )
             st.session_state.active_advisor_run_id = run_id
             st.session_state.advisor_payroll_completed = True
+            if sync_error:
+                st.session_state["_advisor_payroll_sync_error"] = sync_error
+            else:
+                st.session_state.pop("_advisor_payroll_sync_error", None)
             st.session_state["_advisor_payroll_saved_period"] = st.session_state.pay_period
             del st.session_state["advisor_payroll_complete_confirm"]
             st.rerun()

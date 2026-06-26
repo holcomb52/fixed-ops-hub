@@ -6,10 +6,11 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import streamlit as st
 
+from lib.payroll_supabase_sync import load_remote_run, merge_run_records, upsert_payroll_run
 from lib.receptionist_payroll_calc import ReceptionistPayrollRow, calculate_receptionist_payroll
 from lib.receptionist_payroll_export_data import build_receptionist_payroll_snapshot
 from lib.receptionist_roster import roster_from_saved_data, serialize_roster
@@ -147,7 +148,7 @@ def save_receptionist_payroll_run(
     pay_period: str,
     run_id: Optional[str] = None,
     status: str = "completed",
-) -> str:
+) -> Tuple[str, str]:
     snapshot = serialize_receptionist_payroll_session(employees, pay_period)
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()
@@ -165,6 +166,7 @@ def save_receptionist_payroll_run(
 
     _save_local(run_id, record)
 
+    sync_error = ""
     client = get_supabase()
     if client:
         row = {
@@ -177,17 +179,13 @@ def save_receptionist_payroll_run(
             "completed_at": completed_at,
             "updated_at": completed_at,
         }
-        try:
-            existing = client.table(TABLE).select("id").eq("id", run_id).execute()
-            if existing.data:
-                client.table(TABLE).update(row).eq("id", run_id).execute()
-            else:
-                row["created_at"] = completed_at
-                client.table(TABLE).insert(row).execute()
-        except Exception:
-            pass
+        ok, err = upsert_payroll_run(client, TABLE, row, run_id)
+        if not ok:
+            sync_error = err
+            record["_sync_error"] = err
+            _save_local(run_id, record)
 
-    return run_id
+    return run_id, sync_error
 
 
 def list_receptionist_payroll_runs() -> List[dict]:
@@ -205,7 +203,10 @@ def list_receptionist_payroll_runs() -> List[dict]:
                 .execute()
             )
             for row in result.data or []:
-                runs[row["id"]] = {**row, "source": "supabase"}
+                runs[row["id"]] = merge_run_records(
+                    runs.get(row["id"]),
+                    {**row, "source": "supabase"},
+                )
         except Exception:
             pass
 
@@ -213,15 +214,10 @@ def list_receptionist_payroll_runs() -> List[dict]:
 
 
 def load_receptionist_payroll_run(run_id: str) -> Optional[dict]:
-    record = _load_local(run_id)
-
     client = get_supabase()
-    if client and not record:
-        try:
-            result = client.table(TABLE).select("*").eq("id", run_id).execute()
-            if result.data:
-                record = result.data[0]
-        except Exception:
-            pass
+    if client:
+        remote = load_remote_run(client, TABLE, run_id)
+        if remote:
+            return remote
 
-    return record
+    return _load_local(run_id)

@@ -396,6 +396,12 @@ def render():
             unsafe_allow_html=True,
         )
 
+    if sync_err := st.session_state.get("_technician_payroll_sync_error"):
+        st.error(
+            "Cloud backup failed — this payroll may disappear from Reports after you close the app. "
+            f"Details: {sync_err}"
+        )
+
     _render_roster_manager()
 
     st.markdown("---")
@@ -569,8 +575,14 @@ def render():
         )
 
         if saved_period := st.session_state.pop("_payroll_saved_period", None):
-            st.success(f"Payroll saved — find it in Reports under {saved_period}")
-            st.balloons()
+            if st.session_state.get("_technician_payroll_sync_error"):
+                st.error(
+                    f"Technician payroll for {saved_period} was saved on this session only — "
+                    "cloud backup failed. Open Reports after fixing the connection, or save again."
+                )
+            else:
+                st.success(f"Payroll saved — find it in Reports under {saved_period}")
+                st.balloons()
 
         confirm = st.checkbox(
             "This payroll is complete and ready to save",
@@ -583,7 +595,7 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
-            run_id = save_payroll_run(
+            run_id, sync_error = save_payroll_run(
                 all_rows_synced(),
                 st.session_state.pay_period,
                 st.session_state.get("flag_pdf_bytes"),
@@ -593,6 +605,10 @@ def render():
             )
             st.session_state.active_run_id = run_id
             st.session_state.payroll_completed = True
+            if sync_error:
+                st.session_state["_technician_payroll_sync_error"] = sync_error
+            else:
+                st.session_state.pop("_technician_payroll_sync_error", None)
             st.session_state["_payroll_saved_period"] = st.session_state.pay_period
             del st.session_state["payroll_complete_confirm"]
             st.rerun()

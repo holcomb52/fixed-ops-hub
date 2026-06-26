@@ -263,6 +263,12 @@ def render():
             unsafe_allow_html=True,
         )
 
+    if sync_err := st.session_state.get("_receptionist_payroll_sync_error"):
+        st.error(
+            "Cloud backup failed — this payroll may disappear from Reports after you close the app. "
+            f"Details: {sync_err}"
+        )
+
     report_file = st.file_uploader(
         "Upload CASHIERS report (.xlsx)",
         type=["xlsx"],
@@ -381,8 +387,14 @@ def render():
         )
 
         if saved_period := st.session_state.pop("_receptionist_payroll_saved_period", None):
-            st.success(f"Receptionist payroll saved — find it in Reports under {saved_period}")
-            st.balloons()
+            if st.session_state.get("_receptionist_payroll_sync_error"):
+                st.error(
+                    f"Receptionist payroll for {saved_period} was saved on this session only — "
+                    "cloud backup failed. Open Reports after fixing the connection, or save again."
+                )
+            else:
+                st.success(f"Receptionist payroll saved — find it in Reports under {saved_period}")
+                st.balloons()
 
         confirm = st.checkbox(
             "This receptionist payroll is complete and ready to save",
@@ -405,7 +417,7 @@ def render():
                     appointment_rate=_read_appointment_rate(row.name, row),
                 )
             save_roster(st.session_state.receptionist_roster)
-            run_id = save_receptionist_payroll_run(
+            run_id, sync_error = save_receptionist_payroll_run(
                 all_receptionists_synced(),
                 st.session_state.pay_period,
                 run_id=st.session_state.get("active_receptionist_run_id"),
@@ -413,6 +425,10 @@ def render():
             )
             st.session_state.active_receptionist_run_id = run_id
             st.session_state.receptionist_payroll_completed = True
+            if sync_error:
+                st.session_state["_receptionist_payroll_sync_error"] = sync_error
+            else:
+                st.session_state.pop("_receptionist_payroll_sync_error", None)
             st.session_state["_receptionist_payroll_saved_period"] = st.session_state.pay_period
             del st.session_state["receptionist_payroll_complete_confirm"]
             st.rerun()

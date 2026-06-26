@@ -7,11 +7,12 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
 from lib.payroll_export_data import build_payroll_snapshot
+from lib.payroll_supabase_sync import load_remote_run, merge_run_records, upsert_payroll_run
 from lib.supabase_client import get_supabase, is_configured
 from lib.tech_payroll_calc import TechPayrollRow
 from lib.tech_roster import teams_from_saved_data
@@ -168,7 +169,7 @@ def save_payroll_run(
     flag_pdf_filename: str,
     run_id: Optional[str] = None,
     status: str = "completed",
-) -> str:
+) -> Tuple[str, str]:
     """Save or update a payroll run. Returns run id."""
     snapshot = serialize_payroll_session(synced_teams, pay_period)
     run_id = run_id or str(uuid.uuid4())
@@ -188,6 +189,7 @@ def save_payroll_run(
 
     _save_local(run_id, record, flag_pdf_bytes)
 
+    sync_error = ""
     client = get_supabase()
     if client:
         row = {
@@ -204,14 +206,13 @@ def save_payroll_run(
         if flag_pdf_bytes:
             row["flag_pdf_base64"] = base64.b64encode(flag_pdf_bytes).decode("ascii")
 
-        existing = client.table(TABLE).select("id").eq("id", run_id).execute()
-        if existing.data:
-            client.table(TABLE).update(row).eq("id", run_id).execute()
-        else:
-            row["created_at"] = completed_at
-            client.table(TABLE).insert(row).execute()
+        ok, err = upsert_payroll_run(client, TABLE, row, run_id)
+        if not ok:
+            sync_error = err
+            record["_sync_error"] = err
+            _save_local(run_id, record, flag_pdf_bytes)
 
-    return run_id
+    return run_id, sync_error
 
 
 def list_payroll_runs() -> List[dict]:
@@ -231,7 +232,10 @@ def list_payroll_runs() -> List[dict]:
                 .execute()
             )
             for row in result.data or []:
-                runs[row["id"]] = {**row, "source": "supabase"}
+                runs[row["id"]] = merge_run_records(
+                    runs.get(row["id"]),
+                    {**row, "source": "supabase"},
+                )
         except Exception:
             pass
 
@@ -240,26 +244,20 @@ def list_payroll_runs() -> List[dict]:
 
 def load_payroll_run(run_id: str) -> Optional[dict]:
     """Load a saved payroll run including flag PDF bytes."""
-    record = _load_local(run_id)
-    flag_bytes = record.pop("_flag_pdf_bytes", None) if record else None
-
     client = get_supabase()
     if client:
-        try:
-            result = client.table(TABLE).select("*").eq("id", run_id).execute()
-            if result.data:
-                row = result.data[0]
-                if not record:
-                    record = row
-                b64 = row.get("flag_pdf_base64")
-                if b64:
-                    flag_bytes = base64.b64decode(b64)
-        except Exception:
-            pass
+        remote = load_remote_run(client, TABLE, run_id)
+        if remote:
+            record = remote
+            b64 = record.get("flag_pdf_base64")
+            record["flag_pdf_bytes"] = base64.b64decode(b64) if b64 else None
+            return record
 
+    record = _load_local(run_id)
     if not record:
         return None
 
+    flag_bytes = record.pop("_flag_pdf_bytes", None)
     record["flag_pdf_bytes"] = flag_bytes
     return record
 

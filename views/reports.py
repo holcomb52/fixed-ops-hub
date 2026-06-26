@@ -5,6 +5,7 @@ import streamlit as st
 
 from components.ui import page_hero, section_title, status_banner
 from lib.earnings_report import collect_earnings_lines, summarize_earnings
+from lib.earnings_report_pdf_export import generate_earnings_report_pdf
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_pdf_export import generate_payroll_pdf
 from lib.advisor_payroll_pdf_export import generate_advisor_payroll_pdf
@@ -55,101 +56,119 @@ def _money(v) -> str:
 
 
 def _render_earnings_lookup():
-    st.markdown(
-        section_title("Employee earnings lookup", "Search pay periods by date range"),
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Totals come from saved technician, advisor, and receptionist payroll runs whose pay periods overlap your dates."
-    )
-
-    default_end = date.today()
-    default_start = default_end - timedelta(days=27)
-
-    c1, c2, c3, c4 = st.columns([1, 1, 1.2, 1.2])
-    with c1:
-        start_date = st.date_input("From", value=default_start, key="earnings_start_date")
-    with c2:
-        end_date = st.date_input("To", value=default_end, key="earnings_end_date")
-    with c3:
-        role_filter = st.selectbox(
-            "Employee type",
-            ["All", "Technician", "Service Advisor", "Receptionist"],
-            key="earnings_role_filter",
-        )
-    with c4:
-        name_query = st.text_input(
-            "Search name",
-            placeholder="Optional — filter by employee name",
-            key="earnings_name_query",
+    with st.expander("Employee earnings lookup — search by date range", expanded=False):
+        st.caption(
+            "Totals come from saved technician, advisor, and receptionist payroll runs "
+            "whose pay periods overlap your dates."
         )
 
-    if end_date < start_date:
-        st.warning("End date must be on or after the start date.")
-        return
+        default_end = date.today()
+        default_start = default_end - timedelta(days=27)
 
-    lines = collect_earnings_lines(start_date, end_date, role_filter, name_query)
-    summaries = summarize_earnings(lines)
+        c1, c2, c3, c4 = st.columns([1, 1, 1.2, 1.2])
+        with c1:
+            start_date = st.date_input("From", value=default_start, key="earnings_start_date")
+        with c2:
+            end_date = st.date_input("To", value=default_end, key="earnings_end_date")
+        with c3:
+            role_filter = st.selectbox(
+                "Employee type",
+                ["All", "Technician", "Service Advisor", "Receptionist"],
+                key="earnings_role_filter",
+            )
+        with c4:
+            name_query = st.text_input(
+                "Search name",
+                placeholder="Optional — filter by employee name",
+                key="earnings_name_query",
+            )
 
-    if not summaries:
-        st.markdown(
-            status_banner(
-                "No saved payroll found for that date range. "
-                "Complete payroll on the Payroll tab first, then return here.",
-                "warn",
-            ),
-            unsafe_allow_html=True,
-        )
-        return
+        if end_date < start_date:
+            st.warning("End date must be on or after the start date.")
+            return
 
-    grand_total = sum(item.total_pay for item in summaries)
-    period_count = len({line.pay_period for line in lines})
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        st.metric("Employees", len(summaries))
-    with m2:
-        st.metric("Pay periods", period_count)
-    with m3:
-        st.metric("Total paid", _money(grand_total))
+        lines = collect_earnings_lines(start_date, end_date, role_filter, name_query)
+        summaries = summarize_earnings(lines)
 
-    summary_rows = [
-        {
-            "Employee": item.name,
-            "Type": item.role,
-            "Pay periods": len(item.pay_periods),
-            "Total earned": item.total_pay,
-        }
-        for item in summaries
-    ]
-    st.dataframe(
-        pd.DataFrame(summary_rows),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Total earned": st.column_config.NumberColumn(format="$%.2f"),
-        },
-    )
+        if not summaries:
+            st.markdown(
+                status_banner(
+                    "No saved payroll found for that date range. "
+                    "Complete payroll on the Payroll tab first, then return here.",
+                    "warn",
+                ),
+                unsafe_allow_html=True,
+            )
+            return
 
-    with st.expander("Pay period breakdown", expanded=False):
-        detail_rows = [
+        grand_total = sum(item.total_pay for item in summaries)
+        period_count = len({line.pay_period for line in lines})
+        m1, m2, m3, m4 = st.columns([1, 1, 1, 1.2])
+        with m1:
+            st.metric("Employees", len(summaries))
+        with m2:
+            st.metric("Pay periods", period_count)
+        with m3:
+            st.metric("Total paid", _money(grand_total))
+        with m4:
+            pdf_name = (
+                f"EMPLOYEE_EARNINGS_{start_date.strftime('%m-%d-%y')}_"
+                f"{end_date.strftime('%m-%d-%y')}.pdf"
+            )
+            st.download_button(
+                "📄 Export PDF",
+                data=generate_earnings_report_pdf(
+                    start_date,
+                    end_date,
+                    role_filter,
+                    name_query,
+                    summaries,
+                    lines,
+                ),
+                file_name=pdf_name,
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+            )
+
+        summary_rows = [
             {
-                "Employee": line.name,
-                "Type": line.role,
-                "Pay period": line.pay_period,
-                "Period start": line.period_start.strftime("%m/%d/%Y"),
-                "Period end": line.period_end.strftime("%m/%d/%Y"),
-                "Earned": line.total_pay,
+                "Employee": item.name,
+                "Type": item.role,
+                "Pay periods": len(item.pay_periods),
+                "Total earned": item.total_pay,
             }
-            for line in lines
+            for item in summaries
         ]
         st.dataframe(
-            pd.DataFrame(detail_rows),
+            pd.DataFrame(summary_rows),
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Earned": st.column_config.NumberColumn(format="$%.2f"),
+                "Total earned": st.column_config.NumberColumn(format="$%.2f"),
             },
         )
+
+        with st.expander("Pay period breakdown", expanded=False):
+            detail_rows = [
+                {
+                    "Employee": line.name,
+                    "Type": line.role,
+                    "Pay period": line.pay_period,
+                    "Period start": line.period_start.strftime("%m/%d/%Y"),
+                    "Period end": line.period_end.strftime("%m/%d/%Y"),
+                    "Earned": line.total_pay,
+                }
+                for line in lines
+            ]
+            st.dataframe(
+                pd.DataFrame(detail_rows),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Earned": st.column_config.NumberColumn(format="$%.2f"),
+                },
+            )
 
 
 def _export_pdf_from_run(loaded: dict) -> bytes:

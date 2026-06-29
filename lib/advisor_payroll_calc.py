@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Dict, List, Optional
 
 ALIGNMENT_BONUS_AMOUNT = 500.0
@@ -75,6 +76,71 @@ def commission_plan_type(plan_type: str) -> str:
         return PLAN_NEW_ADVISORS
     return plan_type
 
+
+def parse_guarantee_expires(value: str | date | None) -> Optional[date]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def format_guarantee_expires(value: str | date | None) -> str:
+    parsed = parse_guarantee_expires(value)
+    if not parsed:
+        return ""
+    return parsed.isoformat()
+
+
+def guarantee_applies_for_period(
+    guarantee_expires: str | date | None,
+    pay_period_start: Optional[date],
+) -> bool:
+    """Guarantee applies when unset, or expiration is on/after the pay period start."""
+    expires = parse_guarantee_expires(guarantee_expires)
+    if expires is None:
+        return True
+    if pay_period_start is None:
+        return True
+    return expires >= pay_period_start
+
+
+def advisor_guarantee_pdf_note(row: "AdvisorPayrollRow") -> str:
+    if not plan_has_weekly_guarantee(row.plan_type):
+        return ""
+    return (
+        f"Employee is guaranteed ${row.weekly_guarantee:,.0f} per week or their commission sales. "
+        "Whichever one is higher is what they get paid."
+    )
+
+
+def advisor_pdf_notes(row: "AdvisorPayrollRow", result: Optional["AdvisorPayrollResult"] = None) -> str:
+    parts: List[str] = []
+    guarantee_note = advisor_guarantee_pdf_note(row)
+    if guarantee_note:
+        expires = parse_guarantee_expires(row.guarantee_expires)
+        if expires:
+            guarantee_note += f" Guarantee expires {expires.strftime('%m/%d/%y')}."
+        parts.append(guarantee_note)
+    if result and plan_has_weekly_guarantee(row.plan_type) and not result.guarantee_eligible:
+        parts.append("Guarantee not applied this pay period (expired before period start).")
+    manual = str(row.notes or "").strip()
+    if manual:
+        parts.append(manual)
+    return "\n\n".join(parts)
+
+
+def ensure_advisor_row_fields(row: "AdvisorPayrollRow") -> "AdvisorPayrollRow":
+    if not hasattr(row, "guarantee_expires"):
+        row.guarantee_expires = ""
+    return row
+
 # Standard / Felix CP bump rates (side table on advisor spreadsheet).
 CP_BUMP_RATES = {
     6.5: 7.5,
@@ -97,6 +163,7 @@ class AdvisorPayrollRow:
     plan_type: str = PLAN_NEW_ADVISORS
     top_labor_rate: float = 9.5
     weekly_guarantee: float = NEW_HIRE_WEEKLY_GUARANTEE
+    guarantee_expires: str = ""
     advisor_id: str = ""
     total_hours: float = 0.0
     write_off_hours: float = 0.0
@@ -150,6 +217,7 @@ class AdvisorPayrollResult:
     guarantee_amount: float
     guarantee_top_up: float
     guarantee_active: bool
+    guarantee_eligible: bool
 
 
 def apply_plan_defaults(row: AdvisorPayrollRow, plan_type: Optional[str] = None) -> AdvisorPayrollRow:
@@ -167,6 +235,9 @@ def apply_plan_defaults(row: AdvisorPayrollRow, plan_type: Optional[str] = None)
         row.top_labor_rate = float(meta["top_labor_rate"])
     if plan_has_weekly_guarantee(plan):
         row.weekly_guarantee = float(meta.get("weekly_guarantee", ADVISOR_WEEKLY_GUARANTEE))
+    else:
+        row.guarantee_expires = ""
+    ensure_advisor_row_fields(row)
     return row
 
 
@@ -244,7 +315,9 @@ def _commission_plan_type(row: AdvisorPayrollRow) -> str:
 def calculate_advisor_payroll(
     row: AdvisorPayrollRow,
     pay_period_weeks: float = 2.0,
+    pay_period_start: Optional[date] = None,
 ) -> AdvisorPayrollResult:
+    ensure_advisor_row_fields(row)
     policy_per_advisor = row.policy_expense / row.num_advisors if row.num_advisors else 0.0
     less_policy = _policy_hours(row)
     payable = _payable_hours(row)
@@ -279,9 +352,14 @@ def calculate_advisor_payroll(
     guarantee_amount = 0.0
     guarantee_top_up = 0.0
     guarantee_active = False
+    guarantee_eligible = False
     total = commission_total
 
-    if plan_has_weekly_guarantee(row.plan_type):
+    if plan_has_weekly_guarantee(row.plan_type) and guarantee_applies_for_period(
+        row.guarantee_expires,
+        pay_period_start,
+    ):
+        guarantee_eligible = True
         guarantee_amount = row.weekly_guarantee * max(pay_period_weeks, 0.0)
         if guarantee_amount > commission_total:
             guarantee_active = True
@@ -311,6 +389,7 @@ def calculate_advisor_payroll(
         guarantee_amount=guarantee_amount,
         guarantee_top_up=guarantee_top_up,
         guarantee_active=guarantee_active,
+        guarantee_eligible=guarantee_eligible,
     )
 
 

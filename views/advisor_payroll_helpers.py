@@ -9,6 +9,7 @@ import streamlit as st
 from lib.advisor_payroll_calc import (
     ALIGNMENT_BONUS_AMOUNT,
     AdvisorPayrollRow,
+    ensure_advisor_row_fields,
 )
 from lib.advisor_payroll_parser import report_by_name
 from lib.advisor_roster import flatten_roster, load_roster
@@ -222,6 +223,7 @@ def sync_advisor(idx: int, row: AdvisorPayrollRow) -> AdvisorPayrollRow:
         advisor_id=row.advisor_id,
         top_labor_rate=row.top_labor_rate,
         weekly_guarantee=row.weekly_guarantee,
+        guarantee_expires=getattr(row, "guarantee_expires", ""),
         total_hours=float(st.session_state[adv_key(idx, "total_hours")]),
         write_off_hours=float(st.session_state[adv_key(idx, "write_off_hours")]),
         policy_expense=float(st.session_state[adv_key(idx, "policy_expense")]),
@@ -247,4 +249,4 @@ def sync_advisor(idx: int, row: AdvisorPayrollRow) -> AdvisorPayrollRow:
 
 def all_advisors_synced() -> list:
     rows = flatten_roster(st.session_state.advisor_roster)
-    return [sync_advisor(i, AdvisorPayrollRow(**row.__dict__)) for i, row in enumerate(rows)]
+    return [sync_advisor(i, ensure_advisor_row_fields(AdvisorPayrollRow(**row.__dict__))) for i, row in enumerate(rows)]

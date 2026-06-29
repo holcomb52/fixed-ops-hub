@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List
 
-from lib.advisor_payroll_calc import PLAN_LABELS, AdvisorPayrollRow, AdvisorPayrollResult, calculate_advisor_payroll
+from lib.advisor_payroll_calc import PLAN_LABELS, AdvisorPayrollRow, AdvisorPayrollResult, advisor_pdf_notes
 
 
 def build_advisor_payroll_snapshot(
@@ -40,8 +40,10 @@ def build_advisor_payroll_snapshot(
             "guarantee_amount": result.guarantee_amount,
             "guarantee_top_up": result.guarantee_top_up,
             "guarantee_active": result.guarantee_active,
+            "guarantee_eligible": result.guarantee_eligible,
             "total_pay": result.total_pay,
-            "notes": advisor.notes,
+            "notes": advisor_pdf_notes(advisor, result),
+            "clerk_notes": advisor.notes,
         })
 
     return {

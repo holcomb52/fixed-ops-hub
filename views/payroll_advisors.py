@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import date
 
 from components.ui import pay_plan_section_header, stat_card, status_banner
 from lib.advisor_payroll_calc import (
@@ -14,6 +15,7 @@ from lib.advisor_payroll_calc import (
     PLAN_SEASONED,
     TOM_JOEY_CP_BUMP_RATE,
     calculate_advisor_payroll,
+    parse_guarantee_expires,
     plan_has_weekly_guarantee,
 )
 from lib.advisor_payroll_export_data import build_advisor_payroll_snapshot
@@ -45,6 +47,10 @@ from views.advisor_payroll_helpers import (
     toggle_advisor_section,
 )
 from views.payroll_helpers import pay_period_weeks
+
+
+def _pay_period_start():
+    return st.session_state.get("payroll_period_start")
 
 
 def _money(v: float) -> str:
@@ -144,6 +150,11 @@ def _render_advisor_roster_manager():
                 with c3:
                     if plan_type in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) and row.top_labor_rate > 9.5:
                         st.caption(f"Top tier ${row.top_labor_rate:.0f}/hr")
+                    elif plan_has_weekly_guarantee(plan_type):
+                        expires = parse_guarantee_expires(row.guarantee_expires)
+                        st.caption(
+                            f"Expires {expires.strftime('%m/%d/%y')}" if expires else "No expiration set"
+                        )
                     else:
                         st.caption("—")
                 with c4:
@@ -191,6 +202,30 @@ def _render_advisor_roster_manager():
             pick = st.selectbox("Select advisor", labels, key="adv_roster_edit_pick")
             pick_idx = labels.index(pick)
             plan_type, row_idx, row = choices[pick_idx]
+            edit_guarantee_expires = row.guarantee_expires
+            current_expires = parse_guarantee_expires(row.guarantee_expires)
+            open_ended = False
+            if plan_has_weekly_guarantee(plan_type):
+                open_ended = st.checkbox(
+                    "Open-ended guarantee (no expiration date)",
+                    value=current_expires is None,
+                    key="adv_roster_edit_open_ended",
+                    help="Uncheck to set when the weekly guarantee ends.",
+                )
+                if not open_ended:
+                    picked = st.date_input(
+                        "Guarantee expires",
+                        value=current_expires or date.today(),
+                        key="adv_roster_edit_guarantee_expires",
+                        help=(
+                            "If the expiration falls mid pay period, the advisor still receives "
+                            "the guarantee for that entire pay period."
+                        ),
+                    )
+                    edit_guarantee_expires = picked.isoformat()
+                else:
+                    edit_guarantee_expires = ""
+
             e1, e2, e3 = st.columns([1, 1, 1])
             with e1:
                 edit_id = st.text_input("Advisor ID", value=row.advisor_id, key="adv_roster_edit_id")
@@ -210,9 +245,10 @@ def _render_advisor_roster_manager():
                 st.write("")
                 if st.button("Save changes", key="adv_roster_edit_save", use_container_width=True):
                     _apply_roster_change(
-                        lambda r, pt=plan_type, idx=row_idx, aid=edit_id, tr=top_rate: update_advisor(
+                        lambda r, pt=plan_type, idx=row_idx, aid=edit_id, tr=top_rate, ge=edit_guarantee_expires: update_advisor(
                             r, pt, idx, aid,
                             top_labor_rate=tr if pt in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) else None,
+                            guarantee_expires=ge if plan_has_weekly_guarantee(pt) else None,
                         )
                     )
 
@@ -334,7 +370,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         key=adv_key(advisor_idx, "notes"),
         on_change=persist_advisor_changes,
         args=(advisor_idx,),
-        placeholder="Optional — prints on the payroll PDF for accounting",
+        placeholder="Optional extra notes — guarantee language prints automatically on the PDF",
         height=72,
     )
 
@@ -342,7 +378,12 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
 
     synced = all_advisors_synced()[advisor_idx]
     weeks = pay_period_weeks()
-    result = calculate_advisor_payroll(synced, pay_period_weeks=weeks)
+    period_start = _pay_period_start()
+    result = calculate_advisor_payroll(
+        synced,
+        pay_period_weeks=weeks,
+        pay_period_start=period_start,
+    )
 
     st.metric(
         "Labor pay",
@@ -351,10 +392,18 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
     )
 
     if plan_has_weekly_guarantee(row.plan_type):
-        st.caption(
-            f"**Weekly guarantee:** ${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks = "
-            f"**{_money(result.guarantee_amount)}** · New Advisors commission: **{_money(result.commission_total)}**"
-        )
+        if not result.guarantee_eligible:
+            st.caption(
+                "**Guarantee expired** before this pay period — paid on New Advisors commission only."
+            )
+        else:
+            expires = parse_guarantee_expires(synced.guarantee_expires)
+            exp_text = f" Expires **{expires.strftime('%m/%d/%y')}**." if expires else ""
+            st.caption(
+                f"**Weekly guarantee:** ${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks = "
+                f"**{_money(result.guarantee_amount)}** · New Advisors commission: "
+                f"**{_money(result.commission_total)}**.{exp_text}"
+            )
     elif row.plan_type == PLAN_SEASONED:
         if result.cp_bump_active:
             st.caption(
@@ -398,7 +447,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         },
         {"Pay": "SPIFF", "Amount": result.spiff_pay, "Detail": ""},
     ]
-    if plan_has_weekly_guarantee(row.plan_type):
+    if plan_has_weekly_guarantee(row.plan_type) and result.guarantee_eligible:
         pay_rows.append(
             {
                 "Pay": "Commission subtotal",
@@ -490,7 +539,8 @@ def render():
     apply_advisor_value_store()
     synced_advisors = all_advisors_synced()
     advisor_results = [
-        calculate_advisor_payroll(a, pay_period_weeks=weeks) for a in synced_advisors
+        calculate_advisor_payroll(a, pay_period_weeks=weeks, pay_period_start=_pay_period_start())
+        for a in synced_advisors
     ]
 
     summary_rows = [

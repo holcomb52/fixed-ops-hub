@@ -15,7 +15,10 @@ from lib.advisor_payroll_calc import (
     PLAN_SEASONED,
     AdvisorPayrollRow,
     apply_plan_defaults,
+    ensure_advisor_row_fields,
+    format_guarantee_expires,
     normalize_advisor_plan_type,
+    plan_has_weekly_guarantee,
 )
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "advisor_roster.json"
@@ -24,7 +27,7 @@ PLAN_ORDER = [PLAN_SEASONED, PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE]
 
 
 def _clone_row(row: AdvisorPayrollRow) -> AdvisorPayrollRow:
-    return AdvisorPayrollRow(**copy.deepcopy(row.__dict__))
+    return ensure_advisor_row_fields(AdvisorPayrollRow(**copy.deepcopy(row.__dict__)))
 
 
 def clone_roster(roster: Dict[str, List[AdvisorPayrollRow]]) -> Dict[str, List[AdvisorPayrollRow]]:
@@ -80,6 +83,7 @@ def _serialize_row(row: AdvisorPayrollRow) -> dict:
         "advisor_id": row.advisor_id,
         "top_labor_rate": row.top_labor_rate,
         "weekly_guarantee": row.weekly_guarantee,
+        "guarantee_expires": format_guarantee_expires(row.guarantee_expires),
     }
 
 
@@ -103,6 +107,7 @@ def roster_from_saved_data(data: dict) -> Dict[str, List[AdvisorPayrollRow]]:
                 weekly_guarantee=float(
                     item.get("weekly_guarantee", meta.get("weekly_guarantee", 1000.0))
                 ),
+                guarantee_expires=format_guarantee_expires(item.get("guarantee_expires", "")),
             )
             roster[plan_type].append(apply_plan_defaults(row, plan_type))
     if not any(roster.values()):
@@ -192,6 +197,7 @@ def update_advisor(
     index: int,
     advisor_id: str,
     top_labor_rate: Optional[float] = None,
+    guarantee_expires: Optional[str] = None,
 ) -> Tuple[bool, str]:
     rows = roster.get(plan_type, [])
     if index < 0 or index >= len(rows):
@@ -200,6 +206,8 @@ def update_advisor(
     row.advisor_id = str(advisor_id or "").strip()
     if plan_type in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) and top_labor_rate is not None:
         row.top_labor_rate = float(top_labor_rate)
+    if plan_has_weekly_guarantee(plan_type) and guarantee_expires is not None:
+        row.guarantee_expires = format_guarantee_expires(guarantee_expires)
     return True, f"Updated {row.name}."
 
 

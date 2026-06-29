@@ -16,7 +16,7 @@ from lib.advisor_roster import roster_from_saved_data, serialize_roster
 from lib.supabase_client import get_supabase
 from lib.payroll_supabase_sync import load_remote_run, merge_run_records, upsert_payroll_run
 from views.advisor_payroll_helpers import apply_roster_to_session
-from views.payroll_helpers import set_pay_period_from_string
+from views.payroll_helpers import parse_period_token, set_pay_period_from_string
 
 ARCHIVE_DIR = Path(__file__).resolve().parent.parent / "data" / "advisor_payroll_archive"
 TABLE = "advisor_payroll_runs"
@@ -26,12 +26,22 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _pay_period_start(pay_period: str):
+    if not pay_period or "-" not in pay_period:
+        return None
+    return parse_period_token(pay_period.split("-", 1)[0])
+
+
 def serialize_advisor_payroll_session(
     advisors: List[AdvisorPayrollRow],
     pay_period: str,
     pay_period_weeks: float,
 ) -> dict:
-    results = [calculate_advisor_payroll(a, pay_period_weeks=pay_period_weeks) for a in advisors]
+    period_start = _pay_period_start(pay_period)
+    results = [
+        calculate_advisor_payroll(a, pay_period_weeks=pay_period_weeks, pay_period_start=period_start)
+        for a in advisors
+    ]
     export_snap = build_advisor_payroll_snapshot(advisors, results, pay_period, pay_period_weeks)
 
     advisor_data = []
@@ -43,6 +53,7 @@ def serialize_advisor_payroll_session(
             "advisor_id": advisor.advisor_id,
             "top_labor_rate": advisor.top_labor_rate,
             "weekly_guarantee": advisor.weekly_guarantee,
+            "guarantee_expires": advisor.guarantee_expires,
             "hours_sold": advisor.hours_sold,
             "parts_sales": advisor.parts_sales,
             "parts_labor_sales": advisor.parts_labor_sales,

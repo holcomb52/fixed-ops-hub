@@ -46,7 +46,7 @@ from views.advisor_payroll_helpers import (
     refresh_advisor_value_store,
     toggle_advisor_section,
 )
-from views.payroll_helpers import pay_period_weeks
+from views.payroll_helpers import pay_period_weeks, render_payroll_sync_error
 
 
 def _pay_period_start():
@@ -541,11 +541,7 @@ def render():
             unsafe_allow_html=True,
         )
 
-    if sync_err := st.session_state.get("_advisor_payroll_sync_error"):
-        st.error(
-            "Cloud backup failed — this payroll may disappear from Reports after you close the app. "
-            f"Details: {sync_err}"
-        )
+    render_payroll_sync_error("_advisor_payroll_sync_error", table="advisor_payroll_runs")
 
     report_file = st.file_uploader(
         "Upload PAYROLL report (.xlsx)",

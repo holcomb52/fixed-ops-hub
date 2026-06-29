@@ -43,6 +43,7 @@ from views.payroll_helpers import (
     set_pay_period_dates,
     store_flag_pdf,
     sync_row,
+    render_payroll_sync_error,
 )
 
 
@@ -401,11 +402,7 @@ def render():
             unsafe_allow_html=True,
         )
 
-    if sync_err := st.session_state.get("_technician_payroll_sync_error"):
-        st.error(
-            "Cloud backup failed — this payroll may disappear from Reports after you close the app. "
-            f"Details: {sync_err}"
-        )
+    render_payroll_sync_error("_technician_payroll_sync_error", table="tech_payroll_runs")
 
     _render_roster_manager()
 

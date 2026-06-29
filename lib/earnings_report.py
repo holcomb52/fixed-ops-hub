@@ -11,6 +11,7 @@ from lib.advisor_payroll_storage import list_advisor_payroll_runs, load_advisor_
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_storage import list_payroll_runs, load_payroll_run
 from lib.receptionist_payroll_storage import list_receptionist_payroll_runs, load_receptionist_payroll_run
+from lib.tech_payroll_calc import weeks_in_pay_period
 from lib.tech_roster import teams_from_saved_data
 
 
@@ -65,7 +66,8 @@ def periods_overlap(
 
 def _tech_lines(snapshot: dict, pay_period: str, period_start: date, period_end: date) -> List[EarningsLine]:
     teams = teams_from_saved_data(snapshot.get("teams", {}))
-    export = build_payroll_snapshot(teams, pay_period)
+    weeks = weeks_in_pay_period(pay_period)
+    export = build_payroll_snapshot(teams, pay_period, weeks)
     lines: List[EarningsLine] = []
     for team in export.get("teams", []):
         for tech in team.get("technicians", []):

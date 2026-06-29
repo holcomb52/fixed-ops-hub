@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Dict, List, Optional
+
+WEEKLY_HOUR_GUARANTEE_DEFAULT = 40.0
 
 
 @dataclass
@@ -26,6 +29,45 @@ class TechPayrollRow:
     closing_pct: float = 0.0
     supplemental_bonus: float = 0.0
     supplemental_tier: str = ""
+    pay_plan: str = "standard"  # standard | weekly_hour_guarantee
+    weekly_hour_guarantee: float = 0.0
+
+    @property
+    def effective_flag_rate(self) -> float:
+        if self.flat_rate_hours > 0:
+            return self.dollars_earned / self.flat_rate_hours
+        return self.hourly_rate
+
+    def guaranteed_hours_floor(self, pay_period_weeks: float) -> float:
+        if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
+            return 0.0
+        return self.weekly_hour_guarantee * max(pay_period_weeks, 0.0)
+
+    def payable_flag_hours(self, pay_period_weeks: float) -> float:
+        return max(self.flat_rate_hours, self.guaranteed_hours_floor(pay_period_weeks))
+
+    def flag_base_pay(self, pay_period_weeks: float = 2.0) -> float:
+        """Flag dollars with weekly hour guarantee applied when configured."""
+        if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
+            return self.dollars_earned
+        return self.payable_flag_hours(pay_period_weeks) * self.effective_flag_rate
+
+    def guarantee_top_up(self, pay_period_weeks: float = 2.0) -> float:
+        if self.pay_plan != "weekly_hour_guarantee":
+            return 0.0
+        return max(self.flag_base_pay(pay_period_weeks) - self.dollars_earned, 0.0)
+
+    def guarantee_label(self, pay_period_weeks: float = 2.0) -> str:
+        if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
+            return ""
+        floor_hrs = self.guaranteed_hours_floor(pay_period_weeks)
+        payable_hrs = self.payable_flag_hours(pay_period_weeks)
+        if payable_hrs <= self.flat_rate_hours:
+            return f"{self.weekly_hour_guarantee:.0f} hr/wk guarantee met by flag hours"
+        return (
+            f"{self.weekly_hour_guarantee:.0f} hr/wk guarantee · "
+            f"{self.flat_rate_hours:.2f} flag hrs → {payable_hrs:.2f} paid hrs"
+        )
 
     @property
     def prod_tier(self) -> Optional[tuple]:
@@ -82,11 +124,11 @@ class TechPayrollRow:
         self,
         team_total_hours: float = 0.0,
         hours_by_name: Optional[Dict[str, float]] = None,
+        pay_period_weeks: float = 2.0,
     ) -> float:
         hours_by_name = hours_by_name or {}
-        # Column K total — quick lube bonus (col I) is separate for Noah, not included here
         return (
-            self.dollars_earned
+            self.flag_base_pay(pay_period_weeks)
             + self.production_bonus
             + self.supplemental_bonus
             + self.training_pay
@@ -153,7 +195,29 @@ DEFAULT_TECH_NUMBERS = {
     "Dax Rosencrantz": "3851",
     "Zachary Daniels": "3854",
     "Zihair Busch": "3814",
+    "Dale Potts": "",
 }
+
+
+def parse_period_token(token: str) -> Optional[date]:
+    token = (token or "").strip()
+    for fmt in ("%m/%d/%y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(token, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def weeks_in_pay_period(pay_period: str) -> float:
+    if not pay_period or "-" not in pay_period:
+        return 2.0
+    start_text, end_text = pay_period.split("-", 1)
+    start = parse_period_token(start_text)
+    end = parse_period_token(end_text)
+    if not start or not end or end < start:
+        return 2.0
+    return max(((end - start).days + 1) / 7.0, 1.0)
 
 
 def _default_row(
@@ -314,11 +378,12 @@ def team_total_hours(rows: List[TechPayrollRow]) -> float:
 def team_totals(
     rows: List[TechPayrollRow],
     hours_by_name: Optional[Dict[str, float]] = None,
+    pay_period_weeks: float = 2.0,
 ) -> Dict[str, float]:
     team_hrs = team_total_hours(rows)
     hours_by_name = hours_by_name or {r.name: r.flat_rate_hours for r in rows}
     return {
         "hours": team_hrs,
-        "dollars": sum(r.dollars_earned for r in rows),
-        "total_pay": sum(r.total_pay(team_hrs, hours_by_name) for r in rows),
+        "dollars": sum(r.flag_base_pay(pay_period_weeks) for r in rows),
+        "total_pay": sum(r.total_pay(team_hrs, hours_by_name, pay_period_weeks) for r in rows),
     }

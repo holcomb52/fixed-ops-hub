@@ -37,6 +37,7 @@ from views.payroll_helpers import (
     field_key,
     init_payroll_session,
     parse_period_token,
+    pay_period_weeks,
     persist_technician_changes,
     refresh_tech_supplemental_bonuses,
     set_pay_period_dates,
@@ -246,7 +247,7 @@ def _bonus_label(row, team_hrs, global_hours):
     return "—"
 
 
-def _team_summary_rows(team_name: str, rows: list, global_hours: dict) -> list:
+def _team_summary_rows(team_name: str, rows: list, global_hours: dict, weeks: float) -> list:
     count = len(rows)
     summary_rows = []
     for i, row in enumerate(rows):
@@ -256,7 +257,8 @@ def _team_summary_rows(team_name: str, rows: list, global_hours: dict) -> list:
             "Tech #": row.tech_number or "—",
             "Technician": row.name,
             "Hours": row.flat_rate_hours,
-            "Dollars": row.dollars_earned,
+            "Dollars": row.flag_base_pay(weeks),
+            "Guar Top-up": row.guarantee_top_up(weeks) or None,
             "Prod Bonus": row.production_bonus,
             "CP hrs/RO": row.cp_hrs_per_ro if row.cp_hrs_per_ro else None,
             "Close %": row.closing_pct if row.closing_pct else None,
@@ -264,12 +266,12 @@ def _team_summary_rows(team_name: str, rows: list, global_hours: dict) -> list:
             "Foreman / Quick Lube": _bonus_label(row, th, global_hours),
             "Training Pay": row.training_pay,
             "SPIFF": row.spiff,
-            "Total Pay": row.total_pay(th, global_hours),
+            "Total Pay": row.total_pay(th, global_hours, weeks),
         })
     return summary_rows
 
 
-def _render_team(team_name: str, rows: list, global_hours: dict):
+def _render_team(team_name: str, rows: list, global_hours: dict, weeks: float):
     count = len(rows)
     for i, row in enumerate(rows):
         sync_row(team_name, i, row)
@@ -317,6 +319,8 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                     st.caption("Supplemental bonus — Shop Techs only.")
                 elif st.session_state.get("upsell_loaded") or st.session_state.get("tech_cp_metrics_by_name"):
                     st.caption("Upload flag sheet + upsell report to calculate supplemental bonus.")
+                if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
+                    st.caption(row.guarantee_label(weeks))
             with c3:
                 st.number_input(
                     "Training hrs",
@@ -346,8 +350,8 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
                 height=68,
             )
 
-    summary_rows = _team_summary_rows(team_name, rows, global_hours)
-    totals = team_totals(rows, global_hours)
+    summary_rows = _team_summary_rows(team_name, rows, global_hours, weeks)
+    totals = team_totals(rows, global_hours, weeks)
 
     st.markdown("##### Payroll summary")
     st.dataframe(
@@ -357,6 +361,7 @@ def _render_team(team_name: str, rows: list, global_hours: dict):
         column_config={
             "Hours": st.column_config.NumberColumn(format="%.2f"),
             "Dollars": st.column_config.NumberColumn(format="$%.2f"),
+            "Guar Top-up": st.column_config.NumberColumn(format="$%.2f"),
             "Prod Bonus": st.column_config.NumberColumn(format="$%.2f"),
             "CP hrs/RO": st.column_config.NumberColumn(format="%.2f"),
             "Close %": st.column_config.NumberColumn(format="%.1f"),
@@ -516,6 +521,7 @@ def render():
 
     refresh_tech_supplemental_bonuses()
 
+    weeks = pay_period_weeks()
     if st.session_state.pdf_loaded:
         period_slug = (st.session_state.pay_period or "payroll").replace("/", "-")
         export_name = f"TECH_PAYROLL_{period_slug}.pdf"
@@ -525,7 +531,11 @@ def render():
             st.download_button(
                 label="📄 Export payroll PDF for accounting",
                 data=generate_payroll_pdf(
-                    build_payroll_snapshot(all_rows_synced(), st.session_state.pay_period)
+                    build_payroll_snapshot(
+                        all_rows_synced(),
+                        st.session_state.pay_period,
+                        weeks,
+                    )
                 ),
                 file_name=export_name,
                 mime="application/pdf",
@@ -541,7 +551,7 @@ def render():
     global_hours = all_hours_by_name(synced)
 
     for team_name, team_rows in synced.items():
-        _render_team(team_name, team_rows, global_hours)
+        _render_team(team_name, team_rows, global_hours, weeks)
         st.markdown("---")
 
     synced = all_rows_synced()
@@ -549,7 +559,7 @@ def render():
     grand_total = 0.0
     grand_hours = 0.0
     for team_rows in synced.values():
-        t = team_totals(team_rows, global_hours)
+        t = team_totals(team_rows, global_hours, weeks)
         grand_total += t["total_pay"]
         grand_hours += t["hours"]
 
@@ -624,6 +634,7 @@ def render():
             - Foreman bonus — Derrick: team hrs × $2, Olan: team hrs × $1
             - Noah quick lube — selected tech hrs × $1
             - Training pay — training hrs × hourly rate
+            - **Hour guarantee** — Shop Techs on a 40 hr/wk plan are paid on the higher of flag hours or guaranteed hours × effective flag rate
 
             **You upload:** Flag sheet PDF + Ignite upsell analysis Excel.
 

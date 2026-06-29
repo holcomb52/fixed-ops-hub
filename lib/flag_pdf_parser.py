@@ -29,6 +29,7 @@ PDF_NAME_MAP = {
     "CHRISTOPHER INGRAM": "Christopher Ingram",
     "DAMIAN BLAIR": "Damian Blair",
     "JOHN RICHARDSON": "John Richardson",
+    "DALE POTTS": "Dale Potts",
 }
 
 NAME_RE = re.compile(r"Tech Name:\s+(.+?)\s*\(Items:")

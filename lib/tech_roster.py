@@ -11,20 +11,63 @@ from lib.tech_payroll_calc import (
     DEFAULT_TEAMS,
     DEFAULT_TECH_NUMBERS,
     QUICK_LUBE_TECHS,
+    WEEKLY_HOUR_GUARANTEE_DEFAULT,
     TechPayrollRow,
     infer_tech_category,
 )
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "tech_roster.json"
 
-# (tech_category, foreman_rule, quick_lube_sources)
 ROLE_OPTIONS = {
-    "Shop Apprentice": ("apprentice", "none", []),
-    "Shop Tech": ("shop", "none", []),
-    "Quick Lube Tech": ("quick_lube", "none", []),
-    "Foreman ($2/hr team bonus)": ("shop", "team_per_hr_2", []),
-    "Foreman ($1/hr team bonus)": ("shop", "team_per_hr_1", []),
-    "Quick lube bonus recipient": ("shop", "none", list(QUICK_LUBE_TECHS)),
+    "Shop Apprentice": {
+        "tech_category": "apprentice",
+        "foreman_rule": "none",
+        "quick_lube_sources": [],
+        "pay_plan": "standard",
+        "weekly_hour_guarantee": 0.0,
+    },
+    "Shop Tech": {
+        "tech_category": "shop",
+        "foreman_rule": "none",
+        "quick_lube_sources": [],
+        "pay_plan": "standard",
+        "weekly_hour_guarantee": 0.0,
+    },
+    "Shop Tech — 40 hr/wk guarantee": {
+        "tech_category": "shop",
+        "foreman_rule": "none",
+        "quick_lube_sources": [],
+        "pay_plan": "weekly_hour_guarantee",
+        "weekly_hour_guarantee": WEEKLY_HOUR_GUARANTEE_DEFAULT,
+    },
+    "Quick Lube Tech": {
+        "tech_category": "quick_lube",
+        "foreman_rule": "none",
+        "quick_lube_sources": [],
+        "pay_plan": "standard",
+        "weekly_hour_guarantee": 0.0,
+    },
+    "Foreman ($2/hr team bonus)": {
+        "tech_category": "shop",
+        "foreman_rule": "team_per_hr_2",
+        "quick_lube_sources": [],
+        "pay_plan": "standard",
+        "weekly_hour_guarantee": 0.0,
+    },
+    "Foreman ($1/hr team bonus)": {
+        "tech_category": "shop",
+        "foreman_rule": "team_per_hr_1",
+        "quick_lube_sources": [],
+        "pay_plan": "standard",
+        "weekly_hour_guarantee": 0.0,
+    },
+    "Quick lube bonus recipient": {
+        "tech_category": "shop",
+        "foreman_rule": "none",
+        "quick_lube_sources": list(QUICK_LUBE_TECHS),
+        "pay_plan": "standard",
+        "weekly_hour_guarantee": 0.0,
+    },
 }
 
 
@@ -35,6 +78,8 @@ def role_label(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr)"
     if row.quick_lube_sources:
         return "Quick lube bonus"
+    if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
+        return f"Shop Tech — {row.weekly_hour_guarantee:.0f} hr/wk guarantee"
     if row.tech_category == "apprentice":
         return "Shop Apprentice"
     if row.tech_category == "quick_lube":
@@ -49,6 +94,8 @@ def role_option_key(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr team bonus)"
     if row.quick_lube_sources:
         return "Quick lube bonus recipient"
+    if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
+        return "Shop Tech — 40 hr/wk guarantee"
     if row.tech_category == "apprentice":
         return "Shop Apprentice"
     if row.tech_category == "quick_lube":
@@ -76,6 +123,8 @@ def _serialize_row(row: TechPayrollRow) -> dict:
         "foreman_rule": row.foreman_rule,
         "quick_lube_sources": list(row.quick_lube_sources),
         "tech_category": row.tech_category,
+        "pay_plan": row.pay_plan,
+        "weekly_hour_guarantee": row.weekly_hour_guarantee,
     }
 
 
@@ -113,6 +162,8 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                         tech["name"],
                         str(tech.get("tech_category", "") or ""),
                     ),
+                    pay_plan=str(tech.get("pay_plan", "standard") or "standard"),
+                    weekly_hour_guarantee=float(tech.get("weekly_hour_guarantee", 0) or 0),
                     cp_hours=float(tech.get("cp_hours", 0) or 0),
                     cp_ro_count=int(tech.get("cp_ro_count", 0) or 0),
                     cp_hrs_per_ro=float(tech.get("cp_hrs_per_ro", 0) or 0),
@@ -168,8 +219,12 @@ def _validate_tech_number(
 
 
 def _apply_role(row: TechPayrollRow, role_label_key: str, team_rows: List[TechPayrollRow], row_index: int) -> None:
-    tech_category, foreman_rule, quick_lube_sources = ROLE_OPTIONS[role_label_key]
-    row.tech_category = tech_category
+    role = ROLE_OPTIONS[role_label_key]
+    row.tech_category = role["tech_category"]
+    row.pay_plan = role["pay_plan"]
+    row.weekly_hour_guarantee = float(role["weekly_hour_guarantee"] or 0)
+    foreman_rule = role["foreman_rule"]
+    quick_lube_sources = role["quick_lube_sources"]
     if foreman_rule != "none":
         for i, other in enumerate(team_rows):
             if i != row_index and other.foreman_rule in ("team_per_hr_2", "team_per_hr_1"):

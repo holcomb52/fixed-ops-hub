@@ -57,11 +57,17 @@ def generate_payroll_pdf(snapshot: dict) -> bytes:
             if t.get("supplemental_bonus"):
                 tier = t.get("supplemental_tier") or "Bonus"
                 suppl_cell = f"{tier}\n${t['supplemental_bonus']:,.0f}"
+            dollars_cell = f"${t['dollars']:,.2f}"
+            if t.get("guarantee_top_up"):
+                dollars_cell = (
+                    f"${t['dollars']:,.2f}\n"
+                    f"Guar +${t['guarantee_top_up']:,.2f}"
+                )
             table_data.append([
                 t.get("tech_number") or "—",
                 t["name"],
                 f"{t['hours']:.2f}",
-                f"${t['dollars']:,.2f}",
+                dollars_cell,
                 f"${t['prod_bonus']:,.2f}",
                 suppl_cell,
                 bonus_cell,

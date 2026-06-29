@@ -187,13 +187,13 @@ def _render_advisor_roster_manager():
                         st.caption(f"Top tier ${row.top_labor_rate:.0f}/hr")
                     elif plan_has_weekly_guarantee(plan_type):
                         with st.popover(
-                            _guarantee_expiration_label(row.guarantee_expires),
+                            _guarantee_expiration_label(getattr(row, "guarantee_expires", "")),
                             use_container_width=True,
                         ):
                             st.caption(f"**{row.name}** — guarantee expiration")
                             _render_guarantee_expiration_fields(
                                 f"adv_exp_{plan_type}_{i}",
-                                row.guarantee_expires,
+                                getattr(row, "guarantee_expires", ""),
                             )
                             if st.button(
                                 "Save expiration",

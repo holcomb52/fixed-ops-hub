@@ -30,6 +30,13 @@ def _clone_row(row: AdvisorPayrollRow) -> AdvisorPayrollRow:
     return ensure_advisor_row_fields(AdvisorPayrollRow(**copy.deepcopy(row.__dict__)))
 
 
+def normalize_roster(roster: Dict[str, List[AdvisorPayrollRow]]) -> Dict[str, List[AdvisorPayrollRow]]:
+    for plan, rows in roster.items():
+        for i, row in enumerate(rows):
+            rows[i] = ensure_advisor_row_fields(row)
+    return roster
+
+
 def clone_roster(roster: Dict[str, List[AdvisorPayrollRow]]) -> Dict[str, List[AdvisorPayrollRow]]:
     return {plan: [_clone_row(row) for row in rows] for plan, rows in roster.items()}
 
@@ -110,6 +117,7 @@ def roster_from_saved_data(data: dict) -> Dict[str, List[AdvisorPayrollRow]]:
                 guarantee_expires=format_guarantee_expires(item.get("guarantee_expires", "")),
             )
             roster[plan_type].append(apply_plan_defaults(row, plan_type))
+    roster = normalize_roster(roster)
     if not any(roster.values()):
         return clone_roster(default_roster())
     return roster

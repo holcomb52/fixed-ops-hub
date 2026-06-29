@@ -12,7 +12,7 @@ from lib.advisor_payroll_calc import (
     ensure_advisor_row_fields,
 )
 from lib.advisor_payroll_parser import report_by_name
-from lib.advisor_roster import flatten_roster, load_roster
+from lib.advisor_roster import flatten_roster, load_roster, normalize_roster
 
 ADVISOR_FIELDS = {
     "total_hours": 0.0,
@@ -157,8 +157,8 @@ def _init_advisor_fields(i: int, row: AdvisorPayrollRow, overrides: Optional[dic
 
 def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None):
     clear_advisor_field_keys()
-    st.session_state.advisor_roster = roster
-    rows = flatten_roster(roster)
+    st.session_state.advisor_roster = normalize_roster(roster)
+    rows = flatten_roster(st.session_state.advisor_roster)
     values_by_name = values_by_name or {}
     for i, row in enumerate(rows):
         _init_advisor_fields(i, row, overrides=values_by_name.get(row.name))
@@ -167,6 +167,8 @@ def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None)
 def init_advisor_payroll_session():
     if "advisor_roster" not in st.session_state:
         apply_roster_to_session(load_roster())
+    else:
+        st.session_state.advisor_roster = normalize_roster(st.session_state.advisor_roster)
     if "advisor_report_loaded" not in st.session_state:
         st.session_state.advisor_report_loaded = False
 

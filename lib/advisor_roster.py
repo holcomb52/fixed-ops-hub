@@ -136,6 +136,7 @@ def add_advisor(
     plan_type: str,
     name: str,
     advisor_id: str = "",
+    guarantee_expires: str = "",
 ) -> Tuple[bool, str]:
     if plan_type not in PLAN_ORDER:
         return False, "Unknown pay plan."
@@ -150,6 +151,7 @@ def add_advisor(
             clean_name,
             plan_type=plan_type,
             advisor_id=str(advisor_id or "").strip(),
+            guarantee_expires=format_guarantee_expires(guarantee_expires),
         ),
         plan_type,
     )

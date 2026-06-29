@@ -115,6 +115,40 @@ def _apply_roster_change(mutator):
     st.rerun()
 
 
+def _guarantee_expiration_value(key_prefix: str) -> str:
+    if st.session_state.get(f"{key_prefix}_open_ended", False):
+        return ""
+    picked = st.session_state.get(f"{key_prefix}_expires")
+    return picked.isoformat() if picked else ""
+
+
+def _render_guarantee_expiration_fields(key_prefix: str, current_value: str = "") -> None:
+    current = parse_guarantee_expires(current_value)
+    st.checkbox(
+        "No expiration date",
+        value=current is None,
+        key=f"{key_prefix}_open_ended",
+        help="Check if the weekly guarantee has no end date yet.",
+    )
+    if not st.session_state.get(f"{key_prefix}_open_ended", current is None):
+        st.date_input(
+            "Guarantee expires",
+            value=current or date.today(),
+            key=f"{key_prefix}_expires",
+            help=(
+                "If the expiration falls mid pay period, the advisor still receives "
+                "the guarantee for that entire pay period."
+            ),
+        )
+
+
+def _guarantee_expiration_label(value: str) -> str:
+    expires = parse_guarantee_expires(value)
+    if expires:
+        return expires.strftime("%m/%d/%y")
+    return "Set date"
+
+
 def _render_advisor_roster_manager():
     with st.expander("👥 Manage advisor roster", expanded=False):
         st.caption(
@@ -129,13 +163,14 @@ def _render_advisor_roster_manager():
             if not rows:
                 st.caption("No advisors on this plan.")
             else:
+                detail_header = "Guarantee expires" if plan_has_weekly_guarantee(plan_type) else "Plan detail"
                 h1, h2, h3, h4, h5 = st.columns([0.8, 2, 1.2, 1.2, 0.9])
                 with h1:
                     st.caption("ID")
                 with h2:
                     st.caption("Advisor")
                 with h3:
-                    st.caption("Plan detail")
+                    st.caption(detail_header)
                 with h4:
                     st.caption("Change plan")
                 with h5:
@@ -151,10 +186,26 @@ def _render_advisor_roster_manager():
                     if plan_type in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) and row.top_labor_rate > 9.5:
                         st.caption(f"Top tier ${row.top_labor_rate:.0f}/hr")
                     elif plan_has_weekly_guarantee(plan_type):
-                        expires = parse_guarantee_expires(row.guarantee_expires)
-                        st.caption(
-                            f"Expires {expires.strftime('%m/%d/%y')}" if expires else "No expiration set"
-                        )
+                        with st.popover(
+                            _guarantee_expiration_label(row.guarantee_expires),
+                            use_container_width=True,
+                        ):
+                            st.caption(f"**{row.name}** — guarantee expiration")
+                            _render_guarantee_expiration_fields(
+                                f"adv_exp_{plan_type}_{i}",
+                                row.guarantee_expires,
+                            )
+                            if st.button(
+                                "Save expiration",
+                                key=f"adv_exp_save_{plan_type}_{i}",
+                                use_container_width=True,
+                            ):
+                                new_exp = _guarantee_expiration_value(f"adv_exp_{plan_type}_{i}")
+                                _apply_roster_change(
+                                    lambda r, pt=plan_type, idx=i, ge=new_exp, aid=row.advisor_id: update_advisor(
+                                        r, pt, idx, aid, guarantee_expires=ge
+                                    )
+                                )
                     else:
                         st.caption("—")
                 with c4:
@@ -185,9 +236,18 @@ def _render_advisor_roster_manager():
                     new_id = st.text_input("Advisor ID", key=f"new_adv_id_{plan_type}")
                 with a2:
                     new_name = st.text_input("Name", key=f"new_adv_name_{plan_type}")
+                if plan_has_weekly_guarantee(plan_type):
+                    _render_guarantee_expiration_fields(f"new_adv_{plan_type}")
                 if st.form_submit_button("Add advisor", use_container_width=True):
+                    new_guarantee_expires = (
+                        _guarantee_expiration_value(f"new_adv_{plan_type}")
+                        if plan_has_weekly_guarantee(plan_type)
+                        else ""
+                    )
                     _apply_roster_change(
-                        lambda r, pt=plan_type, nm=new_name, aid=new_id: add_advisor(r, pt, nm, aid)
+                        lambda r, pt=plan_type, nm=new_name, aid=new_id, ge=new_guarantee_expires: add_advisor(
+                            r, pt, nm, aid, guarantee_expires=ge
+                        )
                     )
 
             st.markdown('<div class="pay-plan-section-divider"></div>', unsafe_allow_html=True)
@@ -202,30 +262,6 @@ def _render_advisor_roster_manager():
             pick = st.selectbox("Select advisor", labels, key="adv_roster_edit_pick")
             pick_idx = labels.index(pick)
             plan_type, row_idx, row = choices[pick_idx]
-            edit_guarantee_expires = row.guarantee_expires
-            current_expires = parse_guarantee_expires(row.guarantee_expires)
-            open_ended = False
-            if plan_has_weekly_guarantee(plan_type):
-                open_ended = st.checkbox(
-                    "Open-ended guarantee (no expiration date)",
-                    value=current_expires is None,
-                    key="adv_roster_edit_open_ended",
-                    help="Uncheck to set when the weekly guarantee ends.",
-                )
-                if not open_ended:
-                    picked = st.date_input(
-                        "Guarantee expires",
-                        value=current_expires or date.today(),
-                        key="adv_roster_edit_guarantee_expires",
-                        help=(
-                            "If the expiration falls mid pay period, the advisor still receives "
-                            "the guarantee for that entire pay period."
-                        ),
-                    )
-                    edit_guarantee_expires = picked.isoformat()
-                else:
-                    edit_guarantee_expires = ""
-
             e1, e2, e3 = st.columns([1, 1, 1])
             with e1:
                 edit_id = st.text_input("Advisor ID", value=row.advisor_id, key="adv_roster_edit_id")
@@ -245,12 +281,15 @@ def _render_advisor_roster_manager():
                 st.write("")
                 if st.button("Save changes", key="adv_roster_edit_save", use_container_width=True):
                     _apply_roster_change(
-                        lambda r, pt=plan_type, idx=row_idx, aid=edit_id, tr=top_rate, ge=edit_guarantee_expires: update_advisor(
+                        lambda r, pt=plan_type, idx=row_idx, aid=edit_id, tr=top_rate: update_advisor(
                             r, pt, idx, aid,
                             top_labor_rate=tr if pt in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) else None,
-                            guarantee_expires=ge if plan_has_weekly_guarantee(pt) else None,
                         )
                     )
+            if plan_has_weekly_guarantee(plan_type):
+                st.caption(
+                    "Guarantee expiration is set from the **Guarantee expires** button on each advisor row above."
+                )
 
         st.markdown("**Reset roster**")
         if st.checkbox("I want to reset the advisor roster to defaults", key="adv_roster_reset_confirm"):

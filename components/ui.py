@@ -57,6 +57,31 @@ def section_title(title: str, subtitle: str = "") -> str:
     return f'<div class="section-title"><h2>{title}</h2>{sub}</div>'
 
 
+def pay_plan_section_header(
+    title: str,
+    subtitle: str,
+    count: int,
+    accent: str = "cyan",
+    icon: str = "📋",
+    badge: str = "",
+) -> str:
+    badge_html = f'<span class="pay-plan-badge">{badge}</span>' if badge else ""
+    count_label = "advisor" if count == 1 else "advisors"
+    return f"""
+    <div class="pay-plan-section-header accent-{accent}">
+        <div class="pay-plan-section-icon">{icon}</div>
+        <div class="pay-plan-section-body">
+            <div class="pay-plan-section-top">
+                <span class="pay-plan-section-title">{title}</span>
+                {badge_html}
+                <span class="pay-plan-section-count">{count} {count_label}</span>
+            </div>
+            <p class="pay-plan-section-sub">{subtitle}</p>
+        </div>
+    </div>
+    """
+
+
 def employee_card(name: str, role: str, rate: str, status: str) -> str:
     active = status == "active"
     dot = "dot-live" if active else "dot-off"

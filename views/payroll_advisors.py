@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from components.ui import stat_card, status_banner
+from components.ui import pay_plan_section_header, stat_card, status_banner
 from lib.advisor_payroll_calc import (
     ADVISOR_WEEKLY_GUARANTEE,
     ALIGNMENT_BONUS_AMOUNT,
@@ -55,6 +55,46 @@ def _plan_label(plan_type: str) -> str:
     return PLAN_LABELS.get(plan_type, plan_type)
 
 
+PLAN_SECTION_STYLE = {
+    PLAN_SEASONED: {
+        "accent": "orange",
+        "icon": "⭐",
+        "badge": "Seasoned",
+        "subtitle": "200-hr objective · up to $13/hr with CP bump.",
+    },
+    PLAN_NEW_ADVISORS: {
+        "accent": "cyan",
+        "icon": "📈",
+        "badge": "Commission",
+        "subtitle": "130-hr objective · tiered labor rates with optional CP bump.",
+    },
+    PLAN_NEW_ADVISORS_GUARANTEE: {
+        "accent": "green",
+        "icon": "🛡️",
+        "badge": "Guarantee",
+        "subtitle": (
+            f"New Advisors commission or ${ADVISOR_WEEKLY_GUARANTEE:,.0f}/week guarantee — "
+            "whichever is higher."
+        ),
+    },
+}
+
+
+def _render_plan_section_header(plan_type: str, count: int) -> None:
+    style = PLAN_SECTION_STYLE[plan_type]
+    st.markdown(
+        pay_plan_section_header(
+            title=PLAN_LABELS[plan_type],
+            subtitle=style["subtitle"],
+            count=count,
+            accent=style["accent"],
+            icon=style["icon"],
+            badge=style["badge"],
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 def _apply_roster_change(mutator):
     rows = flatten_roster(st.session_state.advisor_roster)
     values = capture_advisor_values(rows)
@@ -78,16 +118,7 @@ def _render_advisor_roster_manager():
 
         for plan_type in PLAN_ORDER:
             rows = st.session_state.advisor_roster.get(plan_type, [])
-            st.markdown(f"**{PLAN_LABELS[plan_type]}** · {len(rows)} advisors")
-            if plan_type == PLAN_NEW_ADVISORS_GUARANTEE:
-                st.caption(
-                    f"New Advisors commission or ${ADVISOR_WEEKLY_GUARANTEE:,.0f}/week guarantee — "
-                    "whichever is higher."
-                )
-            elif plan_type == PLAN_SEASONED:
-                st.caption("200-hr objective · up to $13/hr with CP bump.")
-            else:
-                st.caption("130-hr objective · tiered labor rates with optional CP bump.")
+            _render_plan_section_header(plan_type, len(rows))
 
             if not rows:
                 st.caption("No advisors on this plan.")
@@ -148,7 +179,7 @@ def _render_advisor_roster_manager():
                         lambda r, pt=plan_type, nm=new_name, aid=new_id: add_advisor(r, pt, nm, aid)
                     )
 
-            st.markdown("---")
+            st.markdown('<div class="pay-plan-section-divider"></div>', unsafe_allow_html=True)
 
         choices = []
         for plan_type, rows in st.session_state.advisor_roster.items():

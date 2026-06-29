@@ -414,6 +414,146 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     margin: 0 0 1rem 0;
 }
 
+/* ── Pay plan roster sections ── */
+.pay-plan-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin: 1.35rem 0 0.85rem;
+    padding: 1rem 1.1rem 1rem 1.15rem;
+    border-radius: 16px;
+    background: rgba(12, 18, 32, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left-width: 5px;
+    border-left-style: solid;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.pay-plan-section-header.accent-orange {
+    border-left-color: #ff6b35;
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.14), rgba(12, 18, 32, 0.78));
+    box-shadow: 0 8px 28px rgba(255, 107, 53, 0.1);
+}
+
+.pay-plan-section-header.accent-cyan {
+    border-left-color: #00d4ff;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(12, 18, 32, 0.78));
+    box-shadow: 0 8px 28px rgba(0, 212, 255, 0.08);
+}
+
+.pay-plan-section-header.accent-green {
+    border-left-color: #34d399;
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.14), rgba(12, 18, 32, 0.78));
+    box-shadow: 0 8px 28px rgba(52, 211, 153, 0.1);
+}
+
+.pay-plan-section-icon {
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pay-plan-section-header.accent-orange .pay-plan-section-icon {
+    background: rgba(255, 107, 53, 0.18);
+    border-color: rgba(255, 107, 53, 0.35);
+}
+
+.pay-plan-section-header.accent-cyan .pay-plan-section-icon {
+    background: rgba(0, 212, 255, 0.15);
+    border-color: rgba(0, 212, 255, 0.35);
+}
+
+.pay-plan-section-header.accent-green .pay-plan-section-icon {
+    background: rgba(52, 211, 153, 0.18);
+    border-color: rgba(52, 211, 153, 0.35);
+}
+
+.pay-plan-section-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.pay-plan-section-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    margin-bottom: 0.35rem;
+}
+
+.pay-plan-section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.12rem;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.02em;
+}
+
+.pay-plan-section-header.accent-orange .pay-plan-section-title { color: #ffbc9a; }
+.pay-plan-section-header.accent-cyan .pay-plan-section-title { color: #7eeaff; }
+.pay-plan-section-header.accent-green .pay-plan-section-title { color: #86efac; }
+
+.pay-plan-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.pay-plan-section-header.accent-orange .pay-plan-badge {
+    background: rgba(255, 107, 53, 0.2);
+    color: #ffd4bf;
+    border-color: rgba(255, 107, 53, 0.35);
+}
+
+.pay-plan-section-header.accent-cyan .pay-plan-badge {
+    background: rgba(0, 212, 255, 0.16);
+    color: #a5f3fc;
+    border-color: rgba(0, 212, 255, 0.35);
+}
+
+.pay-plan-section-header.accent-green .pay-plan-badge {
+    background: rgba(52, 211, 153, 0.18);
+    color: #bbf7d0;
+    border-color: rgba(52, 211, 153, 0.35);
+}
+
+.pay-plan-section-count {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.pay-plan-section-sub {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.pay-plan-section-divider {
+    height: 1px;
+    margin: 1.5rem 0 0.25rem;
+    background: linear-gradient(90deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02), transparent);
+    border: none;
+}
+
 /* ── Employee cards ── */
 .employee-card {
     display: flex;

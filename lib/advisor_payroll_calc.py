@@ -8,17 +8,23 @@ from typing import Dict, List, Optional
 ALIGNMENT_BONUS_AMOUNT = 500.0
 CP_HOURS_BUMP_THRESHOLD = 2.25
 TOM_JOEY_CP_BUMP_RATE = 13.0
-NEW_HIRE_WEEKLY_GUARANTEE = 1000.0
+ADVISOR_WEEKLY_GUARANTEE = 1000.0
+NEW_HIRE_WEEKLY_GUARANTEE = ADVISOR_WEEKLY_GUARANTEE  # backward compat
 
 PLAN_SEASONED = "seasoned"
 PLAN_NEW_ADVISORS = "new_advisors"
-PLAN_NEW_HIRES = "new_hires"
+PLAN_NEW_ADVISORS_GUARANTEE = "new_advisors_guarantee"
+PLAN_NEW_HIRES = "new_hires"  # legacy key — migrated to PLAN_NEW_ADVISORS_GUARANTEE on load
 
 PLAN_LABELS = {
     PLAN_SEASONED: "Seasoned Advisors",
     PLAN_NEW_ADVISORS: "New Advisors",
-    PLAN_NEW_HIRES: "New Hires",
+    PLAN_NEW_ADVISORS_GUARANTEE: "New Advisors Pay Plan/Guarantee",
+    PLAN_NEW_HIRES: "New Advisors Pay Plan/Guarantee",
 }
+
+GUARANTEE_PLAN_TYPES = frozenset({PLAN_NEW_ADVISORS_GUARANTEE, PLAN_NEW_HIRES})
+NEW_ADVISORS_COMMISSION_PLAN_TYPES = frozenset({PLAN_NEW_ADVISORS, *GUARANTEE_PLAN_TYPES})
 
 PLAN_META = {
     PLAN_SEASONED: {
@@ -35,15 +41,39 @@ PLAN_META = {
         "top_labor_rate": 9.5,
         "parts_commission_rate": 0.03,
     },
+    PLAN_NEW_ADVISORS_GUARANTEE: {
+        "num_advisors": 6,
+        "warranty_labor_rate": 225.43,
+        "pay_period_objective": 130.0,
+        "top_labor_rate": 9.5,
+        "parts_commission_rate": 0.03,
+        "weekly_guarantee": ADVISOR_WEEKLY_GUARANTEE,
+    },
     PLAN_NEW_HIRES: {
         "num_advisors": 6,
         "warranty_labor_rate": 225.43,
         "pay_period_objective": 130.0,
         "top_labor_rate": 9.5,
         "parts_commission_rate": 0.03,
-        "weekly_guarantee": NEW_HIRE_WEEKLY_GUARANTEE,
+        "weekly_guarantee": ADVISOR_WEEKLY_GUARANTEE,
     },
 }
+
+
+def normalize_advisor_plan_type(plan_type: str) -> str:
+    if plan_type == PLAN_NEW_HIRES:
+        return PLAN_NEW_ADVISORS_GUARANTEE
+    return plan_type
+
+
+def plan_has_weekly_guarantee(plan_type: str) -> bool:
+    return normalize_advisor_plan_type(plan_type) == PLAN_NEW_ADVISORS_GUARANTEE
+
+
+def commission_plan_type(plan_type: str) -> str:
+    if normalize_advisor_plan_type(plan_type) == PLAN_NEW_ADVISORS_GUARANTEE:
+        return PLAN_NEW_ADVISORS
+    return plan_type
 
 # Standard / Felix CP bump rates (side table on advisor spreadsheet).
 CP_BUMP_RATES = {
@@ -130,12 +160,13 @@ def apply_plan_defaults(row: AdvisorPayrollRow, plan_type: Optional[str] = None)
     row.warranty_labor_rate = float(meta["warranty_labor_rate"])
     row.pay_period_objective = float(meta["pay_period_objective"])
     row.parts_commission_rate = float(meta["parts_commission_rate"])
-    if plan == PLAN_NEW_ADVISORS and row.top_labor_rate <= 0:
+    normalized = normalize_advisor_plan_type(plan)
+    if normalized in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) and row.top_labor_rate <= 0:
         row.top_labor_rate = float(meta["top_labor_rate"])
-    elif plan != PLAN_NEW_ADVISORS:
+    elif normalized == PLAN_SEASONED:
         row.top_labor_rate = float(meta["top_labor_rate"])
-    if plan == PLAN_NEW_HIRES:
-        row.weekly_guarantee = float(meta.get("weekly_guarantee", NEW_HIRE_WEEKLY_GUARANTEE))
+    if plan_has_weekly_guarantee(plan):
+        row.weekly_guarantee = float(meta.get("weekly_guarantee", ADVISOR_WEEKLY_GUARANTEE))
     return row
 
 
@@ -207,9 +238,7 @@ def _pick_hourly_pay(tiers: List[TierResult]) -> tuple:
 
 
 def _commission_plan_type(row: AdvisorPayrollRow) -> str:
-    if row.plan_type == PLAN_NEW_HIRES:
-        return PLAN_NEW_ADVISORS
-    return row.plan_type
+    return commission_plan_type(row.plan_type)
 
 
 def calculate_advisor_payroll(
@@ -252,7 +281,7 @@ def calculate_advisor_payroll(
     guarantee_active = False
     total = commission_total
 
-    if row.plan_type == PLAN_NEW_HIRES:
+    if plan_has_weekly_guarantee(row.plan_type):
         guarantee_amount = row.weekly_guarantee * max(pay_period_weeks, 0.0)
         if guarantee_amount > commission_total:
             guarantee_active = True

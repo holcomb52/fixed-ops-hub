@@ -3,17 +3,18 @@ import pandas as pd
 
 from components.ui import stat_card, status_banner
 from lib.advisor_payroll_calc import (
+    ADVISOR_WEEKLY_GUARANTEE,
     ALIGNMENT_BONUS_AMOUNT,
     CP_BUMP_RATES,
     CP_HOURS_BUMP_THRESHOLD,
     CSI_TIER_OPTIONS,
-    NEW_HIRE_WEEKLY_GUARANTEE,
     PLAN_LABELS,
     PLAN_NEW_ADVISORS,
-    PLAN_NEW_HIRES,
+    PLAN_NEW_ADVISORS_GUARANTEE,
     PLAN_SEASONED,
     TOM_JOEY_CP_BUMP_RATE,
     calculate_advisor_payroll,
+    plan_has_weekly_guarantee,
 )
 from lib.advisor_payroll_export_data import build_advisor_payroll_snapshot
 from lib.advisor_payroll_parser import parse_advisor_payroll_report
@@ -78,9 +79,10 @@ def _render_advisor_roster_manager():
         for plan_type in PLAN_ORDER:
             rows = st.session_state.advisor_roster.get(plan_type, [])
             st.markdown(f"**{PLAN_LABELS[plan_type]}** · {len(rows)} advisors")
-            if plan_type == PLAN_NEW_HIRES:
+            if plan_type == PLAN_NEW_ADVISORS_GUARANTEE:
                 st.caption(
-                    f"${NEW_HIRE_WEEKLY_GUARANTEE:,.0f}/week guarantee or commission pay — whichever is higher."
+                    f"New Advisors commission or ${ADVISOR_WEEKLY_GUARANTEE:,.0f}/week guarantee — "
+                    "whichever is higher."
                 )
             elif plan_type == PLAN_SEASONED:
                 st.caption("200-hr objective · up to $13/hr with CP bump.")
@@ -109,7 +111,7 @@ def _render_advisor_roster_manager():
                 with c2:
                     st.write(row.name)
                 with c3:
-                    if plan_type == PLAN_NEW_ADVISORS and row.top_labor_rate > 9.5:
+                    if plan_type in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) and row.top_labor_rate > 9.5:
                         st.caption(f"Top tier ${row.top_labor_rate:.0f}/hr")
                     else:
                         st.caption("—")
@@ -163,7 +165,7 @@ def _render_advisor_roster_manager():
                 edit_id = st.text_input("Advisor ID", value=row.advisor_id, key="adv_roster_edit_id")
             with e2:
                 top_rate = row.top_labor_rate
-                if plan_type == PLAN_NEW_ADVISORS:
+                if plan_type in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE):
                     top_rate = st.number_input(
                         "Top labor rate ($/hr)",
                         min_value=9.5,
@@ -178,7 +180,8 @@ def _render_advisor_roster_manager():
                 if st.button("Save changes", key="adv_roster_edit_save", use_container_width=True):
                     _apply_roster_change(
                         lambda r, pt=plan_type, idx=row_idx, aid=edit_id, tr=top_rate: update_advisor(
-                            r, pt, idx, aid, top_labor_rate=tr if pt == PLAN_NEW_ADVISORS else None
+                            r, pt, idx, aid,
+                            top_labor_rate=tr if pt in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) else None,
                         )
                     )
 
@@ -255,7 +258,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             args=(advisor_idx,),
             help="Turn on when they averaged more than 2.25 customer-pay hours per RO.",
         )
-    elif row.plan_type != PLAN_NEW_HIRES:
+    elif not plan_has_weekly_guarantee(row.plan_type):
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
             key=adv_key(advisor_idx, "cp_bump"),
@@ -316,10 +319,10 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         delta=f"${result.hourly_rate:.2f}/hr · {result.hourly_tier_label}" if result.hourly_pay else "No tier",
     )
 
-    if row.plan_type == PLAN_NEW_HIRES:
+    if plan_has_weekly_guarantee(row.plan_type):
         st.caption(
-            f"**New Hire guarantee:** ${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks = "
-            f"**{_money(result.guarantee_amount)}** · Commission: **{_money(result.commission_total)}**"
+            f"**Weekly guarantee:** ${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks = "
+            f"**{_money(result.guarantee_amount)}** · New Advisors commission: **{_money(result.commission_total)}**"
         )
     elif row.plan_type == PLAN_SEASONED:
         if result.cp_bump_active:
@@ -364,7 +367,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         },
         {"Pay": "SPIFF", "Amount": result.spiff_pay, "Detail": ""},
     ]
-    if row.plan_type == PLAN_NEW_HIRES:
+    if plan_has_weekly_guarantee(row.plan_type):
         pay_rows.append(
             {
                 "Pay": "Commission subtotal",

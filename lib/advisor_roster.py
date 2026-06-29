@@ -11,15 +11,16 @@ from lib.advisor_payroll_calc import (
     PLAN_LABELS,
     PLAN_META,
     PLAN_NEW_ADVISORS,
-    PLAN_NEW_HIRES,
+    PLAN_NEW_ADVISORS_GUARANTEE,
     PLAN_SEASONED,
     AdvisorPayrollRow,
     apply_plan_defaults,
+    normalize_advisor_plan_type,
 )
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "advisor_roster.json"
 
-PLAN_ORDER = [PLAN_SEASONED, PLAN_NEW_ADVISORS, PLAN_NEW_HIRES]
+PLAN_ORDER = [PLAN_SEASONED, PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE]
 
 
 def _clone_row(row: AdvisorPayrollRow) -> AdvisorPayrollRow:
@@ -61,7 +62,7 @@ def default_roster() -> Dict[str, List[AdvisorPayrollRow]]:
                 PLAN_NEW_ADVISORS,
             ),
         ],
-        PLAN_NEW_HIRES: [],
+        PLAN_NEW_ADVISORS_GUARANTEE: [],
     }
 
 
@@ -87,22 +88,25 @@ def serialize_roster(roster: Dict[str, List[AdvisorPayrollRow]]) -> dict:
 
 
 def roster_from_saved_data(data: dict) -> Dict[str, List[AdvisorPayrollRow]]:
-    roster = default_roster()
-    for plan in PLAN_ORDER:
-        roster[plan] = []
-    for plan in PLAN_ORDER:
-        for item in data.get(plan, []):
-            plan_type = item.get("plan_type", plan)
+    roster = {plan: [] for plan in PLAN_ORDER}
+    for raw_plan, items in data.items():
+        for item in items:
+            plan_type = normalize_advisor_plan_type(item.get("plan_type", raw_plan))
+            if plan_type not in PLAN_ORDER:
+                continue
+            meta = PLAN_META.get(plan_type, PLAN_META[PLAN_NEW_ADVISORS])
             row = AdvisorPayrollRow(
                 name=item["name"],
                 plan_type=plan_type,
                 advisor_id=str(item.get("advisor_id", "") or ""),
-                top_labor_rate=float(item.get("top_labor_rate", PLAN_META[plan_type]["top_labor_rate"])),
+                top_labor_rate=float(item.get("top_labor_rate", meta["top_labor_rate"])),
                 weekly_guarantee=float(
-                    item.get("weekly_guarantee", PLAN_META[plan_type].get("weekly_guarantee", 1000.0))
+                    item.get("weekly_guarantee", meta.get("weekly_guarantee", 1000.0))
                 ),
             )
-            roster[plan].append(apply_plan_defaults(row, plan_type))
+            roster[plan_type].append(apply_plan_defaults(row, plan_type))
+    if not any(roster.values()):
+        return clone_roster(default_roster())
     return roster
 
 
@@ -194,7 +198,7 @@ def update_advisor(
         return False, "Advisor not found."
     row = rows[index]
     row.advisor_id = str(advisor_id or "").strip()
-    if plan_type == PLAN_NEW_ADVISORS and top_labor_rate is not None:
+    if plan_type in (PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE) and top_labor_rate is not None:
         row.top_labor_rate = float(top_labor_rate)
     return True, f"Updated {row.name}."
 

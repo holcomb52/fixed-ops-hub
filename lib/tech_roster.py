@@ -13,7 +13,9 @@ from lib.tech_payroll_calc import (
     QUICK_LUBE_TECHS,
     WEEKLY_HOUR_GUARANTEE_DEFAULT,
     TechPayrollRow,
+    ensure_tech_row_fields,
     infer_tech_category,
+    normalize_teams,
 )
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "tech_roster.json"
@@ -72,6 +74,7 @@ ROLE_OPTIONS = {
 
 
 def role_label(row: TechPayrollRow) -> str:
+    ensure_tech_row_fields(row)
     if row.foreman_rule == "team_per_hr_2":
         return "Foreman ($2/hr)"
     if row.foreman_rule == "team_per_hr_1":
@@ -88,6 +91,7 @@ def role_label(row: TechPayrollRow) -> str:
 
 
 def role_option_key(row: TechPayrollRow) -> str:
+    ensure_tech_row_fields(row)
     if row.foreman_rule == "team_per_hr_2":
         return "Foreman ($2/hr team bonus)"
     if row.foreman_rule == "team_per_hr_1":
@@ -104,7 +108,7 @@ def role_option_key(row: TechPayrollRow) -> str:
 
 
 def _clone_row(row: TechPayrollRow) -> TechPayrollRow:
-    return TechPayrollRow(**copy.deepcopy(row.__dict__))
+    return ensure_tech_row_fields(TechPayrollRow(**copy.deepcopy(row.__dict__)))
 
 
 def clone_teams(teams: Dict[str, List[TechPayrollRow]]) -> Dict[str, List[TechPayrollRow]]:
@@ -172,7 +176,7 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     supplemental_tier=str(tech.get("supplemental_tier", "") or ""),
                 )
             )
-    return teams
+    return normalize_teams(teams)
 
 
 def load_roster() -> Dict[str, List[TechPayrollRow]]:

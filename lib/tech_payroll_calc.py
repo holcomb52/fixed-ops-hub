@@ -173,6 +173,36 @@ def infer_tech_category(name: str, saved_category: str = "") -> str:
         return "quick_lube"
     return "shop"
 
+
+def ensure_tech_row_fields(row: TechPayrollRow) -> TechPayrollRow:
+    """Backfill fields added after a row was created (live sessions / old saves)."""
+    if not hasattr(row, "tech_category"):
+        row.tech_category = infer_tech_category(row.name)
+    if not hasattr(row, "pay_plan"):
+        row.pay_plan = "standard"
+    if not hasattr(row, "weekly_hour_guarantee"):
+        row.weekly_hour_guarantee = 0.0
+    if not hasattr(row, "cp_hours"):
+        row.cp_hours = 0.0
+    if not hasattr(row, "cp_ro_count"):
+        row.cp_ro_count = 0
+    if not hasattr(row, "cp_hrs_per_ro"):
+        row.cp_hrs_per_ro = 0.0
+    if not hasattr(row, "closing_pct"):
+        row.closing_pct = 0.0
+    if not hasattr(row, "supplemental_bonus"):
+        row.supplemental_bonus = 0.0
+    if not hasattr(row, "supplemental_tier"):
+        row.supplemental_tier = ""
+    return row
+
+
+def normalize_teams(teams: Dict[str, List[TechPayrollRow]]) -> Dict[str, List[TechPayrollRow]]:
+    for rows in teams.values():
+        for i, row in enumerate(rows):
+            rows[i] = ensure_tech_row_fields(row)
+    return teams
+
 # Tech numbers from flag sheet PDF (Tech# column)
 DEFAULT_TECH_NUMBERS = {
     "Derrick Opp": "900798",

@@ -192,6 +192,10 @@ def render_pay_period_selector():
 def init_payroll_session():
     if "tech_teams" not in st.session_state:
         st.session_state.tech_teams = load_roster()
+    else:
+        from lib.tech_payroll_calc import normalize_teams
+
+        st.session_state.tech_teams = normalize_teams(st.session_state.tech_teams)
     if "pay_period" not in st.session_state:
         st.session_state.pay_period = ""
     if "pdf_loaded" not in st.session_state:
@@ -228,6 +232,9 @@ def _field_float(team_name: str, idx: int, field: str, default: float = 0.0) -> 
 
 
 def sync_row(team_name: str, idx: int, row: TechPayrollRow) -> TechPayrollRow:
+    from lib.tech_payroll_calc import ensure_tech_row_fields
+
+    ensure_tech_row_fields(row)
     ensure_row_fields(team_name, idx, row)
     row.flat_rate_hours = _field_float(team_name, idx, "hours", row.flat_rate_hours)
     row.dollars_earned = _field_float(team_name, idx, "dollars", row.dollars_earned)

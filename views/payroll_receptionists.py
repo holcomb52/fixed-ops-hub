@@ -13,8 +13,10 @@ from lib.receptionist_payroll_pdf_export import generate_receptionist_payroll_pd
 from lib.receptionist_payroll_storage import save_receptionist_payroll_run
 from lib.receptionist_roster import (
     add_employee,
+    build_receptionist_full_name,
     clone_roster,
     flatten_roster,
+    format_receptionist_display_name,
     remove_employee,
     reset_roster,
     save_roster,
@@ -65,24 +67,34 @@ def _apply_roster_change(mutator):
 def _render_roster_manager():
     with st.expander("👥 Manage receptionist roster", expanded=False):
         render_roster_sync_error("_receptionist_roster_sync_error")
-        st.caption("Add, edit, or remove receptionists. $/appointment saves when you change it in each person's section.")
+        st.caption("Add, edit, or remove receptionists. Set $/appointment in Edit or in each person's pay section.")
 
         for row in flatten_roster(st.session_state.receptionist_roster):
+            display_name = format_receptionist_display_name(row)
             c1, c2, c3 = st.columns([2, 2.2, 0.8])
             with c1:
-                st.write(row.name)
+                st.write(display_name)
                 if row.has_warranty_bonus:
                     st.caption(f"Warranty bonus eligible · {_money(row.warranty_bonus_amount)}")
             with c2:
                 codes = ", ".join(row.taker_codes) if row.taker_codes else "—"
-                st.caption(f"Last name: {row.last_name or '—'} · Codes: {codes}")
+                rate = float(row.appointment_rate or 0)
+                st.caption(f"${rate:.2f}/appt · Codes: {codes}")
             with c3:
                 with st.popover("Edit", use_container_width=True):
-                    new_name = st.text_input("Name", value=row.name, key=f"rec_edit_name_{row.name}")
+                    new_name = st.text_input("First name", value=row.name.split()[0], key=f"rec_edit_name_{row.name}")
                     new_last = st.text_input(
                         "Last name (for CASHIERS match)",
-                        value=row.last_name,
+                        value=row.last_name.title() if row.last_name else "",
                         key=f"rec_edit_last_{row.name}",
+                    )
+                    new_rate = st.number_input(
+                        "$ per appointment set",
+                        min_value=0.0,
+                        step=0.5,
+                        value=float(row.appointment_rate or 0),
+                        key=f"rec_edit_rate_{row.name}",
+                        help="Dollars paid for each appointment this receptionist sets.",
                     )
                     new_codes = st.text_input(
                         "Taker codes (comma-separated)",
@@ -103,13 +115,15 @@ def _render_roster_manager():
                     )
                     if st.button("Save changes", key=f"rec_save_{row.name}", use_container_width=True):
                         codes = [c.strip() for c in new_codes.split(",") if c.strip()]
+                        full_name = build_receptionist_full_name(new_name, new_last)
                         _apply_roster_change(
-                            lambda r, n=row.name: (
+                            lambda r, n=row.name, fn=full_name: (
                                 update_employee(
                                     r,
                                     n,
-                                    new_name=new_name.strip() or n,
+                                    new_name=fn,
                                     last_name=new_last,
+                                    appointment_rate=new_rate,
                                     taker_codes=codes,
                                     has_warranty_bonus=warranty_eligible,
                                     warranty_bonus_amount=warranty_amount,
@@ -120,22 +134,26 @@ def _render_roster_manager():
                     _apply_roster_change(lambda r, n=row.name: remove_employee(r, n))
 
         st.markdown("**Add receptionist**")
-        c1, c2, c3, c4 = st.columns([2, 1.2, 1.5, 0.8])
+        c1, c2, c3, c4, c5 = st.columns([1.5, 1.2, 1, 1.5, 0.8])
         with c1:
-            new_name = st.text_input("Name", key="rec_add_name", placeholder="First Last")
+            new_name = st.text_input("First name", key="rec_add_name", placeholder="Megan")
         with c2:
-            new_last = st.text_input("Last name", key="rec_add_last", placeholder="SMITH")
+            new_last = st.text_input("Last name", key="rec_add_last", placeholder="Schneider")
         with c3:
-            new_codes = st.text_input("Taker codes", key="rec_add_codes", placeholder="22SMITHJ")
+            new_rate = st.number_input("$ / appt", min_value=0.0, step=0.5, value=2.0, key="rec_add_rate")
         with c4:
+            new_codes = st.text_input("Taker codes", key="rec_add_codes", placeholder="22SMITHJ")
+        with c5:
             if st.button("Add", key="rec_add_btn", use_container_width=True):
                 codes = [c.strip() for c in new_codes.split(",") if c.strip()]
+                full_name = build_receptionist_full_name(new_name, new_last)
                 _apply_roster_change(
                     lambda r: add_employee(
                         r,
-                        new_name,
+                        full_name or new_name,
                         last_name=new_last,
                         taker_codes=codes,
+                        appointment_rate=new_rate,
                     )
                 )
 
@@ -148,7 +166,7 @@ def _render_roster_manager():
 
 def _summary_row(row, synced, result) -> dict:
     return {
-        "Receptionist": row.name,
+        "Receptionist": format_receptionist_display_name(row),
         "$/Appt": synced.appointment_rate,
         "Appts": synced.appointments_set,
         "Appt Pay": result.appointment_pay,
@@ -305,7 +323,7 @@ def render():
         arrow = "▼" if is_open else "▶"
         display_rate = float(synced.appointment_rate or row.appointment_rate or 0)
         button_label = (
-            f"{arrow}  {row.name}  ·  {_money(display_rate)}/appt  ·  "
+            f"{arrow}  {format_receptionist_display_name(row)}  ·  {_money(display_rate)}/appt  ·  "
             f"Total {_money(result.total_pay)}"
         )
         if st.button(

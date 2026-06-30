@@ -47,6 +47,30 @@ def flatten_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) -> List[Rece
     return list(roster.get(TYPE_RECEPTIONIST, []))
 
 
+def format_receptionist_display_name(row: ReceptionistPayrollRow) -> str:
+    """Show first and last name even when only the first name is stored in name."""
+    name = (row.name or "").strip()
+    last = (row.last_name or "").strip()
+    if not name:
+        return last.title() if last else ""
+    if not last or last.upper() in name.upper():
+        return name
+    if len(name.split()) == 1:
+        return f"{name} {last.title()}"
+    return name
+
+
+def build_receptionist_full_name(name: str, last_name: str) -> str:
+    name = (name or "").strip()
+    last = (last_name or "").strip().upper()
+    if not name:
+        return ""
+    if last and last not in name.upper():
+        first = name.split()[0]
+        return f"{first} {last.title()}"
+    return name
+
+
 def _row_from_dict(item: dict) -> ReceptionistPayrollRow:
     return ReceptionistPayrollRow(
         name=item.get("name", ""),
@@ -168,6 +192,8 @@ def update_employee(
             for other in flatten_roster(roster):
                 if other.name.lower() == new_name.strip().lower() and other.name != name:
                     return False, f"{new_name} is already on the roster."
+            row.name = new_name.strip()
+        elif new_name and new_name.strip():
             row.name = new_name.strip()
         if appointment_rate is not None:
             row.appointment_rate = appointment_rate

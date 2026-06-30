@@ -86,6 +86,11 @@ def roster_from_saved_data(data: dict) -> Dict[str, List[ReceptionistPayrollRow]
 
 
 def load_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
+    from lib.roster_supabase_sync import ROSTER_KEY_RECEPTIONISTS, load_roster_data
+
+    remote = load_roster_data(ROSTER_KEY_RECEPTIONISTS)
+    if remote is not None:
+        return roster_from_saved_data(remote)
     if ROSTER_PATH.exists():
         try:
             data = json.loads(ROSTER_PATH.read_text())
@@ -98,8 +103,15 @@ def load_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
 
 
 def save_roster(roster: Dict[str, List[ReceptionistPayrollRow]]):
-    ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ROSTER_PATH.write_text(json.dumps(serialize_roster(roster), indent=2))
+    from lib.roster_supabase_sync import ROSTER_KEY_RECEPTIONISTS, save_roster_data
+
+    data = serialize_roster(roster)
+    try:
+        ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ROSTER_PATH.write_text(json.dumps(data, indent=2))
+    except OSError:
+        pass
+    save_roster_data(ROSTER_KEY_RECEPTIONISTS, data, session_error_key="_receptionist_roster_sync_error")
 
 
 def add_employee(

@@ -41,7 +41,7 @@ from views.receptionist_payroll_helpers import (
     _read_appointment_rate,
     _tires_text_key,
 )
-from views.payroll_helpers import render_payroll_sync_error
+from views.payroll_helpers import render_roster_sync_error
 
 
 def _money(v: float) -> str:
@@ -64,6 +64,7 @@ def _apply_roster_change(mutator):
 
 def _render_roster_manager():
     with st.expander("👥 Manage receptionist roster", expanded=False):
+        render_roster_sync_error("_receptionist_roster_sync_error")
         st.caption("Add, edit, or remove receptionists. $/appointment saves when you change it in each person's section.")
 
         for row in flatten_roster(st.session_state.receptionist_roster):

@@ -68,6 +68,13 @@ create table if not exists receptionist_payroll_runs (
 create index if not exists idx_receptionist_payroll_runs_period on receptionist_payroll_runs (pay_period desc);
 create index if not exists idx_receptionist_payroll_runs_completed on receptionist_payroll_runs (completed_at desc);
 
+-- Live payroll rosters (advisor / technician / receptionist team lists)
+create table if not exists payroll_rosters (
+    roster_key text primary key,
+    data jsonb not null,
+    updated_at timestamptz default now()
+);
+
 -- Saved warranty ELR analysis runs (Reports → Warranty ELR Analysis)
 create table if not exists warranty_labor_runs (
     id uuid primary key default gen_random_uuid(),

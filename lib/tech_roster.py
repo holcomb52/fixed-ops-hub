@@ -180,15 +180,30 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
 
 
 def load_roster() -> Dict[str, List[TechPayrollRow]]:
+    from lib.roster_supabase_sync import ROSTER_KEY_TECHNICIANS, load_roster_data
+
+    remote = load_roster_data(ROSTER_KEY_TECHNICIANS)
+    if remote is not None:
+        return teams_from_saved_data(remote)
     if ROSTER_PATH.exists():
-        data = json.loads(ROSTER_PATH.read_text())
-        return teams_from_saved_data(data)
+        try:
+            data = json.loads(ROSTER_PATH.read_text())
+            return teams_from_saved_data(data)
+        except (json.JSONDecodeError, OSError):
+            pass
     return clone_teams(DEFAULT_TEAMS)
 
 
 def save_roster(teams: Dict[str, List[TechPayrollRow]]) -> None:
-    ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ROSTER_PATH.write_text(json.dumps(serialize_roster(teams), indent=2))
+    from lib.roster_supabase_sync import ROSTER_KEY_TECHNICIANS, save_roster_data
+
+    data = serialize_roster(teams)
+    try:
+        ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ROSTER_PATH.write_text(json.dumps(data, indent=2))
+    except OSError:
+        pass
+    save_roster_data(ROSTER_KEY_TECHNICIANS, data, session_error_key="_tech_roster_sync_error")
 
 
 def all_technician_names(teams: Dict[str, List[TechPayrollRow]]) -> List[str]:

@@ -59,15 +59,6 @@ def default_roster() -> Dict[str, List[AdvisorPayrollRow]]:
                 PLAN_NEW_ADVISORS,
             ),
             apply_plan_defaults(
-                AdvisorPayrollRow(
-                    "Felix Figueroa",
-                    plan_type=PLAN_NEW_ADVISORS,
-                    advisor_id="3812",
-                    top_labor_rate=12.0,
-                ),
-                PLAN_NEW_ADVISORS,
-            ),
-            apply_plan_defaults(
                 AdvisorPayrollRow("Brady Hatcher", plan_type=PLAN_NEW_ADVISORS, advisor_id="3816"),
                 PLAN_NEW_ADVISORS,
             ),
@@ -124,15 +115,30 @@ def roster_from_saved_data(data: dict) -> Dict[str, List[AdvisorPayrollRow]]:
 
 
 def load_roster() -> Dict[str, List[AdvisorPayrollRow]]:
+    from lib.roster_supabase_sync import ROSTER_KEY_ADVISORS, load_roster_data
+
+    remote = load_roster_data(ROSTER_KEY_ADVISORS)
+    if remote is not None:
+        return roster_from_saved_data(remote)
     if ROSTER_PATH.exists():
-        data = json.loads(ROSTER_PATH.read_text())
-        return roster_from_saved_data(data)
+        try:
+            data = json.loads(ROSTER_PATH.read_text())
+            return roster_from_saved_data(data)
+        except (json.JSONDecodeError, OSError):
+            pass
     return clone_roster(default_roster())
 
 
 def save_roster(roster: Dict[str, List[AdvisorPayrollRow]]) -> None:
-    ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ROSTER_PATH.write_text(json.dumps(serialize_roster(roster), indent=2))
+    from lib.roster_supabase_sync import ROSTER_KEY_ADVISORS, save_roster_data
+
+    data = serialize_roster(roster)
+    try:
+        ROSTER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ROSTER_PATH.write_text(json.dumps(data, indent=2))
+    except OSError:
+        pass
+    save_roster_data(ROSTER_KEY_ADVISORS, data, session_error_key="_advisor_roster_sync_error")
 
 
 def all_advisor_names(roster: Dict[str, List[AdvisorPayrollRow]]) -> List[str]:

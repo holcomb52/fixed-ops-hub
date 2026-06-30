@@ -46,7 +46,7 @@ from views.advisor_payroll_helpers import (
     refresh_advisor_value_store,
     toggle_advisor_section,
 )
-from views.payroll_helpers import pay_period_weeks, render_payroll_sync_error
+from views.payroll_helpers import pay_period_weeks, render_payroll_sync_error, render_roster_sync_error
 
 
 def _pay_period_start():
@@ -151,6 +151,7 @@ def _guarantee_expiration_label(value: str) -> str:
 
 def _render_advisor_roster_manager():
     with st.expander("👥 Manage advisor roster", expanded=False):
+        render_roster_sync_error("_advisor_roster_sync_error")
         st.caption(
             "Add advisors, remove terminations, or move them between pay plans. "
             "Changes save automatically."

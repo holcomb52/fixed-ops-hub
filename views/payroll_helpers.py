@@ -298,3 +298,17 @@ def render_payroll_sync_error(session_key: str, table: str = "") -> None:
             with st.expander("SQL to run in Supabase (creates missing tables)"):
                 st.code(sql, language="sql")
                 st.caption("Supabase dashboard → SQL Editor → New query → paste → Run")
+
+
+def render_roster_sync_error(session_key: str) -> None:
+    sync_err = st.session_state.get(session_key)
+    if not sync_err:
+        return
+    from lib.supabase_setup_help import missing_payroll_tables_sql, payroll_sync_error_message
+
+    st.warning(payroll_sync_error_message(sync_err, table="payroll_rosters"))
+    sql = missing_payroll_tables_sql()
+    if sql:
+        with st.expander("SQL to run in Supabase (saves roster changes across logins)"):
+            st.code(sql, language="sql")
+            st.caption("Supabase dashboard → SQL Editor → New query → paste → Run")

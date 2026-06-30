@@ -41,7 +41,7 @@ from views.receptionist_payroll_helpers import (
     _read_appointment_rate,
     _tires_text_key,
 )
-from views.payroll_helpers import render_roster_sync_error
+from views.payroll_helpers import render_payroll_sync_error, render_roster_sync_error
 
 
 def _money(v: float) -> str:

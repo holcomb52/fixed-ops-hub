@@ -159,8 +159,6 @@ def save_receptionist_form(name: str):
     tires = _parse_tires_value(name, row)
     st.session_state[rec_key(name, "appointment_rate")] = rate
     st.session_state[rec_key(name, "tires_sold")] = tires
-    st.session_state[_appointment_rate_text_key(name)] = _format_rate_text(rate)
-    st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
     st.session_state[section_open_key(name)] = True
     persist_appointment_rate(name)
     refresh_receptionist_value_store()
@@ -174,7 +172,6 @@ def capture_open_receptionist_inputs():
     for row in flatten_roster(st.session_state.receptionist_roster):
         rate = _parse_appointment_rate(row.name, row)
         st.session_state[rec_key(row.name, "appointment_rate")] = rate
-        st.session_state[_appointment_rate_text_key(row.name)] = _format_rate_text(rate)
         if _tires_widgets_active(row.name):
             st.session_state[rec_key(row.name, "tires_sold")] = _parse_tires_value(row.name, row)
     refresh_receptionist_value_store()

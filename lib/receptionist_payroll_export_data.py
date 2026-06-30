@@ -34,6 +34,8 @@ def build_receptionist_payroll_snapshot(
             "tire_pay": result.tire_pay,
             "warranty_pay": result.warranty_pay,
             "warranty_bonus_qualified": employee.warranty_bonus_qualified,
+            "csi_pay": result.csi_pay,
+            "csi_tier": employee.csi_tier,
             "bonus_amount": employee.bonus_amount,
             "bonus_label": employee.bonus_label,
             "bonus_pay": result.bonus_pay,

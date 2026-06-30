@@ -3,7 +3,10 @@ import pandas as pd
 
 from components.ui import stat_card, status_banner
 from lib.receptionist_payroll_calc import (
+    CSI_TIER_KEYS,
+    CSI_TIER_NONE,
     DEFAULT_WARRANTY_BONUS,
+    RECEPTIONIST_CSI_TIER_OPTIONS,
     TIRE_PAY_RATE,
     calculate_receptionist_payroll,
 )
@@ -31,6 +34,7 @@ from views.receptionist_payroll_helpers import (
     capture_receptionist_values,
     form_key,
     init_receptionist_payroll_session,
+    persist_receptionist_changes,
     rec_key,
     refresh_receptionist_value_store,
     save_receptionist_form,
@@ -76,6 +80,8 @@ def _render_roster_manager():
                 st.write(display_name)
                 if row.has_warranty_bonus:
                     st.caption(f"Warranty bonus eligible · {_money(row.warranty_bonus_amount)}")
+                if row.has_csi_bonus:
+                    st.caption("CSI bonus eligible · $1,000 / $500")
             with c2:
                 codes = ", ".join(row.taker_codes) if row.taker_codes else "—"
                 rate = float(row.appointment_rate or 0)
@@ -113,6 +119,12 @@ def _render_roster_manager():
                         value=float(row.warranty_bonus_amount or DEFAULT_WARRANTY_BONUS),
                         key=f"rec_edit_warranty_amt_{row.name}",
                     )
+                    csi_eligible = st.checkbox(
+                        "CSI bonus eligible",
+                        value=row.has_csi_bonus,
+                        key=f"rec_edit_csi_{row.name}",
+                        help="Shows CSI tier toggles on payroll ($1,000 at/above national avg, $500 between national and business center avg).",
+                    )
                     if st.button("Save changes", key=f"rec_save_{row.name}", use_container_width=True):
                         codes = [c.strip() for c in new_codes.split(",") if c.strip()]
                         full_name = build_receptionist_full_name(new_name, new_last)
@@ -127,6 +139,7 @@ def _render_roster_manager():
                                     taker_codes=codes,
                                     has_warranty_bonus=warranty_eligible,
                                     warranty_bonus_amount=warranty_amount,
+                                    has_csi_bonus=csi_eligible,
                                 )
                             )
                         )
@@ -164,6 +177,35 @@ def _render_roster_manager():
             st.rerun()
 
 
+def _csi_label(tier_key: str) -> str:
+    label, amount = RECEPTIONIST_CSI_TIER_OPTIONS.get(tier_key, RECEPTIONIST_CSI_TIER_OPTIONS[CSI_TIER_NONE])
+    if amount:
+        return f"{label} · {_money(amount)}"
+    return label
+
+
+def _render_receptionist_csi_buttons(row) -> None:
+    current = st.session_state.get(rec_key(row.name, "csi_tier"), CSI_TIER_NONE)
+    if current not in CSI_TIER_KEYS:
+        current = CSI_TIER_NONE
+
+    st.caption("CSI bonus — paid on first payroll of the following month")
+    cols = st.columns(len(CSI_TIER_KEYS))
+    for col, tier_key in zip(cols, CSI_TIER_KEYS):
+        label, amount = RECEPTIONIST_CSI_TIER_OPTIONS[tier_key]
+        with col:
+            selected = current == tier_key
+            if st.button(
+                f"{label}\n{_money(amount)}",
+                key=f"rec_csi_pick_{row.name}_{tier_key}",
+                use_container_width=True,
+                type="primary" if selected else "secondary",
+            ):
+                st.session_state[rec_key(row.name, "csi_tier")] = tier_key
+                persist_receptionist_changes(row.name)
+                st.rerun()
+
+
 def _summary_row(row, synced, result) -> dict:
     return {
         "Receptionist": format_receptionist_display_name(row),
@@ -173,6 +215,7 @@ def _summary_row(row, synced, result) -> dict:
         "Tires": synced.tires_sold,
         "Tire Pay": result.tire_pay,
         "Warranty": result.warranty_pay,
+        "CSI": result.csi_pay,
         "SPIFF": result.spiff_pay,
         "Total Pay": result.total_pay,
     }
@@ -229,6 +272,9 @@ def _render_receptionist_section(row) -> None:
     if submitted:
         save_receptionist_form(row.name)
 
+    if row.has_csi_bonus:
+        _render_receptionist_csi_buttons(row)
+
     synced = sync_receptionist(row)
     result = calculate_receptionist_payroll(synced)
 
@@ -250,6 +296,12 @@ def _render_receptionist_section(row) -> None:
             "Amount": result.warranty_pay,
             "Detail": "Qualified" if synced.warranty_bonus_qualified else "Toggle off",
         })
+    if row.has_csi_bonus:
+        pay_rows.append({
+            "Pay": "CSI bonus",
+            "Amount": result.csi_pay,
+            "Detail": _csi_label(synced.csi_tier),
+        })
     pay_rows.extend([
         {"Pay": "SPIFF", "Amount": result.spiff_pay, "Detail": ""},
         {"Pay": "TOTAL", "Amount": result.total_pay, "Detail": ""},
@@ -266,7 +318,7 @@ def render():
     init_receptionist_payroll_session()
 
     st.markdown(
-        '<span class="legend-chip chip-manual">Click a name · enter values · click Save entries</span> '
+        '<span class="legend-chip chip-manual">Click a name · enter values · click Save entries · CSI tier buttons save on click</span> '
         '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span> '
         '<span class="legend-chip chip-live">Changes save automatically</span>',
         unsafe_allow_html=True,
@@ -358,6 +410,7 @@ def render():
             "Tires": st.column_config.NumberColumn(format="%.0f"),
             "Tire Pay": st.column_config.NumberColumn(format="$%.2f"),
             "Warranty": st.column_config.NumberColumn(format="$%.2f"),
+            "CSI": st.column_config.NumberColumn(format="$%.2f"),
             "SPIFF": st.column_config.NumberColumn(format="$%.2f"),
             "Total Pay": st.column_config.NumberColumn(format="$%.2f"),
         },

@@ -14,6 +14,7 @@ from lib.receptionist_payroll_calc import (
 )
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "receptionist_roster.json"
+CSI_BONUS_DEFAULT_NAMES = frozenset({"Brandy Sistrunk", "Serenity Skinner"})
 
 
 def _clone_row(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
@@ -29,7 +30,12 @@ def default_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
         TYPE_RECEPTIONIST: [
             ReceptionistPayrollRow("Misty Carver", last_name="CARVER", taker_codes=["22CARVERM"]),
             ReceptionistPayrollRow("Jennifer Cleary", last_name="CLEARY", taker_codes=["22CLEARYJ"]),
-            ReceptionistPayrollRow("Brandy Sistrunk", last_name="SISTRUNK", taker_codes=[]),
+            ReceptionistPayrollRow(
+                "Brandy Sistrunk",
+                last_name="SISTRUNK",
+                taker_codes=["22SISTRUNKB"],
+                has_csi_bonus=True,
+            ),
             ReceptionistPayrollRow("Kayla Hoffman", last_name="HOFFMAN", taker_codes=["22HOFFMANK"]),
             ReceptionistPayrollRow("Samantha Rodriguez", last_name="RODRIGUEZ", taker_codes=["22RODRIGUEZS"]),
             ReceptionistPayrollRow(
@@ -38,6 +44,7 @@ def default_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
                 taker_codes=["22SKINNERS"],
                 has_warranty_bonus=True,
                 warranty_bonus_amount=DEFAULT_WARRANTY_BONUS,
+                has_csi_bonus=True,
             ),
         ],
     }
@@ -72,14 +79,19 @@ def build_receptionist_full_name(name: str, last_name: str) -> str:
 
 
 def _row_from_dict(item: dict) -> ReceptionistPayrollRow:
+    name = item.get("name", "")
+    has_csi_bonus = bool(item.get("has_csi_bonus", False))
+    if not has_csi_bonus and name in CSI_BONUS_DEFAULT_NAMES:
+        has_csi_bonus = True
     return ReceptionistPayrollRow(
-        name=item.get("name", ""),
+        name=name,
         last_name=item.get("last_name", ""),
         employee_type=TYPE_RECEPTIONIST,
         taker_codes=list(item.get("taker_codes", [])),
         appointment_rate=float(item.get("appointment_rate", 0) or 0),
         has_warranty_bonus=bool(item.get("has_warranty_bonus", False)),
         warranty_bonus_amount=float(item.get("warranty_bonus_amount", DEFAULT_WARRANTY_BONUS) or DEFAULT_WARRANTY_BONUS),
+        has_csi_bonus=has_csi_bonus,
     )
 
 
@@ -92,6 +104,7 @@ def _serialize_row(row: ReceptionistPayrollRow) -> dict:
         "appointment_rate": row.appointment_rate,
         "has_warranty_bonus": row.has_warranty_bonus,
         "warranty_bonus_amount": row.warranty_bonus_amount,
+        "has_csi_bonus": row.has_csi_bonus,
     }
 
 
@@ -146,6 +159,7 @@ def add_employee(
     appointment_rate: float = 0.0,
     has_warranty_bonus: bool = False,
     warranty_bonus_amount: float = DEFAULT_WARRANTY_BONUS,
+    has_csi_bonus: bool = False,
 ) -> Tuple[bool, str]:
     name = name.strip()
     if not name:
@@ -161,6 +175,7 @@ def add_employee(
             appointment_rate=appointment_rate,
             has_warranty_bonus=has_warranty_bonus,
             warranty_bonus_amount=warranty_bonus_amount,
+            has_csi_bonus=has_csi_bonus,
         )
     )
     return True, f"Added {name}."
@@ -184,6 +199,7 @@ def update_employee(
     last_name: Optional[str] = None,
     has_warranty_bonus: Optional[bool] = None,
     warranty_bonus_amount: Optional[float] = None,
+    has_csi_bonus: Optional[bool] = None,
 ) -> Tuple[bool, str]:
     for row in flatten_roster(roster):
         if row.name != name:
@@ -205,6 +221,8 @@ def update_employee(
             row.has_warranty_bonus = has_warranty_bonus
         if warranty_bonus_amount is not None:
             row.warranty_bonus_amount = warranty_bonus_amount
+        if has_csi_bonus is not None:
+            row.has_csi_bonus = has_csi_bonus
         return True, f"Updated {row.name}."
     return False, f"{name} not found."
 

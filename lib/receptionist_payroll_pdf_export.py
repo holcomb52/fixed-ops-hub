@@ -52,11 +52,16 @@ def generate_receptionist_payroll_pdf(snapshot: dict) -> bytes:
         for r in rows:
             section_total += r["total_pay"]
             bonus_cell = "—"
+            bonus_parts = []
             if r.get("warranty_pay"):
-                bonus_cell = f"Warranty\n${r['warranty_pay']:,.2f}"
-            elif r.get("bonus_pay"):
+                bonus_parts.append(f"Warranty\n${r['warranty_pay']:,.2f}")
+            if r.get("csi_pay"):
+                bonus_parts.append(f"CSI\n${r['csi_pay']:,.2f}")
+            if r.get("bonus_pay"):
                 label = r.get("bonus_label") or "Bonus"
-                bonus_cell = f"{label}\n${r['bonus_pay']:,.2f}"
+                bonus_parts.append(f"{label}\n${r['bonus_pay']:,.2f}")
+            if bonus_parts:
+                bonus_cell = "\n".join(bonus_parts)
             table_data.append([
                 r["name"],
                 f"{r['appointments_set']:.0f}" if r["appointments_set"] else "—",

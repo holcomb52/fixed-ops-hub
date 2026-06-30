@@ -8,6 +8,9 @@ from typing import Dict, Optional
 import streamlit as st
 
 from lib.receptionist_payroll_calc import (
+    CSI_TIER_KEYS,
+    CSI_TIER_NONE,
+    RECEPTIONIST_CSI_TIER_OPTIONS,
     TIRE_PAY_RATE,
     ReceptionistPayrollRow,
 )
@@ -122,6 +125,9 @@ def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
     warranty_key = rec_key(row.name, "warranty_bonus")
     if warranty_key in st.session_state:
         entry["warranty_bonus"] = st.session_state[warranty_key]
+    csi_key = rec_key(row.name, "csi_tier")
+    if csi_key in st.session_state:
+        entry["csi_tier"] = st.session_state[csi_key]
     notes_key = rec_key(row.name, "notes")
     if notes_key in st.session_state:
         entry["notes"] = st.session_state[notes_key]
@@ -292,6 +298,9 @@ def apply_receptionist_value_store():
         warranty_key = rec_key(row.name, "warranty_bonus")
         if warranty_key not in st.session_state:
             st.session_state[warranty_key] = bool(saved.get("warranty_bonus", False))
+        csi_key = rec_key(row.name, "csi_tier")
+        if csi_key not in st.session_state:
+            st.session_state[csi_key] = saved.get("csi_tier", CSI_TIER_NONE)
         notes_key = rec_key(row.name, "notes")
         if notes_key not in st.session_state:
             st.session_state[notes_key] = str(saved.get("notes", row.notes) or "")
@@ -327,6 +336,7 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
             ),
             "spiff": float(st.session_state.get(rec_key(row.name, "spiff"), row.spiff) or 0),
             "warranty_bonus": bool(st.session_state.get(rec_key(row.name, "warranty_bonus"), False)),
+            "csi_tier": st.session_state.get(rec_key(row.name, "csi_tier"), CSI_TIER_NONE),
             "notes": str(st.session_state.get(rec_key(row.name, "notes"), row.notes) or ""),
         }
     return values
@@ -347,6 +357,7 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
     st.session_state[rec_key(row.name, "warranty_bonus")] = bool(
         overrides.get("warranty_bonus", False)
     )
+    st.session_state[rec_key(row.name, "csi_tier")] = overrides.get("csi_tier", CSI_TIER_NONE)
     st.session_state[rec_key(row.name, "notes")] = overrides.get("notes", row.notes or "")
     tires = float(overrides.get("tires_sold", st.session_state.get(rec_key(row.name, "tires_sold"), 0)) or 0)
     st.session_state[_tires_text_key(row.name)] = str(int(tires)) if tires else ""
@@ -429,6 +440,8 @@ def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
         has_warranty_bonus=row.has_warranty_bonus,
         warranty_bonus_amount=float(row.warranty_bonus_amount or 0),
         warranty_bonus_qualified=_session_bool(row, "warranty_bonus", row.warranty_bonus_qualified),
+        has_csi_bonus=row.has_csi_bonus,
+        csi_tier=_session_text(row, "csi_tier", CSI_TIER_NONE),
         bonus_label=_session_text(row, "bonus_label", row.bonus_label or "Bonus"),
         spiff=_session_float(row, "spiff", row.spiff),
         notes=_session_text(row, "notes", row.notes),

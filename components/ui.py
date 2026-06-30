@@ -64,9 +64,10 @@ def pay_plan_section_header(
     accent: str = "cyan",
     icon: str = "📋",
     badge: str = "",
+    count_label: str = "advisor",
 ) -> str:
     badge_html = f'<span class="pay-plan-badge">{badge}</span>' if badge else ""
-    count_label = "advisor" if count == 1 else "advisors"
+    count_plural = f"{count_label}s" if count != 1 else count_label
     return f"""
     <div class="pay-plan-section-header accent-{accent}">
         <div class="pay-plan-section-icon">{icon}</div>
@@ -74,11 +75,48 @@ def pay_plan_section_header(
             <div class="pay-plan-section-top">
                 <span class="pay-plan-section-title">{title}</span>
                 {badge_html}
-                <span class="pay-plan-section-count">{count} {count_label}</span>
+                <span class="pay-plan-section-count">{count} {count_plural}</span>
             </div>
             <p class="pay-plan-section-sub">{subtitle}</p>
         </div>
     </div>
+    """
+
+
+def team_section_header(
+    title: str,
+    subtitle: str,
+    count: int,
+    accent: str = "cyan",
+    icon: str = "🔧",
+    badge: str = "",
+) -> str:
+    return pay_plan_section_header(
+        title=title,
+        subtitle=subtitle,
+        count=count,
+        accent=accent,
+        icon=icon,
+        badge=badge,
+        count_label="technician",
+    )
+
+
+def team_section_divider(accent: str = "cyan") -> str:
+    colors = {
+        "orange": "rgba(255, 107, 53, 0.45)",
+        "cyan": "rgba(0, 212, 255, 0.35)",
+        "green": "rgba(52, 211, 153, 0.35)",
+        "violet": "rgba(167, 139, 250, 0.45)",
+    }
+    color = colors.get(accent, colors["cyan"])
+    return f"""
+    <hr class="team-section-divider" style="
+        height: 2px;
+        border: none;
+        margin: 2rem 0 1.25rem;
+        background: linear-gradient(90deg, transparent, {color}, transparent);
+    " />
     """
 
 

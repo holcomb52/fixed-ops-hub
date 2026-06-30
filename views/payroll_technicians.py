@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from components.ui import stat_card, status_banner
+from components.ui import stat_card, status_banner, team_section_divider, team_section_header
 from lib.flag_pdf_parser import parse_flag_sheet
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_pdf_export import generate_payroll_pdf
@@ -54,6 +54,49 @@ def _team_hours(team_name: str, count: int) -> float:
 
 def _money(v: float) -> str:
     return f"${v:,.2f}"
+
+
+TEAM_SECTION_STYLE = {
+    "Derrick's Team": {
+        "accent": "orange",
+        "icon": "🔥",
+        "badge": "Foreman $2/hr",
+        "subtitle": "Derrick Opp · team production bonus at $2 per team hour",
+    },
+    "Olan's Team": {
+        "accent": "violet",
+        "icon": "⚡",
+        "badge": "Foreman $1/hr",
+        "subtitle": "Olan Halcomb · team production bonus at $1 per team hour",
+    },
+}
+
+
+def _team_style(team_name: str) -> dict:
+    return TEAM_SECTION_STYLE.get(
+        team_name,
+        {
+            "accent": "cyan",
+            "icon": "🔧",
+            "badge": "",
+            "subtitle": "Technician team",
+        },
+    )
+
+
+def _render_team_header(team_name: str, rows: list, team_hrs: float) -> None:
+    style = _team_style(team_name)
+    st.markdown(
+        team_section_header(
+            title=team_name,
+            subtitle=f"{style['subtitle']} · <strong>{team_hrs:.2f}</strong> team hrs",
+            count=len(rows),
+            accent=style["accent"],
+            icon=style["icon"],
+            badge=style["badge"],
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 def _roster_names() -> list[str]:
@@ -281,11 +324,7 @@ def _render_team(team_name: str, rows: list, global_hours: dict, weeks: float):
 
     team_hrs = _team_hours(team_name, count)
 
-    st.markdown(
-        f'<div class="section-title"><h2>{team_name}</h2>'
-        f'<p class="section-sub">Team hours: <strong>{team_hrs:.2f}</strong></p></div>',
-        unsafe_allow_html=True,
-    )
+    _render_team_header(team_name, rows, team_hrs)
 
     if not st.session_state.pdf_loaded:
         st.info("Upload the flag sheet PDF above to auto-fill hours and dollars.")
@@ -375,9 +414,10 @@ def _render_team(team_name: str, rows: list, global_hours: dict, weeks: float):
         },
     )
 
+    style = _team_style(team_name)
     st.markdown(
         f"""
-        <div class="team-total-bar">
+        <div class="team-total-bar accent-{style['accent']}">
             <span>TEAM TOTAL</span>
             <span class="team-total-val">{_team_hours(team_name, count):.2f} hrs · {_money(totals["total_pay"])}</span>
         </div>
@@ -551,7 +591,7 @@ def render():
 
     for team_name, team_rows in synced.items():
         _render_team(team_name, team_rows, global_hours, weeks)
-        st.markdown("---")
+        st.markdown(team_section_divider(_team_style(team_name)["accent"]), unsafe_allow_html=True)
 
     synced = all_rows_synced()
     global_hours = all_hours_by_name(synced)

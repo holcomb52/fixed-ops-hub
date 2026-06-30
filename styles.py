@@ -447,6 +447,12 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     box-shadow: 0 8px 28px rgba(52, 211, 153, 0.1);
 }
 
+.pay-plan-section-header.accent-violet {
+    border-left-color: #a78bfa;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.16), rgba(12, 18, 32, 0.78));
+    box-shadow: 0 8px 28px rgba(167, 139, 250, 0.12);
+}
+
 .pay-plan-section-icon {
     flex: 0 0 auto;
     width: 2.5rem;
@@ -475,6 +481,11 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     border-color: rgba(52, 211, 153, 0.35);
 }
 
+.pay-plan-section-header.accent-violet .pay-plan-section-icon {
+    background: rgba(167, 139, 250, 0.18);
+    border-color: rgba(167, 139, 250, 0.35);
+}
+
 .pay-plan-section-body {
     flex: 1;
     min-width: 0;
@@ -499,6 +510,7 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
 .pay-plan-section-header.accent-orange .pay-plan-section-title { color: #ffbc9a; }
 .pay-plan-section-header.accent-cyan .pay-plan-section-title { color: #7eeaff; }
 .pay-plan-section-header.accent-green .pay-plan-section-title { color: #86efac; }
+.pay-plan-section-header.accent-violet .pay-plan-section-title { color: #c4b5fd; }
 
 .pay-plan-badge {
     display: inline-block;
@@ -529,6 +541,12 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     background: rgba(52, 211, 153, 0.18);
     color: #bbf7d0;
     border-color: rgba(52, 211, 153, 0.35);
+}
+
+.pay-plan-section-header.accent-violet .pay-plan-badge {
+    background: rgba(167, 139, 250, 0.18);
+    color: #ddd6fe;
+    border-color: rgba(167, 139, 250, 0.35);
 }
 
 .pay-plan-section-count {
@@ -1105,6 +1123,35 @@ h2, h3 { font-family: 'Syne', sans-serif; }
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: #94a3b8;
+}
+
+.team-total-bar.accent-orange {
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.16), rgba(12, 18, 32, 0.5));
+    border-color: rgba(255, 107, 53, 0.35);
+    box-shadow: 0 8px 24px rgba(255, 107, 53, 0.1);
+}
+
+.team-total-bar.accent-orange .team-total-val {
+    color: #ffbc9a;
+}
+
+.team-total-bar.accent-violet {
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.16), rgba(12, 18, 32, 0.5));
+    border-color: rgba(167, 139, 250, 0.35);
+    box-shadow: 0 8px 24px rgba(167, 139, 250, 0.1);
+}
+
+.team-total-bar.accent-violet .team-total-val {
+    color: #c4b5fd;
+}
+
+.team-total-bar.accent-cyan {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.12), rgba(12, 18, 32, 0.5));
+    border-color: rgba(0, 212, 255, 0.3);
+}
+
+.team-total-bar.accent-cyan .team-total-val {
+    color: #00d4ff;
 }
 
 .team-total-val {

@@ -2,7 +2,16 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 
-from components.ui import pay_plan_section_header, stat_card, status_banner
+from components.ui import (
+    ACCENT_COLORS,
+    advisor_accent_for_index,
+    advisor_pay_card_header,
+    advisor_pay_detail_panel,
+    pay_plan_section_header,
+    stat_card,
+    status_banner,
+    team_section_divider,
+)
 from lib.advisor_payroll_calc import (
     ADVISOR_WEEKLY_GUARANTEE,
     ALIGNMENT_BONUS_AMOUNT,
@@ -97,6 +106,20 @@ def _render_plan_section_header(plan_type: str, count: int) -> None:
             icon=style["icon"],
             badge=style["badge"],
         ),
+        unsafe_allow_html=True,
+    )
+
+
+def _render_plan_section_footer(plan_type: str, total_pay: float, count: int) -> None:
+    style = PLAN_SECTION_STYLE[plan_type]
+    advisor_label = "advisor" if count == 1 else "advisors"
+    st.markdown(
+        f"""
+        <div class="team-total-bar accent-{style['accent']}">
+            <span>{PLAN_LABELS[plan_type]} total</span>
+            <span class="team-total-val">{count} {advisor_label} · {_money(total_pay)}</span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -329,6 +352,46 @@ def _render_csi_buttons(advisor_idx: int):
             ):
                 st.session_state[adv_key(advisor_idx, "csi_tier")] = tier_key
                 persist_advisor_changes(advisor_idx)
+
+
+def _render_advisor_pay_entry(advisor_idx: int, row, result, accent: str) -> None:
+    open_key = adv_key(advisor_idx, "expanded")
+    is_open = bool(st.session_state.get(open_key, False))
+
+    col_toggle, col_card = st.columns([0.06, 0.94], vertical_alignment="center")
+    with col_toggle:
+        if st.button(
+            "▼" if is_open else "▶",
+            key=adv_key(advisor_idx, "toggle"),
+            help="Expand or collapse pay details",
+        ):
+            toggle_advisor_section(advisor_idx)
+    with col_card:
+        st.markdown(
+            advisor_pay_card_header(
+                row.name,
+                _money(result.total_pay),
+                accent,
+                expanded=is_open,
+            ),
+            unsafe_allow_html=True,
+        )
+
+    if is_open:
+        st.markdown(advisor_pay_detail_panel(accent), unsafe_allow_html=True)
+        _render_advisor_section(advisor_idx, row)
+
+
+def _style_advisor_summary(df: pd.DataFrame, accents: list[str]):
+    advisor_col = df.columns.get_loc("Advisor")
+
+    def _row_style(row):
+        theme = ACCENT_COLORS[accents[row.name]]
+        styles = [""] * len(row)
+        styles[advisor_col] = f"color: {theme['title']}; font-weight: 700"
+        return styles
+
+    return df.style.apply(_row_style, axis=1)
 
 
 def _summary_row(row, synced, result) -> dict:
@@ -569,6 +632,7 @@ def render():
     _render_advisor_roster_manager()
 
     st.markdown("---")
+    st.caption("Click an advisor to expand pay details — each advisor has a unique color.")
 
     advisor_rows = flatten_roster(st.session_state.advisor_roster)
     weeks = pay_period_weeks()
@@ -583,32 +647,36 @@ def render():
         _summary_row(row, synced_advisors[i], advisor_results[i])
         for i, row in enumerate(advisor_rows)
     ]
+    summary_accents = [advisor_accent_for_index(i) for i in range(len(advisor_rows))]
     grand_total = sum(r["Total Pay"] for r in summary_rows)
 
-    for i, row in enumerate(advisor_rows):
-        result = advisor_results[i]
-        open_key = adv_key(i, "expanded")
-        exp_label = (
-            f"**{row.name}** · {_plan_label(row.plan_type)} · **{_money(result.total_pay)}**"
-        )
-        col_toggle, col_label = st.columns([0.04, 0.96], vertical_alignment="center")
-        with col_toggle:
-            if st.button(
-                "▼" if st.session_state.get(open_key, False) else "▶",
-                key=adv_key(i, "toggle"),
-                help="Expand or collapse",
-            ):
-                toggle_advisor_section(i)
-        with col_label:
-            st.markdown(exp_label, unsafe_allow_html=True)
+    global_idx = 0
+    for plan_type in PLAN_ORDER:
+        plan_rows = st.session_state.advisor_roster.get(plan_type, [])
+        if not plan_rows:
+            continue
 
-        if st.session_state.get(open_key, False):
-            _render_advisor_section(i, row)
+        _render_plan_section_header(plan_type, len(plan_rows))
+        plan_total = 0.0
+
+        for local_i, row in enumerate(plan_rows):
+            i = global_idx + local_i
+            result = advisor_results[i]
+            plan_total += result.total_pay
+            _render_advisor_pay_entry(i, row, result, advisor_accent_for_index(i))
+
+        _render_plan_section_footer(plan_type, plan_total, len(plan_rows))
+        st.markdown(
+            team_section_divider(PLAN_SECTION_STYLE[plan_type]["accent"]),
+            unsafe_allow_html=True,
+        )
+        global_idx += len(plan_rows)
 
     st.markdown("---")
     st.markdown("##### Advisor payroll summary")
+    summary_df = pd.DataFrame(summary_rows)
     st.dataframe(
-        pd.DataFrame(summary_rows),
+        _style_advisor_summary(summary_df, summary_accents),
         use_container_width=True,
         hide_index=True,
         column_config={

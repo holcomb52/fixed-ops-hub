@@ -572,6 +572,66 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     border: none;
 }
 
+/* ── Advisor payroll cards ── */
+.advisor-pay-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 0.35rem 0 0.55rem;
+    padding: 0.85rem 1rem 0.85rem 1.05rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left-width: 5px;
+    border-left-style: solid;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+}
+
+.advisor-pay-card-open {
+    margin-bottom: 0.35rem;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+.advisor-pay-card-icon {
+    flex: 0 0 auto;
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1rem;
+}
+
+.advisor-pay-card-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.advisor-pay-card-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.advisor-pay-card-total {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.advisor-pay-detail-panel {
+    height: 4px;
+    margin: 0 0 0.75rem 0.35rem;
+    border-left: 4px solid;
+    border-radius: 999px;
+}
+
 /* ── Employee cards ── */
 .employee-card {
     display: flex;

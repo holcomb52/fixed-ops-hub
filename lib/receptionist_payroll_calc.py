@@ -21,6 +21,7 @@ RECEPTIONIST_CSI_TIER_OPTIONS = {
 }
 
 CSI_TIER_KEYS = [CSI_TIER_NATIONAL, CSI_TIER_MID, CSI_TIER_NONE]
+CSI_BONUS_DEFAULT_NAMES = frozenset({"Brandy Sistrunk", "Serenity Skinner"})
 
 TYPE_RECEPTIONIST = "receptionist"
 TYPE_BONUS = "bonus"
@@ -65,7 +66,7 @@ class ReceptionistPayrollResult:
 
 def ensure_receptionist_row_fields(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
     if not hasattr(row, "has_csi_bonus"):
-        row.has_csi_bonus = False
+        row.has_csi_bonus = row.name in CSI_BONUS_DEFAULT_NAMES
     if not hasattr(row, "csi_tier"):
         row.csi_tier = CSI_TIER_NONE
     return row

@@ -8,17 +8,26 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from lib.receptionist_payroll_calc import (
+    CSI_BONUS_DEFAULT_NAMES,
     DEFAULT_WARRANTY_BONUS,
     TYPE_RECEPTIONIST,
     ReceptionistPayrollRow,
+    ensure_receptionist_row_fields,
 )
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "receptionist_roster.json"
-CSI_BONUS_DEFAULT_NAMES = frozenset({"Brandy Sistrunk", "Serenity Skinner"})
+
+
+def normalize_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) -> Dict[str, List[ReceptionistPayrollRow]]:
+    rows = roster.get(TYPE_RECEPTIONIST, [])
+    for i, row in enumerate(rows):
+        rows[i] = ensure_receptionist_row_fields(row)
+    roster[TYPE_RECEPTIONIST] = rows
+    return roster
 
 
 def _clone_row(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
-    return ReceptionistPayrollRow(**copy.deepcopy(row.__dict__))
+    return ensure_receptionist_row_fields(ReceptionistPayrollRow(**copy.deepcopy(row.__dict__)))
 
 
 def clone_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) -> Dict[str, List[ReceptionistPayrollRow]]:
@@ -119,7 +128,7 @@ def roster_from_saved_data(data: dict) -> Dict[str, List[ReceptionistPayrollRow]
     saved = data.get(TYPE_RECEPTIONIST, [])
     if not saved:
         return default_roster()
-    return {TYPE_RECEPTIONIST: [_row_from_dict(item) for item in saved]}
+    return normalize_roster({TYPE_RECEPTIONIST: [_row_from_dict(item) for item in saved]})
 
 
 def load_roster() -> Dict[str, List[ReceptionistPayrollRow]]:

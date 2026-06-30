@@ -13,9 +13,10 @@ from lib.receptionist_payroll_calc import (
     RECEPTIONIST_CSI_TIER_OPTIONS,
     TIRE_PAY_RATE,
     ReceptionistPayrollRow,
+    ensure_receptionist_row_fields,
 )
 from lib.receptionist_payroll_parser import report_by_code, report_by_last_name
-from lib.receptionist_roster import flatten_roster, load_roster, save_roster, update_employee
+from lib.receptionist_roster import flatten_roster, load_roster, normalize_roster, save_roster, update_employee
 
 RECEPTIONIST_FIELDS = {
     "appointments_set": 0.0,
@@ -367,7 +368,7 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
 
 def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None):
     clear_receptionist_field_keys()
-    st.session_state.receptionist_roster = roster
+    st.session_state.receptionist_roster = normalize_roster(roster)
     values_by_name = values_by_name or {}
     for row in flatten_roster(roster):
         _init_fields(row, overrides=values_by_name.get(row.name))
@@ -384,6 +385,8 @@ def init_receptionist_payroll_session():
     _clear_legacy_index_keys()
     if "receptionist_roster" not in st.session_state:
         apply_roster_to_session(load_roster())
+    else:
+        st.session_state.receptionist_roster = normalize_roster(st.session_state.receptionist_roster)
     if "receptionist_report_loaded" not in st.session_state:
         st.session_state.receptionist_report_loaded = False
 
@@ -426,6 +429,7 @@ def apply_cashiers_report_to_session(report_rows) -> int:
 
 
 def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
+    row = ensure_receptionist_row_fields(row)
     rate = _session_float(row, "appointment_rate", row.appointment_rate)
     return ReceptionistPayrollRow(
         name=row.name,

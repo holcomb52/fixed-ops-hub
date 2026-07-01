@@ -225,7 +225,7 @@ DEFAULT_TECH_NUMBERS = {
     "Dax Rosencrantz": "3851",
     "Zachary Daniels": "3854",
     "Zihair Busch": "3814",
-    "Dale Potts": "",
+    "Dale Potts": "3858",
 }
 
 
@@ -295,6 +295,13 @@ DEFAULT_TEAMS = {
         _default_row("Dax Rosencrantz", "Olan's Team", 27),
         _default_row("Zachary Daniels", "Olan's Team", 14),
         _default_row("Zihair Busch", "Olan's Team", 15, tech_category="quick_lube"),
+        _default_row(
+            "Dale Potts",
+            "Olan's Team",
+            28,
+            pay_plan="weekly_hour_guarantee",
+            weekly_hour_guarantee=WEEKLY_HOUR_GUARANTEE_DEFAULT,
+        ),
     ],
 }
 

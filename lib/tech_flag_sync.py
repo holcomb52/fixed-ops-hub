@@ -124,3 +124,47 @@ def apply_flag_to_teams(
                 row.cp_hrs_per_ro = float(cp_metrics.get("cp_hrs_per_ro", 0) or 0)
 
     return matched
+
+
+def _row_matches_flag_tech(row: TechPayrollRow, tech: TechFlagData) -> bool:
+    if names_match(row.name, tech.display_name):
+        return True
+    row_num = normalize_tech_number(row.tech_number)
+    tech_num = normalize_tech_number(tech.tech_number)
+    return bool(row_num and tech_num and row_num == tech_num)
+
+
+def unmatched_flag_technicians(
+    teams: Dict[str, List[TechPayrollRow]],
+    parsed: FlagSheetParseResult,
+) -> List[TechFlagData]:
+    """PDF techs with hours that did not match anyone on the roster."""
+    matched_display_names: set[str] = set()
+    for rows in teams.values():
+        for row in rows:
+            for tech in parsed.technicians:
+                if _row_matches_flag_tech(row, tech):
+                    matched_display_names.add(tech.display_name)
+                    break
+    unmatched: List[TechFlagData] = []
+    for tech in parsed.technicians:
+        if tech.flat_rate_hours <= 0 and tech.dollars_earned <= 0:
+            continue
+        if tech.display_name not in matched_display_names:
+            unmatched.append(tech)
+    return unmatched
+
+
+def roster_technicians_missing_flag(
+    teams: Dict[str, List[TechPayrollRow]],
+    parsed: FlagSheetParseResult,
+) -> List[TechPayrollRow]:
+    """Roster techs with no flag hours after applying the PDF."""
+    by_name, by_number, _ = build_flag_maps(parsed.technicians)
+    missing: List[TechPayrollRow] = []
+    for rows in teams.values():
+        for row in rows:
+            if match_flag_for_row(row, parsed.technicians, by_name, by_number):
+                continue
+            missing.append(row)
+    return missing

@@ -160,6 +160,16 @@
       "foreman_rule": "none",
       "quick_lube_sources": [],
       "tech_category": "shop"
+    },
+    {
+      "name": "Dale Potts",
+      "tech_number": "3858",
+      "hourly_rate": 28.0,
+      "foreman_rule": "none",
+      "quick_lube_sources": [],
+      "tech_category": "shop",
+      "pay_plan": "weekly_hour_guarantee",
+      "weekly_hour_guarantee": 40.0
     }
   ]
 }

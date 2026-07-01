@@ -488,6 +488,15 @@ def render():
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)
 
+    for tech in st.session_state.get("flag_unmatched_techs", []):
+        number = tech.get("number") or "no #"
+        hours = float(tech.get("hours", 0) or 0)
+        st.warning(
+            f"Flag sheet: **{tech.get('name', 'Unknown')}** (#{number}) has "
+            f"**{hours:.1f}** flag hrs but is not on your roster. "
+            "Add them under **Manage team roster**, then re-upload the PDF."
+        )
+
     upsell_file = st.file_uploader(
         "Upload Ignite upsell analysis (.xlsx)",
         type=["xlsx", "xls"],

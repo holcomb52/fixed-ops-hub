@@ -115,6 +115,19 @@ def _bill_type_from_line(line: str) -> str:
     return ""
 
 
+def _finalize_tech_totals(data: dict) -> None:
+    lines = data.get("lines", [])
+    if not lines:
+        return
+    if data["hours"] == 0 and data["dollars"] == 0:
+        data["hours"] = sum(item.booked_hours for item in lines)
+        data["dollars"] = sum(item.extended for item in lines)
+    elif data["hours"] == 0:
+        data["hours"] = sum(item.booked_hours for item in lines)
+    elif data["dollars"] == 0:
+        data["dollars"] = sum(item.extended for item in lines)
+
+
 def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult:
     result = FlagSheetParseResult()
     current_pdf_name: Optional[str] = None
@@ -173,7 +186,11 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
                 )
             )
 
+    if current_pdf_name and current_pdf_name in tech_buffer:
+        tech_buffer[current_pdf_name]["lines"] = current_items
+
     for pdf_name, data in tech_buffer.items():
+        _finalize_tech_totals(data)
         if data["hours"] == 0 and data["dollars"] == 0:
             continue
         lines = data.get("lines", [])

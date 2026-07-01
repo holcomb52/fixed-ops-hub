@@ -20,6 +20,46 @@ from lib.tech_payroll_calc import (
 
 ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "tech_roster.json"
 
+# Techs that must exist on the roster for flag sheets / payroll (backfilled if missing from cloud).
+ENSURE_ROSTER_TECHS: Dict[str, dict] = {
+    "Dale Potts": {
+        "team": "Olan's Team",
+        "tech_number": "3858",
+        "hourly_rate": 28.0,
+        "pay_plan": "weekly_hour_guarantee",
+        "weekly_hour_guarantee": WEEKLY_HOUR_GUARANTEE_DEFAULT,
+        "tech_category": "shop",
+    },
+}
+
+
+def ensure_roster_defaults(teams: Dict[str, List[TechPayrollRow]]) -> bool:
+    """Add known techs missing from a saved roster. Returns True if the roster changed."""
+    existing = {row.name for rows in teams.values() for row in rows}
+    changed = False
+    for name, spec in ENSURE_ROSTER_TECHS.items():
+        if name in existing:
+            continue
+        team_name = spec["team"]
+        teams.setdefault(team_name, [])
+        row = TechPayrollRow(
+            name=name,
+            team=team_name,
+            tech_number=str(spec.get("tech_number", DEFAULT_TECH_NUMBERS.get(name, "")) or ""),
+            hourly_rate=float(spec.get("hourly_rate", 0) or 0),
+            foreman_rule="none",
+            quick_lube_sources=[],
+            tech_category=str(spec.get("tech_category", infer_tech_category(name, "")) or "shop"),
+            pay_plan=str(spec.get("pay_plan", "standard") or "standard"),
+            weekly_hour_guarantee=float(spec.get("weekly_hour_guarantee", 0) or 0),
+        )
+        ensure_tech_row_fields(row)
+        teams[team_name].append(row)
+        changed = True
+    if changed:
+        normalize_teams(teams)
+    return changed
+
 ROLE_OPTIONS = {
     "Shop Apprentice": {
         "tech_category": "apprentice",
@@ -176,7 +216,9 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     supplemental_tier=str(tech.get("supplemental_tier", "") or ""),
                 )
             )
-    return normalize_teams(teams)
+    teams = normalize_teams(teams)
+    ensure_roster_defaults(teams)
+    return teams
 
 
 def load_roster() -> Dict[str, List[TechPayrollRow]]:
@@ -184,14 +226,18 @@ def load_roster() -> Dict[str, List[TechPayrollRow]]:
 
     remote = load_roster_data(ROSTER_KEY_TECHNICIANS)
     if remote is not None:
-        return teams_from_saved_data(remote)
-    if ROSTER_PATH.exists():
+        teams = teams_from_saved_data(remote)
+    elif ROSTER_PATH.exists():
         try:
             data = json.loads(ROSTER_PATH.read_text())
-            return teams_from_saved_data(data)
+            teams = teams_from_saved_data(data)
         except (json.JSONDecodeError, OSError):
-            pass
-    return clone_teams(DEFAULT_TEAMS)
+            teams = clone_teams(DEFAULT_TEAMS)
+    else:
+        teams = clone_teams(DEFAULT_TEAMS)
+    if ensure_roster_defaults(teams):
+        save_roster(teams)
+    return teams
 
 
 def save_roster(teams: Dict[str, List[TechPayrollRow]]) -> None:

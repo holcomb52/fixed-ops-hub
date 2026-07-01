@@ -165,11 +165,25 @@ def sync_flag_sheet_to_session() -> int:
     if not pdf_bytes:
         return 0
 
-    from lib.tech_flag_sync import apply_flag_to_teams, parse_flag_pdf_bytes
+    from lib.tech_flag_sync import (
+        apply_flag_to_teams,
+        parse_flag_pdf_bytes,
+        unmatched_flag_technicians,
+    )
     from lib.tech_payroll_calc import recalc_supplemental_bonuses
 
     parsed = parse_flag_pdf_bytes(pdf_bytes)
     matched = apply_flag_to_teams(st.session_state.tech_teams, parsed)
+    unmatched = unmatched_flag_technicians(st.session_state.tech_teams, parsed)
+    st.session_state.flag_unmatched_techs = [
+        {
+            "name": tech.display_name,
+            "number": tech.tech_number,
+            "hours": tech.flat_rate_hours,
+            "dollars": tech.dollars_earned,
+        }
+        for tech in unmatched
+    ]
 
     cp_by_name = {}
     for team_name, rows in st.session_state.tech_teams.items():
@@ -228,12 +242,16 @@ def render_pay_period_selector():
 
 
 def init_payroll_session():
+    from lib.tech_roster import ensure_roster_defaults, save_roster
+
     if "tech_teams" not in st.session_state:
         st.session_state.tech_teams = load_roster()
     else:
         from lib.tech_payroll_calc import normalize_teams
 
         st.session_state.tech_teams = normalize_teams(st.session_state.tech_teams)
+        if ensure_roster_defaults(st.session_state.tech_teams):
+            save_roster(st.session_state.tech_teams)
     if "pay_period" not in st.session_state:
         st.session_state.pay_period = ""
     if "pdf_loaded" not in st.session_state:
@@ -242,6 +260,8 @@ def init_payroll_session():
         st.session_state.flag_pdf_bytes = None
     if "flag_pdf_filename" not in st.session_state:
         st.session_state.flag_pdf_filename = ""
+    if "flag_unmatched_techs" not in st.session_state:
+        st.session_state.flag_unmatched_techs = []
     if "active_run_id" not in st.session_state:
         st.session_state.active_run_id = None
     if "active_advisor_run_id" not in st.session_state:

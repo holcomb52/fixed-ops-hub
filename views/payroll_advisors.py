@@ -45,6 +45,8 @@ from lib.advisor_roster import (
 from views.advisor_payroll_helpers import (
     CSI_TIER_KEYS,
     adv_key,
+    advisor_section_open_key,
+    advisor_section_toggle_key,
     all_advisors_synced,
     apply_advisor_report_to_session,
     apply_advisor_value_store,
@@ -332,7 +334,7 @@ def _csi_label(tier_key: str) -> str:
     return label
 
 
-def _render_csi_buttons(advisor_idx: int):
+def _render_csi_buttons(advisor_idx: int, advisor_name: str):
     current = st.session_state.get(adv_key(advisor_idx, "csi_tier"), "none")
     if current not in CSI_TIER_KEYS:
         current = "none"
@@ -346,26 +348,34 @@ def _render_csi_buttons(advisor_idx: int):
             selected = current == tier_key
             if st.button(
                 f"{label}\n{_money(amount)}",
-                key=f"csi_pick_{advisor_idx}_{tier_key}",
+                key=f"csi_pick_{advisor_name}_{tier_key}",
                 use_container_width=True,
                 type="primary" if selected else "secondary",
             ):
                 st.session_state[adv_key(advisor_idx, "csi_tier")] = tier_key
-                persist_advisor_changes(advisor_idx)
+                persist_advisor_changes(advisor_idx, advisor_name)
+
+
+@st.fragment
+def _advisor_detail_fragment(advisor_idx: int, row, accent: str) -> None:
+    st.markdown(advisor_pay_detail_panel(accent), unsafe_allow_html=True)
+    _render_advisor_section(advisor_idx, row)
 
 
 def _render_advisor_pay_entry(advisor_idx: int, row, result, accent: str) -> None:
-    open_key = adv_key(advisor_idx, "expanded")
-    is_open = bool(st.session_state.get(open_key, False))
+    open_key = advisor_section_open_key(row.name)
 
     col_toggle, col_card = st.columns([0.06, 0.94], vertical_alignment="center")
     with col_toggle:
         if st.button(
-            "▼" if is_open else "▶",
-            key=adv_key(advisor_idx, "toggle"),
+            "▼" if st.session_state.get(open_key, False) else "▶",
+            key=advisor_section_toggle_key(row.name),
             help="Expand or collapse pay details",
         ):
-            toggle_advisor_section(advisor_idx)
+            toggle_advisor_section(row.name)
+
+    is_open = bool(st.session_state.get(open_key, False))
+
     with col_card:
         st.markdown(
             advisor_pay_card_header(
@@ -378,8 +388,7 @@ def _render_advisor_pay_entry(advisor_idx: int, row, result, accent: str) -> Non
         )
 
     if is_open:
-        st.markdown(advisor_pay_detail_panel(accent), unsafe_allow_html=True)
-        _render_advisor_section(advisor_idx, row)
+        _advisor_detail_fragment(advisor_idx, row, accent)
 
 
 def _style_advisor_summary(df: pd.DataFrame, accents: list[str]):
@@ -416,7 +425,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         step=0.1,
         key=adv_key(advisor_idx, "hours_sold"),
         on_change=persist_advisor_changes,
-        args=(advisor_idx,),
+        args=(advisor_idx, row.name),
         help="Auto-filled from PAYROLL.xlsx, or enter manually.",
     )
 
@@ -425,7 +434,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — bump to ${TOM_JOEY_CP_BUMP_RATE:.0f}/hr",
             key=adv_key(advisor_idx, "cp_bump"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx,),
+            args=(advisor_idx, row.name),
             help="Turn on when they averaged more than 2.25 customer-pay hours per RO.",
         )
     elif not plan_has_weekly_guarantee(row.plan_type):
@@ -433,7 +442,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
             key=adv_key(advisor_idx, "cp_bump"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx,),
+            args=(advisor_idx, row.name),
             help=(
                 "Turn on when they averaged more than 2.25 customer-pay hours per RO. "
                 "Bumps their current hour tier rate (e.g. $6.50 → $7.50)."
@@ -444,7 +453,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
             key=adv_key(advisor_idx, "cp_bump"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx,),
+            args=(advisor_idx, row.name),
             help="Commission pay mirrors New Advisors plan with optional CP bump.",
         )
 
@@ -455,7 +464,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             f"Alignment bonus — {_money(ALIGNMENT_BONUS_AMOUNT)}",
             key=adv_key(advisor_idx, "alignment_bonus"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx,),
+            args=(advisor_idx, row.name),
             help="Turn on when the advisor earned the alignment bonus this pay period.",
         )
     with c2:
@@ -465,19 +474,19 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             step=1.0,
             key=adv_key(advisor_idx, "spiff"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx,),
+            args=(advisor_idx, row.name),
         )
 
     st.text_area(
         "Notes for payroll clerk",
         key=adv_key(advisor_idx, "notes"),
         on_change=persist_advisor_changes,
-        args=(advisor_idx,),
+        args=(advisor_idx, row.name),
         placeholder="Optional extra notes — guarantee language prints automatically on the PDF",
         height=72,
     )
 
-    _render_csi_buttons(advisor_idx)
+    _render_csi_buttons(advisor_idx, row.name)
 
     synced = all_advisors_synced()[advisor_idx]
     weeks = pay_period_weeks()
@@ -632,7 +641,7 @@ def render():
     _render_advisor_roster_manager()
 
     st.markdown("---")
-    st.caption("Click an advisor to expand pay details — each advisor has a unique color.")
+    st.caption("Click ▶ to expand pay details — the section stays open while you edit toggles and bonuses.")
 
     advisor_rows = flatten_roster(st.session_state.advisor_roster)
     weeks = pay_period_weeks()

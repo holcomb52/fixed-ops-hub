@@ -153,6 +153,7 @@ def save_advisor_payroll_run(
     pay_period_weeks: float,
     run_id: Optional[str] = None,
     status: str = "completed",
+    cloud_sync: bool = True,
 ) -> Tuple[str, str]:
     snapshot = serialize_advisor_payroll_session(advisors, pay_period, pay_period_weeks)
     run_id = run_id or str(uuid.uuid4())
@@ -172,6 +173,9 @@ def save_advisor_payroll_run(
     _save_local(run_id, record)
 
     sync_error = ""
+    if not cloud_sync:
+        return run_id, sync_error
+
     client = get_supabase()
     if client:
         row = {

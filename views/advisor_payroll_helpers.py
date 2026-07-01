@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Dict, Optional
 
 import streamlit as st
@@ -39,6 +40,16 @@ ADVISOR_TOGGLE_FIELDS = ("csi_tier", "cp_bump", "alignment_bonus")
 
 def adv_key(idx: int, field: str) -> str:
     return f"adv_{idx}_{field}"
+
+
+def advisor_section_open_key(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    return f"advisor_open_{slug}"
+
+
+def advisor_section_toggle_key(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip()).strip("_").lower()
+    return f"advisor_toggle_{slug}"
 
 
 def clear_advisor_field_keys():
@@ -98,20 +109,40 @@ def apply_advisor_value_store():
             st.session_state[adv_key(i, "notes")] = str(saved.get("notes", row.notes) or "")
 
 
-def persist_advisor_changes(advisor_idx: int | None = None):
+def persist_advisor_changes(advisor_idx: int | None = None, advisor_name: str | None = None):
     """Capture widget values and auto-save the in-progress advisor payroll."""
+    if advisor_name:
+        st.session_state[advisor_section_open_key(advisor_name)] = True
+    elif advisor_idx is not None:
+        rows = flatten_roster(st.session_state.advisor_roster)
+        if 0 <= advisor_idx < len(rows):
+            st.session_state[advisor_section_open_key(rows[advisor_idx].name)] = True
+
     refresh_advisor_value_store()
     from lib.payroll_autosave import autosave_advisor_payroll
 
     autosave_advisor_payroll()
 
 
-def toggle_advisor_section(advisor_idx: int):
+def toggle_advisor_section(name: str):
     """Collapse or expand an advisor section without losing entered values."""
-    open_key = adv_key(advisor_idx, "expanded")
-    if st.session_state.get(open_key, False):
-        persist_advisor_changes(advisor_idx)
-    st.session_state[open_key] = not st.session_state.get(open_key, False)
+    open_key = advisor_section_open_key(name)
+    was_open = bool(st.session_state.get(open_key, False))
+    if was_open:
+        refresh_advisor_value_store()
+        from lib.payroll_autosave import autosave_advisor_payroll
+
+        autosave_advisor_payroll()
+        st.session_state[open_key] = False
+    else:
+        st.session_state[open_key] = True
+
+
+def _migrate_legacy_section_open_keys(rows: list[AdvisorPayrollRow]):
+    for i, row in enumerate(rows):
+        legacy = adv_key(i, "expanded")
+        if legacy in st.session_state:
+            st.session_state[advisor_section_open_key(row.name)] = bool(st.session_state.pop(legacy))
 
 
 def capture_advisor_values(rows: list[AdvisorPayrollRow]) -> dict:
@@ -173,6 +204,7 @@ def init_advisor_payroll_session():
         st.session_state.advisor_report_loaded = False
 
     rows = flatten_roster(st.session_state.advisor_roster)
+    _migrate_legacy_section_open_keys(rows)
     for i, row in enumerate(rows):
         for field, default in ADVISOR_FIELDS.items():
             key = adv_key(i, field)

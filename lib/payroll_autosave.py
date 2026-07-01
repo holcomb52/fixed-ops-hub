@@ -21,6 +21,7 @@ def autosave_advisor_payroll() -> None:
         pay_period_weeks(),
         run_id=st.session_state.get("active_advisor_run_id"),
         status=status,
+        cloud_sync=status == "completed",
     )
     st.session_state.active_advisor_run_id = run_id
     if sync_error:

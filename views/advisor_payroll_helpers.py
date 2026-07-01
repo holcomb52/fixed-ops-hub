@@ -122,6 +122,7 @@ def persist_advisor_changes(advisor_idx: int | None = None, advisor_name: str | 
     from lib.payroll_autosave import autosave_advisor_payroll
 
     autosave_advisor_payroll()
+    st.rerun()
 
 
 def toggle_advisor_section(name: str):

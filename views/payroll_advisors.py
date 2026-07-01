@@ -356,14 +356,33 @@ def _render_csi_buttons(advisor_idx: int, advisor_name: str):
                 persist_advisor_changes(advisor_idx, advisor_name)
 
 
-@st.fragment
-def _advisor_detail_fragment(advisor_idx: int, row, accent: str) -> None:
+def _live_advisor_payroll():
+    """Read current widget state and calculate pay for every advisor."""
+    weeks = pay_period_weeks()
+    period_start = _pay_period_start()
+    advisor_rows = flatten_roster(st.session_state.advisor_roster)
+    synced_advisors = all_advisors_synced()
+    advisor_results = [
+        calculate_advisor_payroll(a, pay_period_weeks=weeks, pay_period_start=period_start)
+        for a in synced_advisors
+    ]
+    return advisor_rows, synced_advisors, advisor_results, weeks
+
+
+def _advisor_detail_panel(advisor_idx: int, row, accent: str) -> None:
     st.markdown(advisor_pay_detail_panel(accent), unsafe_allow_html=True)
     _render_advisor_section(advisor_idx, row)
 
 
-def _render_advisor_pay_entry(advisor_idx: int, row, result, accent: str) -> None:
+def _render_advisor_pay_entry(advisor_idx: int, row, accent: str) -> None:
     open_key = advisor_section_open_key(row.name)
+    weeks = pay_period_weeks()
+    synced = all_advisors_synced()[advisor_idx]
+    result = calculate_advisor_payroll(
+        synced,
+        pay_period_weeks=weeks,
+        pay_period_start=_pay_period_start(),
+    )
 
     col_toggle, col_card = st.columns([0.06, 0.94], vertical_alignment="center")
     with col_toggle:
@@ -388,7 +407,7 @@ def _render_advisor_pay_entry(advisor_idx: int, row, result, accent: str) -> Non
         )
 
     if is_open:
-        _advisor_detail_fragment(advisor_idx, row, accent)
+        _advisor_detail_panel(advisor_idx, row, accent)
 
 
 def _style_advisor_summary(df: pd.DataFrame, accents: list[str]):
@@ -651,18 +670,6 @@ def render():
     advisor_rows = flatten_roster(st.session_state.advisor_roster)
     weeks = pay_period_weeks()
     apply_advisor_value_store()
-    synced_advisors = all_advisors_synced()
-    advisor_results = [
-        calculate_advisor_payroll(a, pay_period_weeks=weeks, pay_period_start=_pay_period_start())
-        for a in synced_advisors
-    ]
-
-    summary_rows = [
-        _summary_row(row, synced_advisors[i], advisor_results[i])
-        for i, row in enumerate(advisor_rows)
-    ]
-    summary_accents = [advisor_accent_for_index(i) for i in range(len(advisor_rows))]
-    grand_total = sum(r["Total Pay"] for r in summary_rows)
 
     global_idx = 0
     for plan_type in PLAN_ORDER:
@@ -675,9 +682,14 @@ def render():
 
         for local_i, row in enumerate(plan_rows):
             i = global_idx + local_i
-            result = advisor_results[i]
+            synced = all_advisors_synced()[i]
+            result = calculate_advisor_payroll(
+                synced,
+                pay_period_weeks=weeks,
+                pay_period_start=_pay_period_start(),
+            )
             plan_total += result.total_pay
-            _render_advisor_pay_entry(i, row, result, advisor_accent_for_index(i))
+            _render_advisor_pay_entry(i, row, advisor_accent_for_index(i))
 
         _render_plan_section_footer(plan_type, plan_total, len(plan_rows))
         st.markdown(
@@ -685,6 +697,14 @@ def render():
             unsafe_allow_html=True,
         )
         global_idx += len(plan_rows)
+
+    advisor_rows, synced_advisors, advisor_results, weeks = _live_advisor_payroll()
+    summary_rows = [
+        _summary_row(row, synced_advisors[i], advisor_results[i])
+        for i, row in enumerate(advisor_rows)
+    ]
+    summary_accents = [advisor_accent_for_index(i) for i in range(len(advisor_rows))]
+    grand_total = sum(r["Total Pay"] for r in summary_rows)
 
     st.markdown("---")
     st.markdown("##### Advisor payroll summary")

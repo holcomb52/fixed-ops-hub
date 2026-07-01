@@ -8,7 +8,6 @@ from lib.payroll_pdf_export import generate_payroll_pdf
 from lib.tech_payroll_calc import (
     PROD_BONUS_TIERS,
     all_hours_by_name,
-    apply_flag_data,
     apply_supplemental_metrics,
     apply_tech_numbers,
     supplemental_bonus_eligible,
@@ -42,6 +41,7 @@ from views.payroll_helpers import (
     refresh_tech_supplemental_bonuses,
     set_pay_period_dates,
     store_flag_pdf,
+    sync_flag_sheet_to_session,
     sync_row,
     render_payroll_sync_error,
     render_roster_sync_error,
@@ -101,35 +101,6 @@ def _render_team_header(team_name: str, rows: list, team_hrs: float) -> None:
 
 def _roster_names() -> list[str]:
     return [row.name for rows in st.session_state.tech_teams.values() for row in rows]
-
-
-def _store_cp_metrics_from_flag(parsed) -> int:
-    cp_by_name = {}
-    for tech in parsed.technicians:
-        cp_by_name[tech.display_name] = {
-            "cp_hours": tech.cp_hours,
-            "cp_ro_count": tech.cp_ro_count,
-            "cp_hrs_per_ro": tech.cp_hrs_per_ro,
-        }
-    st.session_state.tech_cp_metrics_by_name = cp_by_name
-    apply_supplemental_metrics(
-        st.session_state.tech_teams,
-        cp_by_name=cp_by_name,
-        closing_by_name=st.session_state.get("tech_closing_by_name", {}),
-    )
-    return len(cp_by_name)
-
-
-def _apply_pdf_to_state(flag_map: dict):
-    ensure_all_row_fields()
-    for team_name, rows in st.session_state.tech_teams.items():
-        for i, row in enumerate(rows):
-            if row.name in flag_map:
-                hours, dollars = flag_map[row.name]
-                st.session_state[field_key(team_name, i, "hours")] = float(hours)
-                st.session_state[field_key(team_name, i, "dollars")] = float(dollars)
-                row.flat_rate_hours = hours
-                row.dollars_earned = dollars
 
 
 def _apply_roster_change(mutator):
@@ -465,17 +436,14 @@ def render():
                 store_flag_pdf(pdf_file, pdf_bytes)
                 pdf_file.seek(0)
                 parsed = parse_flag_sheet(pdf_file)
-                flag_map = {t.display_name: (t.flat_rate_hours, t.dollars_earned) for t in parsed.technicians}
+                matched = sync_flag_sheet_to_session()
                 number_map = {t.display_name: t.tech_number for t in parsed.technicians if t.tech_number}
-
-                _apply_pdf_to_state(flag_map)
                 numbers_updated = 0
                 for team_rows in st.session_state.tech_teams.values():
-                    apply_flag_data(team_rows, flag_map)
                     numbers_updated += apply_tech_numbers(team_rows, number_map)
                 if numbers_updated:
                     save_roster(st.session_state.tech_teams)
-                cp_count = _store_cp_metrics_from_flag(parsed)
+                cp_count = len(st.session_state.get("tech_cp_metrics_by_name", {}))
                 st.session_state.pdf_loaded = True
                 st.session_state.flag_pdf_processed_sig = pdf_sig
 
@@ -488,7 +456,12 @@ def render():
                         st.session_state.pending_pay_period_end = pdf_end
                         dates_updated = True
 
-                matched = sum(1 for team in st.session_state.tech_teams.values() for r in team if r.name in flag_map)
+                matched = sum(
+                    1
+                    for team in st.session_state.tech_teams.values()
+                    for row in team
+                    if row.flat_rate_hours or row.dollars_earned
+                )
                 number_note = f" · {numbers_updated} tech numbers synced" if numbers_updated else ""
 
                 period_note = ""
@@ -644,6 +617,7 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
+            sync_flag_sheet_to_session()
             run_id, sync_error = save_payroll_run(
                 all_rows_synced(),
                 st.session_state.pay_period,

@@ -86,7 +86,14 @@ class FlagSheetParseResult:
 
 def normalize_tech_name(pdf_name: str) -> str:
     key = pdf_name.strip().upper()
-    return PDF_NAME_MAP.get(key, pdf_name.strip().title())
+    if key in PDF_NAME_MAP:
+        return PDF_NAME_MAP[key]
+    parts = key.split()
+    if len(parts) >= 3:
+        short = f"{parts[0]} {parts[-1]}"
+        if short in PDF_NAME_MAP:
+            return PDF_NAME_MAP[short]
+    return pdf_name.strip().title()
 
 
 def compute_cp_metrics(line_items: List[FlagLineItem]) -> tuple[float, int]:

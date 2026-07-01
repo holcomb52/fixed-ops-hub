@@ -57,7 +57,9 @@ def autosave_technician_payroll() -> None:
         return
 
     from lib.payroll_storage import save_payroll_run
-    from views.payroll_helpers import all_rows_synced
+    from views.payroll_helpers import all_rows_synced, sync_flag_sheet_to_session
+
+    sync_flag_sheet_to_session()
 
     status = "completed" if st.session_state.get("payroll_completed") else "draft"
     run_id, sync_error = save_payroll_run(

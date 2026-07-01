@@ -328,18 +328,42 @@ def prod_tier_label(hours: float) -> str:
 
 def apply_flag_data(rows: List[TechPayrollRow], flag_by_name: Dict[str, tuple]) -> None:
     """Apply PDF hours/dollars to roster rows. flag_by_name: name -> (hours, dollars)."""
+    from lib.tech_flag_sync import _name_key, names_match
+
     for row in rows:
         if row.name in flag_by_name:
             hours, dollars = flag_by_name[row.name]
             row.flat_rate_hours = hours
             row.dollars_earned = dollars
+            continue
+        name_key = _name_key(row.name)
+        if name_key in flag_by_name:
+            hours, dollars = flag_by_name[name_key]
+            row.flat_rate_hours = hours
+            row.dollars_earned = dollars
+            continue
+        for flag_name, entry in flag_by_name.items():
+            if names_match(row.name, flag_name):
+                row.flat_rate_hours, row.dollars_earned = entry
+                break
 
 
 def apply_tech_numbers(rows: List[TechPayrollRow], numbers_by_name: Dict[str, str]) -> int:
     """Apply tech numbers from flag sheet PDF. Returns count updated."""
+    from lib.tech_flag_sync import _name_key, names_match
+
     updated = 0
     for row in rows:
+        if row.tech_number:
+            continue
         tech_number = numbers_by_name.get(row.name)
+        if not tech_number:
+            tech_number = numbers_by_name.get(_name_key(row.name))
+        if not tech_number:
+            for name, number in numbers_by_name.items():
+                if names_match(row.name, name):
+                    tech_number = number
+                    break
         if tech_number:
             row.tech_number = tech_number
             updated += 1

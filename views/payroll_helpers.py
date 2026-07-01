@@ -156,6 +156,44 @@ def apply_teams_to_session(teams: dict, values_by_name: Optional[Dict] = None):
             if overrides and "tech_number" in overrides:
                 row.tech_number = overrides["tech_number"]
             init_row_fields(team_name, i, row, overrides=overrides)
+    sync_flag_sheet_to_session()
+
+
+def sync_flag_sheet_to_session() -> int:
+    """Re-apply stored flag sheet PDF to the current roster and session widget keys."""
+    pdf_bytes = st.session_state.get("flag_pdf_bytes")
+    if not pdf_bytes:
+        return 0
+
+    from lib.tech_flag_sync import apply_flag_to_teams, parse_flag_pdf_bytes
+    from lib.tech_payroll_calc import recalc_supplemental_bonuses
+
+    parsed = parse_flag_pdf_bytes(pdf_bytes)
+    matched = apply_flag_to_teams(st.session_state.tech_teams, parsed)
+
+    cp_by_name = {}
+    for team_name, rows in st.session_state.tech_teams.items():
+        for i, row in enumerate(rows):
+            if row.flat_rate_hours or row.dollars_earned:
+                st.session_state[field_key(team_name, i, "hours")] = float(row.flat_rate_hours)
+                st.session_state[field_key(team_name, i, "dollars")] = float(row.dollars_earned)
+            if row.cp_hrs_per_ro or row.cp_hours:
+                cp_by_name[row.name] = {
+                    "cp_hours": row.cp_hours,
+                    "cp_ro_count": row.cp_ro_count,
+                    "cp_hrs_per_ro": row.cp_hrs_per_ro,
+                }
+
+    if cp_by_name:
+        st.session_state.tech_cp_metrics_by_name = {
+            **st.session_state.get("tech_cp_metrics_by_name", {}),
+            **cp_by_name,
+        }
+
+    recalc_supplemental_bonuses(
+        [row for rows in st.session_state.tech_teams.values() for row in rows]
+    )
+    return matched
 
 
 def render_pay_period_selector():
@@ -225,6 +263,8 @@ def init_payroll_session():
 
     init_pay_period_state()
     ensure_all_row_fields()
+    if st.session_state.get("flag_pdf_bytes"):
+        sync_flag_sheet_to_session()
 
 
 def _field_float(team_name: str, idx: int, field: str, default: float = 0.0) -> float:

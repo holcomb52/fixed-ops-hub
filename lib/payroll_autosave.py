@@ -44,6 +44,7 @@ def autosave_receptionist_payroll() -> None:
         pay_period,
         run_id=st.session_state.get("active_receptionist_run_id"),
         status=status,
+        cloud_sync=status == "completed",
     )
     st.session_state.active_receptionist_run_id = run_id
     if sync_error:

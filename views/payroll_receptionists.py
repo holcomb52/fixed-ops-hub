@@ -32,12 +32,10 @@ from views.receptionist_payroll_helpers import (
     apply_roster_to_session,
     capture_open_receptionist_inputs,
     capture_receptionist_values,
-    form_key,
     init_receptionist_payroll_session,
     persist_receptionist_changes,
     rec_key,
     refresh_receptionist_value_store,
-    save_receptionist_form,
     section_open_key,
     section_toggle_key,
     sync_all_appointment_rates_to_roster,
@@ -185,6 +183,8 @@ def _csi_label(tier_key: str) -> str:
 
 
 def _live_receptionist_payroll():
+    capture_open_receptionist_inputs()
+    refresh_receptionist_value_store()
     employee_rows = flatten_roster(st.session_state.receptionist_roster)
     synced_employees = all_receptionists_synced()
     employee_results = [calculate_receptionist_payroll(e) for e in synced_employees]
@@ -228,55 +228,59 @@ def _summary_row(row, synced, result) -> dict:
 
 
 def _render_receptionist_section(row) -> None:
-    st.caption("Enter all values, then click **Save entries** — the section stays open and both fields save together.")
+    st.caption("Edits apply to the summary chart below as soon as you change a field.")
 
-    with st.form(key=form_key(row.name), clear_on_submit=False):
+    st.text_input(
+        "$ per appointment set",
+        key=_appointment_rate_text_key(row.name),
+        on_change=persist_receptionist_changes,
+        args=(row.name,),
+        help="Type the dollars paid per appointment (e.g. 3 or 3.00).",
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        appointments_set = sync_receptionist(row).appointments_set
+        st.metric(
+            "Appointments set",
+            f"{appointments_set:.0f}",
+            help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
+        )
+    with c2:
         st.text_input(
-            "$ per appointment set",
-            key=_appointment_rate_text_key(row.name),
-            help="Type the dollars paid per appointment (e.g. 3 or 3.00).",
+            f"Tires sold (${TIRE_PAY_RATE:.0f} each)",
+            key=_tires_text_key(row.name),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
+            help="Type the number of tires sold this pay period.",
         )
 
-        c1, c2 = st.columns(2)
-        with c1:
-            appointments_set = sync_receptionist(row).appointments_set
-            st.metric(
-                "Appointments set",
-                f"{appointments_set:.0f}",
-                help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
-            )
-        with c2:
-            st.text_input(
-                f"Tires sold (${TIRE_PAY_RATE:.0f} each)",
-                key=_tires_text_key(row.name),
-                help="Type the number of tires sold this pay period.",
-            )
-
-        if row.has_warranty_bonus:
-            st.checkbox(
-                f"Extended warranty schedule bonus — {_money(row.warranty_bonus_amount)}",
-                key=rec_key(row.name, "warranty_bonus"),
-                help="Turn on when this receptionist earned the monthly extended warranty bonus.",
-            )
-
-        st.number_input(
-            "SPIFF ($)",
-            min_value=0.0,
-            step=1.0,
-            key=rec_key(row.name, "spiff"),
+    if row.has_warranty_bonus:
+        st.checkbox(
+            f"Extended warranty schedule bonus — {_money(row.warranty_bonus_amount)}",
+            key=rec_key(row.name, "warranty_bonus"),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
+            help="Turn on when this receptionist earned the monthly extended warranty bonus.",
         )
 
-        st.text_area(
-            "Notes for payroll clerk",
-            key=rec_key(row.name, "notes"),
-            placeholder="Optional — prints on the payroll PDF for accounting",
-            height=68,
-        )
+    st.number_input(
+        "SPIFF ($)",
+        min_value=0.0,
+        step=1.0,
+        key=rec_key(row.name, "spiff"),
+        on_change=persist_receptionist_changes,
+        args=(row.name,),
+    )
 
-        submitted = st.form_submit_button("Save entries", use_container_width=True, type="primary")
-
-    if submitted:
-        save_receptionist_form(row.name)
+    st.text_area(
+        "Notes for payroll clerk",
+        key=rec_key(row.name, "notes"),
+        on_change=persist_receptionist_changes,
+        args=(row.name,),
+        placeholder="Optional — prints on the payroll PDF for accounting",
+        height=68,
+    )
 
     if row.has_csi_bonus:
         _render_receptionist_csi_buttons(row)
@@ -324,9 +328,9 @@ def render():
     init_receptionist_payroll_session()
 
     st.markdown(
-        '<span class="legend-chip chip-manual">Click a name · enter values · click Save entries · CSI tier buttons save on click</span> '
+        '<span class="legend-chip chip-manual">Click a name · enter tires, SPIFF, bonuses</span> '
         '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span> '
-        '<span class="legend-chip chip-live">Changes save automatically</span>',
+        '<span class="legend-chip chip-live">Summary chart updates on each change</span>',
         unsafe_allow_html=True,
     )
 

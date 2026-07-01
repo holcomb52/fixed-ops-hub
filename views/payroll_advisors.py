@@ -360,6 +360,7 @@ def _render_csi_buttons(advisor_name: str):
 
 def _live_advisor_payroll():
     """Read current widget state and calculate pay for every advisor."""
+    refresh_advisor_value_store()
     weeks = pay_period_weeks()
     period_start = _pay_period_start()
     advisor_rows = flatten_roster(st.session_state.advisor_roster)

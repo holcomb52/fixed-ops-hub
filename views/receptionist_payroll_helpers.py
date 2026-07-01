@@ -166,8 +166,8 @@ def _commit_appointment_rate_input(name: str):
     save_receptionist_form(name)
 
 
-def save_receptionist_form(name: str):
-    """Commit all pay-period fields for one receptionist."""
+def _commit_receptionist_inputs(name: str):
+    """Copy live widget values into session keys the summary chart reads."""
     row = next(
         (item for item in flatten_roster(st.session_state.receptionist_roster) if item.name == name),
         None,
@@ -178,8 +178,14 @@ def save_receptionist_form(name: str):
     tires = _parse_tires_value(name, row)
     st.session_state[rec_key(name, "appointment_rate")] = rate
     st.session_state[rec_key(name, "tires_sold")] = tires
+    store = st.session_state.setdefault("receptionist_value_store", {})
+    store[name] = {**store.get(name, {}), "appointment_rate": rate, "tires_sold": tires}
+
+
+def save_receptionist_form(name: str):
+    """Commit pay-period fields for one receptionist and refresh the summary."""
+    _commit_receptionist_inputs(name)
     st.session_state[section_open_key(name)] = True
-    persist_appointment_rate(name)
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
@@ -230,6 +236,7 @@ def apply_receptionist_value_store():
             val = saved.get(field, getattr(row, field, default))
             _hydrate(rec_key(row.name, field), float(val if val is not None else default))
         tires = float(saved.get("tires_sold", _parse_tires_value(row.name, row)) or 0)
+        _hydrate(rec_key(row.name, "tires_sold"), tires)
         _hydrate(_tires_text_key(row.name), str(int(tires)) if tires else "")
         _hydrate(rec_key(row.name, "bonus_label"), saved.get("bonus_label", row.bonus_label or "Bonus"))
         _hydrate(rec_key(row.name, "warranty_bonus"), bool(saved.get("warranty_bonus", False)))
@@ -310,9 +317,10 @@ def _session_text(row: ReceptionistPayrollRow, field: str, default: str = "") ->
 
 
 def persist_receptionist_changes(name: str | None = None):
-    """Capture pay-period field edits without touching $/appointment."""
+    """Capture pay-period field edits and refresh the bottom summary chart."""
     if name:
         st.session_state[section_open_key(name)] = True
+        _commit_receptionist_inputs(name)
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 

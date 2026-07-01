@@ -152,6 +152,7 @@ def save_receptionist_payroll_run(
     pay_period: str,
     run_id: Optional[str] = None,
     status: str = "completed",
+    cloud_sync: bool = True,
 ) -> Tuple[str, str]:
     snapshot = serialize_receptionist_payroll_session(employees, pay_period)
     run_id = run_id or str(uuid.uuid4())
@@ -171,6 +172,9 @@ def save_receptionist_payroll_run(
     _save_local(run_id, record)
 
     sync_error = ""
+    if not cloud_sync:
+        return run_id, sync_error
+
     client = get_supabase()
     if client:
         row = {

@@ -143,6 +143,25 @@ def _sync_row_exclusions(rows, custom_exclusions):
         row.exclusion = label_to_exclusion(st.session_state[key], custom_exclusions)
 
 
+def _persist_exclusion_edits():
+    """Keep row exclusions and running totals in sync when a line dropdown changes."""
+    rows = st.session_state.warranty_labor_rows
+    custom_exclusions = st.session_state.warranty_custom_exclusions
+    _sync_row_exclusions(rows, custom_exclusions)
+    st.session_state.warranty_labor_rows = rows
+    if st.session_state.get("active_warranty_run_id"):
+        _persist_warranty_run(rows, custom_exclusions, quiet=True)
+
+
+def _running_elr_summary(
+    rows: list[WarrantyLaborRow],
+    custom_exclusions: list[str],
+    reviewed_recids: set[str],
+):
+    _sync_row_exclusions(rows, custom_exclusions)
+    return summarize_reviewed_running_total(rows, reviewed_recids)
+
+
 def _group_rows_by_ro(rows: list[WarrantyLaborRow]) -> list[tuple[str, list[WarrantyLaborRow]]]:
     grouped: dict[str, list[WarrantyLaborRow]] = {}
     order: list[str] = []
@@ -290,6 +309,7 @@ def _render_ro_line(line: WarrantyLaborRow, line_title: str, select_options: lis
         f"Exclusion · {line_title}",
         options=select_options,
         key=exclusion_widget_key(line),
+        on_change=_persist_exclusion_edits,
         label_visibility="visible",
     )
     if excluded:
@@ -630,10 +650,10 @@ def render():
     _render_labor_rows(rows, custom_exclusions)
 
     reviewed_recids = _collect_reviewed_recids(_unique_report_recids(rows))
+    summary = _running_elr_summary(rows, custom_exclusions, reviewed_recids)
     running_rows = [
         row for row in rows if normalize_recid(row.recid) in reviewed_recids
     ]
-    summary = summarize_reviewed_running_total(rows, reviewed_recids)
     total_ros = len(_unique_report_recids(rows))
     reviewed_ro_count = len(reviewed_recids)
 
@@ -641,7 +661,8 @@ def render():
     st.markdown("##### Running shop ELR (reviewed repair orders)")
     st.caption(
         f"Counts **{reviewed_ro_count} of {total_ros}** repair orders you have marked reviewed. "
-        "Pick exclusions on each RO, then tap **Mark reviewed** — totals update immediately."
+        "Any line with an exclusion is removed from labor dollars and tech hours below — "
+        "even when other lines on the same RO stay included."
     )
 
     if reviewed_ro_count == 0:

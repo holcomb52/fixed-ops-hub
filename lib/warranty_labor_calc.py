@@ -118,12 +118,11 @@ def _line_id_index(line_id: str) -> int:
 
 
 def build_saved_exclusion_map(rows: List[WarrantyLaborRow]) -> dict[str, str]:
-    """Map line_id and recid to saved exclusion choices."""
+    """Map line_id to saved exclusion choices (one entry per operation line)."""
     saved: dict[str, str] = {}
     for row in rows:
         if row.line_id:
-            saved[row.line_id] = row.exclusion
-        saved[str(row.recid).strip()] = row.exclusion
+            saved[row.line_id] = row.exclusion or ""
     return saved
 
 

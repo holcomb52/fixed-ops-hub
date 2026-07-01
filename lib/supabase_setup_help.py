@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+_SCHEMA_FILE = Path(__file__).resolve().parent.parent / "supabase" / "schema.sql"
 _MIGRATION_FILES = [
     Path(__file__).resolve().parent.parent / "supabase" / "advisor_receptionist_payroll_tables.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "payroll_rosters_table.sql",
@@ -49,6 +50,8 @@ def payroll_sync_error_message(raw_error: str, table: str = "") -> str:
 
 
 def missing_payroll_tables_sql() -> str:
+    if _SCHEMA_FILE.exists():
+        return _SCHEMA_FILE.read_text().strip()
     parts = []
     for path in _MIGRATION_FILES:
         if path.exists():

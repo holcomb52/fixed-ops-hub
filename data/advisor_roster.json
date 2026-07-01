@@ -35,6 +35,14 @@
       "top_labor_rate": 9.5,
       "weekly_guarantee": 1000.0,
       "guarantee_expires": ""
+    },
+    {
+      "name": "Shane Bueschel",
+      "plan_type": "new_advisors_guarantee",
+      "advisor_id": "3859",
+      "top_labor_rate": 9.5,
+      "weekly_guarantee": 1000.0,
+      "guarantee_expires": ""
     }
   ]
 }

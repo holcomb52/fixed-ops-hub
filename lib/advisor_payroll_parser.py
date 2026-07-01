@@ -13,6 +13,7 @@ PAYROLL_NAME_MAP = {
     "TOM LEBLANC": "Tom LeBlanc",
     "MATTHEW GARRIGAN": "Matthew Garrigan",
     "BRADY HATCHER": "Brady Hatcher",
+    "SHANE BUESCHEL": "Shane Bueschel",
     "FELIX FIGUEROA": "Felix Figueroa",
 }
 

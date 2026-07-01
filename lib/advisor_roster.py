@@ -26,7 +26,12 @@ ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "advisor_roster.
 PLAN_ORDER = [PLAN_SEASONED, PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE]
 
 # Advisors who belong on the weekly-guarantee plan (backfilled / moved on roster load).
-GUARANTEE_ROSTER_ADVISORS = frozenset({"Brady Hatcher"})
+GUARANTEE_ROSTER_ADVISORS = frozenset({"Brady Hatcher", "Shane Bueschel"})
+
+ENSURE_GUARANTEE_ADVISORS: Dict[str, dict] = {
+    "Brady Hatcher": {"advisor_id": "3816"},
+    "Shane Bueschel": {"advisor_id": "3859"},
+}
 
 
 def _name_on_guarantee_plan(name: str) -> bool:
@@ -51,8 +56,36 @@ def ensure_guarantee_roster_advisors(roster: Dict[str, List[AdvisorPayrollRow]])
             rows.remove(row)
             row.plan_type = PLAN_NEW_ADVISORS_GUARANTEE
             apply_plan_defaults(row, PLAN_NEW_ADVISORS_GUARANTEE)
+            if row.name == "Shane Bueschel" or (
+                row.name.split()[0].lower() == "shane" and len(row.name.split()) > 1
+            ):
+                row.name = "Shane Bueschel"
+            spec = ENSURE_GUARANTEE_ADVISORS.get(row.name, {})
+            if spec.get("advisor_id") and not row.advisor_id:
+                row.advisor_id = spec["advisor_id"]
             roster.setdefault(PLAN_NEW_ADVISORS_GUARANTEE, []).append(row)
             changed = True
+
+    existing = {row.name for rows in roster.values() for row in rows}
+    for name, spec in ENSURE_GUARANTEE_ADVISORS.items():
+        if name in existing:
+            for rows in roster.values():
+                for row in rows:
+                    if row.name == name and spec.get("advisor_id") and not row.advisor_id:
+                        row.advisor_id = str(spec["advisor_id"])
+                        changed = True
+            continue
+        row = apply_plan_defaults(
+            AdvisorPayrollRow(
+                name,
+                plan_type=PLAN_NEW_ADVISORS_GUARANTEE,
+                advisor_id=str(spec.get("advisor_id", "") or ""),
+            ),
+            PLAN_NEW_ADVISORS_GUARANTEE,
+        )
+        roster.setdefault(PLAN_NEW_ADVISORS_GUARANTEE, []).append(row)
+        changed = True
+
     return changed
 
 
@@ -95,6 +128,14 @@ def default_roster() -> Dict[str, List[AdvisorPayrollRow]]:
                     "Brady Hatcher",
                     plan_type=PLAN_NEW_ADVISORS_GUARANTEE,
                     advisor_id="3816",
+                ),
+                PLAN_NEW_ADVISORS_GUARANTEE,
+            ),
+            apply_plan_defaults(
+                AdvisorPayrollRow(
+                    "Shane Bueschel",
+                    plan_type=PLAN_NEW_ADVISORS_GUARANTEE,
+                    advisor_id="3859",
                 ),
                 PLAN_NEW_ADVISORS_GUARANTEE,
             ),

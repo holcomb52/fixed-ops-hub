@@ -134,6 +134,11 @@ def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
         entry["warranty_bonus"] = st.session_state[warranty_key]
     elif "warranty_bonus" in saved:
         entry["warranty_bonus"] = saved["warranty_bonus"]
+    stretch_key = rec_key(row.name, "stretch_bonus")
+    if stretch_key in st.session_state:
+        entry["stretch_bonus"] = st.session_state[stretch_key]
+    elif "stretch_bonus" in saved:
+        entry["stretch_bonus"] = saved["stretch_bonus"]
     csi_key = rec_key(row.name, "csi_tier")
     if csi_key in st.session_state:
         entry["csi_tier"] = st.session_state[csi_key]
@@ -240,6 +245,7 @@ def apply_receptionist_value_store():
         _hydrate(_tires_text_key(row.name), str(int(tires)) if tires else "")
         _hydrate(rec_key(row.name, "bonus_label"), saved.get("bonus_label", row.bonus_label or "Bonus"))
         _hydrate(rec_key(row.name, "warranty_bonus"), bool(saved.get("warranty_bonus", False)))
+        _hydrate(rec_key(row.name, "stretch_bonus"), bool(saved.get("stretch_bonus", False)))
         _hydrate(rec_key(row.name, "csi_tier"), saved.get("csi_tier", CSI_TIER_NONE))
         _hydrate(rec_key(row.name, "notes"), str(saved.get("notes", row.notes) or ""))
 
@@ -350,6 +356,7 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
             ),
             "spiff": float(st.session_state.get(rec_key(row.name, "spiff"), row.spiff) or 0),
             "warranty_bonus": bool(st.session_state.get(rec_key(row.name, "warranty_bonus"), False)),
+            "stretch_bonus": bool(st.session_state.get(rec_key(row.name, "stretch_bonus"), False)),
             "csi_tier": st.session_state.get(rec_key(row.name, "csi_tier"), CSI_TIER_NONE),
             "notes": str(st.session_state.get(rec_key(row.name, "notes"), row.notes) or ""),
         }
@@ -370,6 +377,9 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
     )
     st.session_state[rec_key(row.name, "warranty_bonus")] = bool(
         overrides.get("warranty_bonus", False)
+    )
+    st.session_state[rec_key(row.name, "stretch_bonus")] = bool(
+        overrides.get("stretch_bonus", False)
     )
     st.session_state[rec_key(row.name, "csi_tier")] = overrides.get("csi_tier", CSI_TIER_NONE)
     st.session_state[rec_key(row.name, "notes")] = overrides.get("notes", row.notes or "")
@@ -400,6 +410,10 @@ def init_receptionist_payroll_session():
         apply_roster_to_session(load_roster())
     else:
         st.session_state.receptionist_roster = normalize_roster(st.session_state.receptionist_roster)
+        from lib.receptionist_roster import ensure_recall_pulse_roster, save_roster
+
+        if ensure_recall_pulse_roster(st.session_state.receptionist_roster):
+            save_roster(st.session_state.receptionist_roster)
     if "receptionist_report_loaded" not in st.session_state:
         st.session_state.receptionist_report_loaded = False
 
@@ -459,6 +473,9 @@ def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
         warranty_bonus_amount=float(row.warranty_bonus_amount or 0),
         warranty_bonus_qualified=_session_bool(row, "warranty_bonus", row.warranty_bonus_qualified),
         has_csi_bonus=row.has_csi_bonus,
+        has_recall_pulse_plan=row.has_recall_pulse_plan,
+        stretch_bonus_qualified=_session_bool(row, "stretch_bonus", row.stretch_bonus_qualified),
+        stretch_bonus_amount=float(row.stretch_bonus_amount or 0),
         csi_tier=_session_text(row, "csi_tier", CSI_TIER_NONE),
         bonus_label=_session_text(row, "bonus_label", row.bonus_label or "Bonus"),
         spiff=_session_float(row, "spiff", row.spiff),

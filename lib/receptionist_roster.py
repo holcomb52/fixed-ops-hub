@@ -44,6 +44,7 @@ def default_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
                 last_name="SISTRUNK",
                 taker_codes=["22SISTRUNKB"],
                 has_csi_bonus=True,
+                has_recall_pulse_plan=True,
             ),
             ReceptionistPayrollRow("Kayla Hoffman", last_name="HOFFMAN", taker_codes=["22HOFFMANK"]),
             ReceptionistPayrollRow("Samantha Rodriguez", last_name="RODRIGUEZ", taker_codes=["22RODRIGUEZS"]),
@@ -101,6 +102,9 @@ def _row_from_dict(item: dict) -> ReceptionistPayrollRow:
         has_warranty_bonus=bool(item.get("has_warranty_bonus", False)),
         warranty_bonus_amount=float(item.get("warranty_bonus_amount", DEFAULT_WARRANTY_BONUS) or DEFAULT_WARRANTY_BONUS),
         has_csi_bonus=has_csi_bonus,
+        has_recall_pulse_plan=bool(
+            item.get("has_recall_pulse_plan", name == "Brandy Sistrunk")
+        ),
     )
 
 
@@ -114,6 +118,7 @@ def _serialize_row(row: ReceptionistPayrollRow) -> dict:
         "has_warranty_bonus": row.has_warranty_bonus,
         "warranty_bonus_amount": row.warranty_bonus_amount,
         "has_csi_bonus": row.has_csi_bonus,
+        "has_recall_pulse_plan": row.has_recall_pulse_plan,
     }
 
 
@@ -234,6 +239,16 @@ def update_employee(
             row.has_csi_bonus = has_csi_bonus
         return True, f"Updated {row.name}."
     return False, f"{name} not found."
+
+
+def ensure_recall_pulse_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) -> bool:
+    """Backfill Brandy Sistrunk's RecallPulse plan flag on existing rosters."""
+    changed = False
+    for row in flatten_roster(roster):
+        if row.name == "Brandy Sistrunk" and not row.has_recall_pulse_plan:
+            row.has_recall_pulse_plan = True
+            changed = True
+    return changed
 
 
 def reset_roster() -> Dict[str, List[ReceptionistPayrollRow]]:

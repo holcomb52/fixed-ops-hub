@@ -32,7 +32,8 @@
       "appointment_rate": 2.0,
       "has_warranty_bonus": false,
       "warranty_bonus_amount": 100.0,
-      "has_csi_bonus": true
+      "has_csi_bonus": true,
+      "has_recall_pulse_plan": true
     },
     {
       "name": "Kayla Hoffman",

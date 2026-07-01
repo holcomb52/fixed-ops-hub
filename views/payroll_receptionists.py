@@ -6,9 +6,12 @@ from lib.receptionist_payroll_calc import (
     CSI_TIER_KEYS,
     CSI_TIER_NONE,
     DEFAULT_WARRANTY_BONUS,
+    RECALL_PULSE_STRETCH_BONUS,
     RECEPTIONIST_CSI_TIER_OPTIONS,
     TIRE_PAY_RATE,
     calculate_receptionist_payroll,
+    describe_recall_pulse_appointment_pay,
+    recall_pulse_tier_breakdown,
 )
 from lib.receptionist_payroll_export_data import build_receptionist_payroll_snapshot
 from lib.receptionist_payroll_parser import parse_cashiers_report
@@ -80,10 +83,15 @@ def _render_roster_manager():
                     st.caption(f"Warranty bonus eligible · {_money(row.warranty_bonus_amount)}")
                 if row.has_csi_bonus:
                     st.caption("CSI bonus eligible · $1,000 / $500")
+                if row.has_recall_pulse_plan:
+                    st.caption("RecallPulse tiered appt bonus · $500 stretch")
             with c2:
                 codes = ", ".join(row.taker_codes) if row.taker_codes else "—"
-                rate = float(row.appointment_rate or 0)
-                st.caption(f"${rate:.2f}/appt · Codes: {codes}")
+                if row.has_recall_pulse_plan:
+                    st.caption(f"Tiered recall bonus · Codes: {codes}")
+                else:
+                    rate = float(row.appointment_rate or 0)
+                    st.caption(f"${rate:.2f}/appt · Codes: {codes}")
             with c3:
                 with st.popover("Edit", use_container_width=True):
                     new_name = st.text_input("First name", value=row.name.split()[0], key=f"rec_edit_name_{row.name}")
@@ -213,11 +221,17 @@ def _render_receptionist_csi_buttons(row) -> None:
 
 
 def _summary_row(row, synced, result) -> dict:
+    appt_plan = (
+        "Tiered recall ($3–$15)"
+        if row.has_recall_pulse_plan
+        else f"${float(synced.appointment_rate or 0):.2f}"
+    )
     return {
         "Receptionist": format_receptionist_display_name(row),
-        "$/Appt": synced.appointment_rate,
+        "Appt Plan": appt_plan,
         "Appts": synced.appointments_set,
         "Appt Pay": result.appointment_pay,
+        "Stretch": result.stretch_pay,
         "Tires": synced.tires_sold,
         "Tire Pay": result.tire_pay,
         "Warranty": result.warranty_pay,
@@ -227,16 +241,35 @@ def _summary_row(row, synced, result) -> dict:
     }
 
 
+def _render_recall_pulse_plan_panel(row) -> None:
+    st.markdown("##### RecallPulse tiered appointment bonus")
+    st.caption(
+        "Effective 06/26/26 — incremental tiers: 1–15 @ $3 · 16–25 @ $8 · 26–35 @ $12 · 36+ @ $15 per appointment. "
+        "Replaces flat $/appointment for Brandy only."
+    )
+    st.checkbox(
+        f"Monthly stretch bonus — {_money(RECALL_PULSE_STRETCH_BONUS)} "
+        "(70 recall appointments in the calendar month)",
+        key=rec_key(row.name, "stretch_bonus"),
+        on_change=persist_receptionist_changes,
+        args=(row.name,),
+        help="Turn on when Brandy met the monthly stretch target. Paid on the first payroll of the following month.",
+    )
+
+
 def _render_receptionist_section(row) -> None:
     st.caption("Edits apply to the summary chart below as soon as you change a field.")
 
-    st.text_input(
-        "$ per appointment set",
-        key=_appointment_rate_text_key(row.name),
-        on_change=persist_receptionist_changes,
-        args=(row.name,),
-        help="Type the dollars paid per appointment (e.g. 3 or 3.00).",
-    )
+    if row.has_recall_pulse_plan:
+        _render_recall_pulse_plan_panel(row)
+    else:
+        st.text_input(
+            "$ per appointment set",
+            key=_appointment_rate_text_key(row.name),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
+            help="Type the dollars paid per appointment (e.g. 3 or 3.00).",
+        )
 
     c1, c2 = st.columns(2)
     with c1:
@@ -288,18 +321,32 @@ def _render_receptionist_section(row) -> None:
     synced = sync_receptionist(row)
     result = calculate_receptionist_payroll(synced)
 
-    pay_rows = [
-        {
+    pay_rows = []
+    if row.has_recall_pulse_plan:
+        for label, amount in recall_pulse_tier_breakdown(synced.appointments_set):
+            pay_rows.append({"Pay": label, "Amount": amount, "Detail": ""})
+        pay_rows.append({
+            "Pay": "Tiered appointment bonus",
+            "Amount": result.appointment_pay,
+            "Detail": describe_recall_pulse_appointment_pay(synced.appointments_set),
+        })
+    else:
+        pay_rows.append({
             "Pay": "Appointment pay",
             "Amount": result.appointment_pay,
             "Detail": f"{synced.appointments_set:.0f} appts × {_money(synced.appointment_rate)}",
-        },
-        {
-            "Pay": "Tire pay",
-            "Amount": result.tire_pay,
-            "Detail": f"{synced.tires_sold:.0f} tires × {_money(TIRE_PAY_RATE)}",
-        },
-    ]
+        })
+    pay_rows.append({
+        "Pay": "Tire pay",
+        "Amount": result.tire_pay,
+        "Detail": f"{synced.tires_sold:.0f} tires × {_money(TIRE_PAY_RATE)}",
+    })
+    if row.has_recall_pulse_plan:
+        pay_rows.append({
+            "Pay": "Stretch bonus",
+            "Amount": result.stretch_pay,
+            "Detail": "Qualified" if synced.stretch_bonus_qualified else "Toggle off",
+        })
     if row.has_warranty_bonus:
         pay_rows.append({
             "Pay": "Warranty bonus",
@@ -383,9 +430,13 @@ def render():
         synced = next(s for s in all_receptionists_synced() if s.name == row.name)
         result = calculate_receptionist_payroll(synced)
         arrow = "▼" if is_open else "▶"
-        display_rate = float(synced.appointment_rate or row.appointment_rate or 0)
+        display_rate = (
+            "Tiered recall bonus"
+            if row.has_recall_pulse_plan
+            else f"{_money(float(synced.appointment_rate or row.appointment_rate or 0))}/appt"
+        )
         button_label = (
-            f"{arrow}  {format_receptionist_display_name(row)}  ·  {_money(display_rate)}/appt  ·  "
+            f"{arrow}  {format_receptionist_display_name(row)}  ·  {display_rate}  ·  "
             f"Total {_money(result.total_pay)}"
         )
         if st.button(
@@ -414,9 +465,9 @@ def render():
         use_container_width=True,
         hide_index=True,
         column_config={
-            "$/Appt": st.column_config.NumberColumn(format="$%.2f"),
             "Appts": st.column_config.NumberColumn(format="%.0f"),
             "Appt Pay": st.column_config.NumberColumn(format="$%.2f"),
+            "Stretch": st.column_config.NumberColumn(format="$%.2f"),
             "Tires": st.column_config.NumberColumn(format="%.0f"),
             "Tire Pay": st.column_config.NumberColumn(format="$%.2f"),
             "Warranty": st.column_config.NumberColumn(format="$%.2f"),

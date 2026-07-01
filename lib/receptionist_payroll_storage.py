@@ -49,12 +49,15 @@ def serialize_receptionist_payroll_session(
             "spiff": employee.spiff,
             "notes": employee.notes,
             "warranty_bonus": employee.warranty_bonus_qualified,
+            "stretch_bonus": employee.stretch_bonus_qualified,
+            "has_recall_pulse_plan": employee.has_recall_pulse_plan,
             "csi_tier": employee.csi_tier,
             "appointment_pay": result.appointment_pay,
             "tire_pay": result.tire_pay,
             "warranty_pay": result.warranty_pay,
             "csi_pay": result.csi_pay,
             "bonus_pay": result.bonus_pay,
+            "stretch_pay": result.stretch_pay,
             "total_pay": result.total_pay,
         })
 
@@ -96,6 +99,7 @@ def apply_receptionist_snapshot_to_session(
             "spiff": float(emp.get("spiff", 0) or 0),
             "appointment_rate": float(emp.get("appointment_rate", 0) or 0),
             "warranty_bonus": bool(emp.get("warranty_bonus", False)),
+            "stretch_bonus": bool(emp.get("stretch_bonus", False)),
             "csi_tier": emp.get("csi_tier", "none"),
             "notes": str(emp.get("notes", "") or ""),
         }
@@ -110,6 +114,7 @@ def apply_receptionist_snapshot_to_session(
             "bonus_label": emp.get("bonus_label", "Bonus"),
             "spiff": float(emp.get("spiff", 0) or 0),
             "warranty_bonus": bool(emp.get("warranty_bonus", False)),
+            "stretch_bonus": bool(emp.get("stretch_bonus", False)),
             "csi_tier": emp.get("csi_tier", "none"),
             "notes": str(emp.get("notes", "") or ""),
         }

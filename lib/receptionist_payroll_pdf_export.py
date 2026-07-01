@@ -57,6 +57,8 @@ def generate_receptionist_payroll_pdf(snapshot: dict) -> bytes:
                 bonus_parts.append(f"Warranty\n${r['warranty_pay']:,.2f}")
             if r.get("csi_pay"):
                 bonus_parts.append(f"CSI\n${r['csi_pay']:,.2f}")
+            if r.get("stretch_pay"):
+                bonus_parts.append(f"Stretch\n${r['stretch_pay']:,.2f}")
             if r.get("bonus_pay"):
                 label = r.get("bonus_label") or "Bonus"
                 bonus_parts.append(f"{label}\n${r['bonus_pay']:,.2f}")

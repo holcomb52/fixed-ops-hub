@@ -414,6 +414,131 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     margin: 0 0 1rem 0;
 }
 
+/* ── Reports page sections & run cards ── */
+.report-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin: 0.5rem 0 1rem;
+    padding: 1rem 1.1rem 1rem 1.15rem;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left-width: 5px;
+    border-left-style: solid;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.report-section-icon {
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.report-section-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.report-section-top {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-bottom: 0.2rem;
+}
+
+.report-section-title {
+    font-family: 'Syne', sans-serif !important;
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+}
+
+.report-section-count {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.report-section-sub {
+    color: #94a3b8;
+    font-size: 0.88rem;
+    margin: 0;
+}
+
+.report-run-card {
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left-width: 4px;
+    border-left-style: solid;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.55rem;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+}
+
+.report-run-card-grid {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.report-run-card-main {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.report-run-card-stats {
+    flex: 0 1 auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+}
+
+.report-run-caption,
+.report-run-meta {
+    color: #94a3b8;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.report-run-badge-wrap {
+    margin-top: 0.15rem;
+}
+
+.report-run-spacer {
+    height: 0.65rem;
+}
+
+.report-run-title {
+    font-family: 'Syne', sans-serif !important;
+    font-size: 1.15rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 0.15rem 0 !important;
+    letter-spacing: -0.01em !important;
+}
+
+.report-run-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
 /* ── Pay plan roster sections ── */
 .pay-plan-section-header {
     display: flex;

@@ -3,7 +3,13 @@ from datetime import date, datetime, timedelta
 import pandas as pd
 import streamlit as st
 
-from components.ui import page_hero, section_title, status_banner
+from components.ui import (
+    page_hero,
+    report_run_summary_card,
+    report_section_header,
+    status_banner,
+    team_section_divider,
+)
 from lib.earnings_report import collect_earnings_lines, summarize_earnings
 from lib.earnings_report_pdf_export import generate_earnings_report_pdf
 from lib.payroll_export_data import build_payroll_snapshot
@@ -39,6 +45,11 @@ from lib.warranty_labor_pdf_export import (
     generate_warranty_original_pdf,
 )
 from views.payroll_helpers import init_payroll_session
+
+ACCENT_TECH = "orange"
+ACCENT_ADVISOR = "cyan"
+ACCENT_RECEPTIONIST = "violet"
+ACCENT_WARRANTY = "amber"
 
 
 def _fmt_date(iso: str) -> str:
@@ -191,12 +202,19 @@ def _export_pdf_from_run(loaded: dict) -> bytes:
 
 
 def _render_warranty_runs():
+    warranty_runs = list_warranty_labor_runs()
+
+    st.markdown(team_section_divider(ACCENT_WARRANTY), unsafe_allow_html=True)
     st.markdown(
-        section_title("Warranty ELR Analysis", "Saved warranty labor rate runs"),
+        report_section_header(
+            "Warranty ELR Analysis",
+            "Saved warranty labor rate runs",
+            accent=ACCENT_WARRANTY,
+            icon="📊",
+            run_count=len(warranty_runs) if warranty_runs else None,
+        ),
         unsafe_allow_html=True,
     )
-
-    warranty_runs = list_warranty_labor_runs()
 
     if not warranty_runs:
         st.markdown(
@@ -216,80 +234,79 @@ def _render_warranty_runs():
         shop_elr = _money(run.get("effective_labor_rate"))
         loaded = load_warranty_labor_run(run_id)
 
-        with st.container():
-            c1, c2, c3 = st.columns([2.5, 2, 1])
-            with c1:
-                st.markdown(f"### {run_label}")
-                st.caption(f"Saved {completed}")
-            with c2:
-                st.markdown(f"**{shop_elr}**")
-                st.caption(
+        st.markdown(
+            report_run_summary_card(
+                run_label,
+                ACCENT_WARRANTY,
+                caption=f"Saved {completed}",
+                amount=shop_elr,
+                meta=(
                     f"{int(run.get('included_rows', 0))}/{int(run.get('total_rows', 0))} included lines"
-                )
-            with c3:
-                st.markdown('<span class="badge badge-live">Saved</span>', unsafe_allow_html=True)
-
-            a1, a2, a3, a4 = st.columns(4)
-            with a1:
-                if st.button(
-                    "✏️ Reopen & edit",
-                    key=f"warranty_reopen_{run_id}",
+                ),
+                badge_html='<span class="badge badge-live">Saved</span>',
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3, a4 = st.columns(4)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"warranty_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_warranty_snapshot_to_session(loaded, run_id)
+                    st.session_state.pending_nav = "Warranty"
+                    st.rerun()
+        with a2:
+            if loaded:
+                snapshot = loaded.get("snapshot", {})
+                rows = [
+                    deserialize_warranty_row(item, index=index)
+                    for index, item in enumerate(snapshot.get("rows", []))
+                ]
+                reviewed = snapshot.get("reviewed_recids", [])
+                summary = summarize_reviewed_running_total(rows, reviewed)
+                running_rows = [
+                    row
+                    for row in rows
+                    if str(row.recid).strip() in {str(r).strip() for r in reviewed}
+                ]
+                st.download_button(
+                    "📄 Analysis PDF",
+                    data=generate_warranty_analysis_pdf(
+                        running_rows if running_rows else rows,
+                        summary,
+                        snapshot.get("source_name", "warranty_labor.xlsx"),
+                        snapshot.get("sheet_name", "Sheet1"),
+                    ),
+                    file_name=f"WARRANTY_ELR_ANALYSIS_{run_label.replace('/', '-').replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                    key=f"warranty_analysis_dl_{run_id}",
                     use_container_width=True,
-                ):
-                    if loaded:
-                        apply_warranty_snapshot_to_session(loaded, run_id)
-                        st.session_state.pending_nav = "Warranty"
-                        st.rerun()
-            with a2:
-                if loaded:
-                    snapshot = loaded.get("snapshot", {})
-                    rows = [
-                        deserialize_warranty_row(item, index=index)
-                        for index, item in enumerate(snapshot.get("rows", []))
-                    ]
-                    reviewed = snapshot.get("reviewed_recids", [])
-                    summary = summarize_reviewed_running_total(rows, reviewed)
-                    running_rows = [
-                        row
-                        for row in rows
-                        if str(row.recid).strip() in {str(r).strip() for r in reviewed}
-                    ]
-                    st.download_button(
-                        "📄 Analysis PDF",
-                        data=generate_warranty_analysis_pdf(
-                            running_rows if running_rows else rows,
-                            summary,
-                            snapshot.get("source_name", "warranty_labor.xlsx"),
-                            snapshot.get("sheet_name", "Sheet1"),
-                        ),
-                        file_name=f"WARRANTY_ELR_ANALYSIS_{run_label.replace('/', '-').replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                        key=f"warranty_analysis_dl_{run_id}",
-                        use_container_width=True,
-                    )
-            with a3:
-                if loaded:
-                    snapshot = loaded.get("snapshot", {})
-                    rows = [
-                        deserialize_warranty_row(item, index=index)
-                        for index, item in enumerate(snapshot.get("rows", []))
-                    ]
-                    st.download_button(
-                        "📄 Original PDF",
-                        data=generate_warranty_original_pdf(
-                            rows,
-                            snapshot.get("source_name", "warranty_labor.xlsx"),
-                            snapshot.get("sheet_name", "Sheet1"),
-                        ),
-                        file_name=f"WARRANTY_ELR_ORIGINAL_{run_label.replace('/', '-').replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                        key=f"warranty_original_dl_{run_id}",
-                        use_container_width=True,
-                    )
-            with a4:
-                st.caption(f"ID: {run_id[:8]}…")
-
-            st.markdown("---")
+                )
+        with a3:
+            if loaded:
+                snapshot = loaded.get("snapshot", {})
+                rows = [
+                    deserialize_warranty_row(item, index=index)
+                    for index, item in enumerate(snapshot.get("rows", []))
+                ]
+                st.download_button(
+                    "📄 Original PDF",
+                    data=generate_warranty_original_pdf(
+                        rows,
+                        snapshot.get("source_name", "warranty_labor.xlsx"),
+                        snapshot.get("sheet_name", "Sheet1"),
+                    ),
+                    file_name=f"WARRANTY_ELR_ORIGINAL_{run_label.replace('/', '-').replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                    key=f"warranty_original_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a4:
+            st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
 def render():
@@ -309,14 +326,19 @@ def render():
         st.caption("Payroll history is saved locally. Connect Supabase to sync across devices.")
 
     _render_earnings_lookup()
-    st.markdown("---")
-
-    st.markdown(
-        section_title("Technician Payroll", "Saved pay periods"),
-        unsafe_allow_html=True,
-    )
+    st.markdown(team_section_divider(ACCENT_TECH), unsafe_allow_html=True)
 
     runs = list_payroll_runs()
+    st.markdown(
+        report_section_header(
+            "Technician Payroll",
+            "Saved pay periods",
+            accent=ACCENT_TECH,
+            icon="🔧",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
 
     if not runs:
         st.markdown(
@@ -334,65 +356,72 @@ def render():
             completed = _fmt_date(run.get("completed_at", ""))
             grand = _money(run.get("grand_total"))
             loaded = load_payroll_run(run_id)
+            hours_caption = f"{float(run.get('grand_hours', 0)):.2f} hours"
+            hours_meta = (
+                f"{hours_caption} · Completed"
+                if run.get("status") != "draft"
+                else f"{hours_caption} · In progress"
+            )
 
-            with st.container():
-                c1, c2, c3 = st.columns([2.5, 2, 1])
-                with c1:
-                    st.markdown(f"### {pay_period}")
-                    st.caption(_run_status_caption(run, completed))
-                with c2:
-                    st.markdown(f"**{grand}**")
-                    hours_caption = f"{float(run.get('grand_hours', 0)):.2f} hours"
-                    st.caption(
-                        f"{hours_caption} · Completed"
-                        if run.get("status") != "draft"
-                        else f"{hours_caption} · In progress"
-                    )
-                with c3:
-                    st.markdown(_run_status_badge(run), unsafe_allow_html=True)
-
-                a1, a2, a3, a4 = st.columns(4)
-                with a1:
-                    if st.button("✏️ Reopen & edit", key=f"reopen_{run_id}", use_container_width=True):
-                        if loaded:
-                            apply_snapshot_to_session(
-                                loaded["snapshot"],
-                                run_id,
-                                loaded.get("flag_pdf_bytes"),
-                                loaded.get("flag_pdf_filename", "flag_sheet.pdf"),
-                                status=loaded.get("status", "completed"),
-                            )
-                            st.session_state.pending_nav = "Payroll"
-                            st.rerun()
-                with a2:
+            st.markdown(
+                report_run_summary_card(
+                    pay_period,
+                    ACCENT_TECH,
+                    caption=_run_status_caption(run, completed),
+                    amount=grand,
+                    meta=hours_meta,
+                    badge_html=_run_status_badge(run),
+                ),
+                unsafe_allow_html=True,
+            )
+            a1, a2, a3, a4 = st.columns(4)
+            with a1:
+                if st.button("✏️ Reopen & edit", key=f"reopen_{run_id}", use_container_width=True):
                     if loaded:
-                        st.download_button(
-                            "📄 Export PDF",
-                            data=_export_pdf_from_run(loaded),
-                            file_name=f"TECH_PAYROLL_{pay_period.replace('/', '-')}.pdf",
-                            mime="application/pdf",
-                            key=f"dl_{run_id}",
-                            use_container_width=True,
+                        apply_snapshot_to_session(
+                            loaded["snapshot"],
+                            run_id,
+                            loaded.get("flag_pdf_bytes"),
+                            loaded.get("flag_pdf_filename", "flag_sheet.pdf"),
+                            status=loaded.get("status", "completed"),
                         )
-                with a3:
-                    if st.button("📋 View flag sheet", key=f"flag_{run_id}", use_container_width=True):
-                        if loaded:
-                            st.session_state.flag_pdf_bytes = loaded.get("flag_pdf_bytes")
-                            st.session_state.flag_pdf_filename = loaded.get("flag_pdf_filename", "")
-                            st.session_state.pdf_loaded = bool(loaded.get("flag_pdf_bytes"))
-                            st.session_state.pending_nav = "Flag Sheet"
-                            st.rerun()
-                with a4:
-                    st.caption(f"ID: {run_id[:8]}…")
+                        st.session_state.pending_nav = "Payroll"
+                        st.rerun()
+            with a2:
+                if loaded:
+                    st.download_button(
+                        "📄 Export PDF",
+                        data=_export_pdf_from_run(loaded),
+                        file_name=f"TECH_PAYROLL_{pay_period.replace('/', '-')}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_{run_id}",
+                        use_container_width=True,
+                    )
+            with a3:
+                if st.button("📋 View flag sheet", key=f"flag_{run_id}", use_container_width=True):
+                    if loaded:
+                        st.session_state.flag_pdf_bytes = loaded.get("flag_pdf_bytes")
+                        st.session_state.flag_pdf_filename = loaded.get("flag_pdf_filename", "")
+                        st.session_state.pdf_loaded = bool(loaded.get("flag_pdf_bytes"))
+                        st.session_state.pending_nav = "Flag Sheet"
+                        st.rerun()
+            with a4:
+                st.caption(f"ID: {run_id[:8]}…")
+            st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
-                st.markdown("---")
-
-    st.markdown(
-        section_title("Service Advisor Payroll", "Saved pay periods"),
-        unsafe_allow_html=True,
-    )
+    st.markdown(team_section_divider(ACCENT_ADVISOR), unsafe_allow_html=True)
 
     advisor_runs = list_advisor_payroll_runs()
+    st.markdown(
+        report_section_header(
+            "Service Advisor Payroll",
+            "Saved pay periods",
+            accent=ACCENT_ADVISOR,
+            icon="👔",
+            run_count=len(advisor_runs) if advisor_runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
 
     if not advisor_runs:
         st.markdown(
@@ -411,56 +440,63 @@ def render():
             completed = _fmt_date(run.get("completed_at", ""))
             grand = _money(run.get("grand_total"))
             loaded = load_advisor_payroll_run(run_id)
+            count = int(run.get("advisor_count", 0))
+            count_meta = (
+                f"{count} advisors · Completed"
+                if run.get("status") != "draft"
+                else f"{count} advisors · In progress"
+            )
 
-            with st.container():
-                c1, c2, c3 = st.columns([2.5, 2, 1])
-                with c1:
-                    st.markdown(f"### {pay_period}")
-                    st.caption(_run_status_caption(run, completed))
-                with c2:
-                    st.markdown(f"**{grand}**")
-                    count = int(run.get("advisor_count", 0))
-                    st.caption(
-                        f"{count} advisors · Completed"
-                        if run.get("status") != "draft"
-                        else f"{count} advisors · In progress"
-                    )
-                with c3:
-                    st.markdown(_run_status_badge(run), unsafe_allow_html=True)
-
-                a1, a2, a3 = st.columns(3)
-                with a1:
-                    if st.button("✏️ Reopen & edit", key=f"adv_reopen_{run_id}", use_container_width=True):
-                        if loaded:
-                            apply_advisor_snapshot_to_session(
-                                loaded["snapshot"],
-                                run_id,
-                                status=loaded.get("status", "completed"),
-                            )
-                            st.session_state.pending_nav = "Payroll"
-                            st.rerun()
-                with a2:
+            st.markdown(
+                report_run_summary_card(
+                    pay_period,
+                    ACCENT_ADVISOR,
+                    caption=_run_status_caption(run, completed),
+                    amount=grand,
+                    meta=count_meta,
+                    badge_html=_run_status_badge(run),
+                ),
+                unsafe_allow_html=True,
+            )
+            a1, a2, a3 = st.columns(3)
+            with a1:
+                if st.button("✏️ Reopen & edit", key=f"adv_reopen_{run_id}", use_container_width=True):
                     if loaded:
-                        export_snap = loaded["snapshot"].get("export", {})
-                        st.download_button(
-                            "📄 Export PDF",
-                            data=generate_advisor_payroll_pdf(export_snap),
-                            file_name=f"ADVISOR_PAYROLL_{pay_period.replace('/', '-')}.pdf",
-                            mime="application/pdf",
-                            key=f"adv_dl_{run_id}",
-                            use_container_width=True,
+                        apply_advisor_snapshot_to_session(
+                            loaded["snapshot"],
+                            run_id,
+                            status=loaded.get("status", "completed"),
                         )
-                with a3:
-                    st.caption(f"ID: {run_id[:8]}…")
+                        st.session_state.pending_nav = "Payroll"
+                        st.rerun()
+            with a2:
+                if loaded:
+                    export_snap = loaded["snapshot"].get("export", {})
+                    st.download_button(
+                        "📄 Export PDF",
+                        data=generate_advisor_payroll_pdf(export_snap),
+                        file_name=f"ADVISOR_PAYROLL_{pay_period.replace('/', '-')}.pdf",
+                        mime="application/pdf",
+                        key=f"adv_dl_{run_id}",
+                        use_container_width=True,
+                    )
+            with a3:
+                st.caption(f"ID: {run_id[:8]}…")
+            st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
-                st.markdown("---")
-
-    st.markdown(
-        section_title("Receptionist Payroll", "Saved pay periods"),
-        unsafe_allow_html=True,
-    )
+    st.markdown(team_section_divider(ACCENT_RECEPTIONIST), unsafe_allow_html=True)
 
     receptionist_runs = list_receptionist_payroll_runs()
+    st.markdown(
+        report_section_header(
+            "Receptionist Payroll",
+            "Saved pay periods",
+            accent=ACCENT_RECEPTIONIST,
+            icon="🧑‍💼",
+            run_count=len(receptionist_runs) if receptionist_runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
 
     if not receptionist_runs:
         st.markdown(
@@ -479,52 +515,52 @@ def render():
             completed = _fmt_date(run.get("completed_at", ""))
             grand = _money(run.get("grand_total"))
             loaded = load_receptionist_payroll_run(run_id)
+            count = int(run.get("employee_count", 0))
+            count_meta = (
+                f"{count} employees · Completed"
+                if run.get("status") != "draft"
+                else f"{count} employees · In progress"
+            )
 
-            with st.container():
-                c1, c2, c3 = st.columns([2.5, 2, 1])
-                with c1:
-                    st.markdown(f"### {pay_period}")
-                    st.caption(_run_status_caption(run, completed))
-                with c2:
-                    st.markdown(f"**{grand}**")
-                    count = int(run.get("employee_count", 0))
-                    st.caption(
-                        f"{count} employees · Completed"
-                        if run.get("status") != "draft"
-                        else f"{count} employees · In progress"
-                    )
-                with c3:
-                    st.markdown(_run_status_badge(run), unsafe_allow_html=True)
-
-                a1, a2, a3 = st.columns(3)
-                with a1:
-                    if st.button(
-                        "✏️ Reopen & edit",
-                        key=f"rec_reopen_{run_id}",
-                        use_container_width=True,
-                    ):
-                        if loaded:
-                            apply_receptionist_snapshot_to_session(
-                                loaded["snapshot"],
-                                run_id,
-                                status=loaded.get("status", "completed"),
-                            )
-                            st.session_state.pending_nav = "Payroll"
-                            st.rerun()
-                with a2:
+            st.markdown(
+                report_run_summary_card(
+                    pay_period,
+                    ACCENT_RECEPTIONIST,
+                    caption=_run_status_caption(run, completed),
+                    amount=grand,
+                    meta=count_meta,
+                    badge_html=_run_status_badge(run),
+                ),
+                unsafe_allow_html=True,
+            )
+            a1, a2, a3 = st.columns(3)
+            with a1:
+                if st.button(
+                    "✏️ Reopen & edit",
+                    key=f"rec_reopen_{run_id}",
+                    use_container_width=True,
+                ):
                     if loaded:
-                        export_snap = loaded["snapshot"].get("export", {})
-                        st.download_button(
-                            "📄 Export PDF",
-                            data=generate_receptionist_payroll_pdf(export_snap),
-                            file_name=f"RECEPTIONIST_PAYROLL_{pay_period.replace('/', '-')}.pdf",
-                            mime="application/pdf",
-                            key=f"rec_dl_{run_id}",
-                            use_container_width=True,
+                        apply_receptionist_snapshot_to_session(
+                            loaded["snapshot"],
+                            run_id,
+                            status=loaded.get("status", "completed"),
                         )
-                with a3:
-                    st.caption(f"ID: {run_id[:8]}…")
-
-                st.markdown("---")
+                        st.session_state.pending_nav = "Payroll"
+                        st.rerun()
+            with a2:
+                if loaded:
+                    export_snap = loaded["snapshot"].get("export", {})
+                    st.download_button(
+                        "📄 Export PDF",
+                        data=generate_receptionist_payroll_pdf(export_snap),
+                        file_name=f"RECEPTIONIST_PAYROLL_{pay_period.replace('/', '-')}.pdf",
+                        mime="application/pdf",
+                        key=f"rec_dl_{run_id}",
+                        use_container_width=True,
+                    )
+            with a3:
+                st.caption(f"ID: {run_id[:8]}…")
+            st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     _render_warranty_runs()

@@ -57,6 +57,83 @@ def section_title(title: str, subtitle: str = "") -> str:
     return f'<div class="section-title"><h2>{title}</h2>{sub}</div>'
 
 
+def report_section_header(
+    title: str,
+    subtitle: str = "",
+    accent: str = "cyan",
+    icon: str = "📋",
+    run_count: int | None = None,
+) -> str:
+    """Colored Reports page section header — one accent per payroll/report type."""
+    theme = _accent_theme(accent)
+    count_html = ""
+    if run_count is not None:
+        label = "run" if run_count == 1 else "runs"
+        count_html = (
+            f'<span class="report-section-count" style="color: {theme["title"]};">'
+            f"{run_count} {label}</span>"
+        )
+    sub = f'<p class="report-section-sub">{subtitle}</p>' if subtitle else ""
+    return f"""
+    <div class="report-section-header" style="
+        border-left-color: {theme['border']};
+        background: {theme['bg']};
+    ">
+        <div class="report-section-icon" style="
+            color: {theme['title']};
+            background: {theme['avatar']};
+            border-color: {theme['border']};
+        ">{icon}</div>
+        <div class="report-section-body">
+            <div class="report-section-top">
+                <span class="report-section-title" style="color: {theme['title']};">{title}</span>
+                {count_html}
+            </div>
+            {sub}
+        </div>
+    </div>
+    """
+
+
+def report_run_summary_card(
+    title: str,
+    accent: str,
+    *,
+    caption: str = "",
+    amount: str = "",
+    meta: str = "",
+    badge_html: str = "",
+) -> str:
+    """Self-contained colored card for a saved report (Streamlit buttons go below)."""
+    theme = _accent_theme(accent)
+    badge_block = badge_html or ""
+    amount_block = (
+        f'<div class="report-run-amount" style="color: {theme["title"]};">{amount}</div>'
+        if amount
+        else ""
+    )
+    meta_block = f'<div class="report-run-meta">{meta}</div>' if meta else ""
+    caption_block = f'<div class="report-run-caption">{caption}</div>' if caption else ""
+    return f"""
+    <div class="report-run-card" style="
+        border-left-color: {theme['border']};
+        background: {theme['bg']};
+    ">
+        <div class="report-run-card-grid">
+            <div class="report-run-card-main">
+                <h3 class="report-run-title" style="color: {theme['title']};">{title}</h3>
+                {caption_block}
+            </div>
+            <div class="report-run-card-stats">
+                {amount_block}
+                {meta_block}
+                <div class="report-run-badge-wrap">{badge_block}</div>
+            </div>
+        </div>
+    </div>
+    """
+
+
 def pay_plan_section_header(
     title: str,
     subtitle: str,

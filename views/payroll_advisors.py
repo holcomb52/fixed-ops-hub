@@ -44,7 +44,7 @@ from lib.advisor_roster import (
 )
 from views.advisor_payroll_helpers import (
     CSI_TIER_KEYS,
-    adv_key,
+    advisor_field_key,
     advisor_section_open_key,
     advisor_section_toggle_key,
     all_advisors_synced,
@@ -334,8 +334,8 @@ def _csi_label(tier_key: str) -> str:
     return label
 
 
-def _render_csi_buttons(advisor_idx: int, advisor_name: str):
-    current = st.session_state.get(adv_key(advisor_idx, "csi_tier"), "none")
+def _render_csi_buttons(advisor_name: str):
+    current = st.session_state.get(advisor_field_key(advisor_name, "csi_tier"), "none")
     if current not in CSI_TIER_KEYS:
         current = "none"
 
@@ -352,7 +352,9 @@ def _render_csi_buttons(advisor_idx: int, advisor_name: str):
                 use_container_width=True,
                 type="primary" if selected else "secondary",
             ):
-                st.session_state[adv_key(advisor_idx, "csi_tier")] = tier_key
+                st.session_state[advisor_field_key(advisor_name, "csi_tier")] = tier_key
+                rows = flatten_roster(st.session_state.advisor_roster)
+                advisor_idx = next(i for i, r in enumerate(rows) if r.name == advisor_name)
                 persist_advisor_changes(advisor_idx, advisor_name)
 
 
@@ -438,30 +440,31 @@ def _summary_row(row, synced, result) -> dict:
 
 def _render_advisor_section(advisor_idx: int, row) -> None:
     """Render one advisor's payroll inputs and pay breakdown."""
+    name = row.name
     st.number_input(
         "Hours sold",
         min_value=0.0,
         step=0.1,
-        key=adv_key(advisor_idx, "hours_sold"),
+        key=advisor_field_key(name, "hours_sold"),
         on_change=persist_advisor_changes,
-        args=(advisor_idx, row.name),
+        args=(advisor_idx, name),
         help="Auto-filled from PAYROLL.xlsx, or enter manually.",
     )
 
     if row.plan_type == PLAN_SEASONED:
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — bump to ${TOM_JOEY_CP_BUMP_RATE:.0f}/hr",
-            key=adv_key(advisor_idx, "cp_bump"),
+            key=advisor_field_key(name, "cp_bump"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx, row.name),
+            args=(advisor_idx, name),
             help="Turn on when they averaged more than 2.25 customer-pay hours per RO.",
         )
     elif not plan_has_weekly_guarantee(row.plan_type):
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
-            key=adv_key(advisor_idx, "cp_bump"),
+            key=advisor_field_key(name, "cp_bump"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx, row.name),
+            args=(advisor_idx, name),
             help=(
                 "Turn on when they averaged more than 2.25 customer-pay hours per RO. "
                 "Bumps their current hour tier rate (e.g. $6.50 → $7.50)."
@@ -470,9 +473,9 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
     else:
         st.toggle(
             f"Over {CP_HOURS_BUMP_THRESHOLD} CP hrs/RO — labor rate bump",
-            key=adv_key(advisor_idx, "cp_bump"),
+            key=advisor_field_key(name, "cp_bump"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx, row.name),
+            args=(advisor_idx, name),
             help="Commission pay mirrors New Advisors plan with optional CP bump.",
         )
 
@@ -481,9 +484,9 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
     with c1:
         st.toggle(
             f"Alignment bonus — {_money(ALIGNMENT_BONUS_AMOUNT)}",
-            key=adv_key(advisor_idx, "alignment_bonus"),
+            key=advisor_field_key(name, "alignment_bonus"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx, row.name),
+            args=(advisor_idx, name),
             help="Turn on when the advisor earned the alignment bonus this pay period.",
         )
     with c2:
@@ -491,21 +494,21 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             "SPIFF ($)",
             min_value=0.0,
             step=1.0,
-            key=adv_key(advisor_idx, "spiff"),
+            key=advisor_field_key(name, "spiff"),
             on_change=persist_advisor_changes,
-            args=(advisor_idx, row.name),
+            args=(advisor_idx, name),
         )
 
     st.text_area(
         "Notes for payroll clerk",
-        key=adv_key(advisor_idx, "notes"),
+        key=advisor_field_key(name, "notes"),
         on_change=persist_advisor_changes,
-        args=(advisor_idx, row.name),
+        args=(advisor_idx, name),
         placeholder="Optional extra notes — guarantee language prints automatically on the PDF",
         height=72,
     )
 
-    _render_csi_buttons(advisor_idx, row.name)
+    _render_csi_buttons(name)
 
     synced = all_advisors_synced()[advisor_idx]
     weeks = pay_period_weeks()

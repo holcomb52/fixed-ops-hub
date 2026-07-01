@@ -22,8 +22,9 @@ def _fmt_date(value: date) -> str:
 
 
 def generate_earnings_report_pdf(
-    start_date: date,
-    end_date: date,
+    month_start: date,
+    month_end: date,
+    month_label: str,
     role_filter: str,
     name_query: str,
     summaries: List[EmployeeEarningsSummary],
@@ -67,7 +68,9 @@ def generate_earnings_report_pdf(
         Paragraph(PAYROLL_PDF_TITLE, title_style),
         Paragraph(
             f"<b>Employee Earnings Report</b><br/>"
-            f"{_fmt_date(start_date)} – {_fmt_date(end_date)}<br/>"
+            f"{escape(month_label)} "
+            f"({_fmt_date(month_start)} – {_fmt_date(month_end)})<br/>"
+            f"Pay periods included when period start falls in this month<br/>"
             f"{filter_text}",
             subtitle_style,
         ),

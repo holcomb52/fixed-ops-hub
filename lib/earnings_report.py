@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from lib.advisor_payroll_storage import list_advisor_payroll_runs, load_advisor_payroll_run
@@ -53,6 +53,25 @@ def parse_pay_period_range(pay_period: str) -> Optional[Tuple[date, date]]:
     if start and end:
         return start, end
     return None
+
+
+def month_range_for_date(month_date: date) -> Tuple[date, date]:
+    """First and last calendar day of the month containing month_date."""
+    first = month_date.replace(day=1)
+    if month_date.month == 12:
+        last = month_date.replace(day=31)
+    else:
+        last = month_date.replace(month=month_date.month + 1, day=1) - timedelta(days=1)
+    return first, last
+
+
+def format_month_label(month_date: date) -> str:
+    return month_date.strftime("%B %Y")
+
+
+def period_starts_in_same_month(period_start: date, month_date: date) -> bool:
+    """True when a pay period's start date falls in the same calendar month."""
+    return period_start.year == month_date.year and period_start.month == month_date.month
 
 
 def periods_overlap(
@@ -147,15 +166,11 @@ def _lines_from_run(run: dict, role: str) -> List[EarningsLine]:
 
 
 def collect_earnings_lines(
-    start_date: date,
-    end_date: date,
+    month_date: date,
     role_filter: str = "All",
     name_query: str = "",
 ) -> List[EarningsLine]:
-    """Return one line per employee per pay period that overlaps the date range."""
-    if end_date < start_date:
-        return []
-
+    """Return earnings for pay periods whose start date is in the same month."""
     name_query = (name_query or "").strip().lower()
     lines: List[EarningsLine] = []
 
@@ -175,7 +190,7 @@ def collect_earnings_lines(
         if not parsed:
             continue
         period_start, period_end = parsed
-        if not periods_overlap(period_start, period_end, start_date, end_date):
+        if not period_starts_in_same_month(period_start, month_date):
             continue
 
         dedupe_key = (role, pay_period, run.get("id", ""))

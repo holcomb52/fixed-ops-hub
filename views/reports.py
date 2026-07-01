@@ -10,7 +10,12 @@ from components.ui import (
     status_banner,
     team_section_divider,
 )
-from lib.earnings_report import collect_earnings_lines, summarize_earnings
+from lib.earnings_report import (
+    collect_earnings_lines,
+    format_month_label,
+    month_range_for_date,
+    summarize_earnings,
+)
 from lib.earnings_report_pdf_export import generate_earnings_report_pdf
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_pdf_export import generate_payroll_pdf
@@ -79,44 +84,44 @@ def _run_status_caption(run: dict, completed: str) -> str:
 
 
 def _render_earnings_lookup():
-    with st.expander("Employee earnings lookup — search by date range", expanded=False):
+    with st.expander("Employee earnings lookup — search by month", expanded=False):
         st.caption(
-            "Totals come from saved technician, advisor, and receptionist payroll runs "
-            "whose pay periods overlap your dates."
+            "Totals include saved payroll runs whose pay period **starts** in the month you pick. "
+            "Pick any day in that month — June 3 and June 28 both mean all of June."
         )
 
-        default_end = date.today()
-        default_start = default_end - timedelta(days=27)
+        default_month = date.today()
 
-        c1, c2, c3, c4 = st.columns([1, 1, 1.2, 1.2])
+        c1, c2, c3 = st.columns([1, 1.2, 1.2])
         with c1:
-            start_date = st.date_input("From", value=default_start, key="earnings_start_date")
+            month_date = st.date_input(
+                "Month",
+                value=default_month,
+                key="earnings_month_date",
+                help="Any day in the month you want to total.",
+            )
         with c2:
-            end_date = st.date_input("To", value=default_end, key="earnings_end_date")
-        with c3:
             role_filter = st.selectbox(
                 "Employee type",
                 ["All", "Technician", "Service Advisor", "Receptionist"],
                 key="earnings_role_filter",
             )
-        with c4:
+        with c3:
             name_query = st.text_input(
                 "Search name",
                 placeholder="Optional — filter by employee name",
                 key="earnings_name_query",
             )
 
-        if end_date < start_date:
-            st.warning("End date must be on or after the start date.")
-            return
-
-        lines = collect_earnings_lines(start_date, end_date, role_filter, name_query)
+        month_start, month_end = month_range_for_date(month_date)
+        month_label = format_month_label(month_date)
+        lines = collect_earnings_lines(month_date, role_filter, name_query)
         summaries = summarize_earnings(lines)
 
         if not summaries:
             st.markdown(
                 status_banner(
-                    "No saved payroll found for that date range. "
+                    f"No saved payroll found with a start date in **{month_label}**. "
                     "Complete payroll on the Payroll tab first, then return here.",
                     "warn",
                 ),
@@ -134,15 +139,13 @@ def _render_earnings_lookup():
         with m3:
             st.metric("Total paid", _money(grand_total))
         with m4:
-            pdf_name = (
-                f"EMPLOYEE_EARNINGS_{start_date.strftime('%m-%d-%y')}_"
-                f"{end_date.strftime('%m-%d-%y')}.pdf"
-            )
+            pdf_name = f"EMPLOYEE_EARNINGS_{month_start.strftime('%m-%Y')}.pdf"
             st.download_button(
                 "📄 Export PDF",
                 data=generate_earnings_report_pdf(
-                    start_date,
-                    end_date,
+                    month_start,
+                    month_end,
+                    month_label,
                     role_filter,
                     name_query,
                     summaries,

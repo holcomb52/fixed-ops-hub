@@ -184,6 +184,13 @@ def _csi_label(tier_key: str) -> str:
     return label
 
 
+def _live_receptionist_payroll():
+    employee_rows = flatten_roster(st.session_state.receptionist_roster)
+    synced_employees = all_receptionists_synced()
+    employee_results = [calculate_receptionist_payroll(e) for e in synced_employees]
+    return employee_rows, synced_employees, employee_results
+
+
 def _render_receptionist_csi_buttons(row) -> None:
     current = st.session_state.get(rec_key(row.name, "csi_tier"), CSI_TIER_NONE)
     if current not in CSI_TIER_KEYS:
@@ -203,7 +210,6 @@ def _render_receptionist_csi_buttons(row) -> None:
             ):
                 st.session_state[rec_key(row.name, "csi_tier")] = tier_key
                 persist_receptionist_changes(row.name)
-                st.rerun()
 
 
 def _summary_row(row, synced, result) -> dict:
@@ -386,11 +392,11 @@ def render():
         ):
             toggle_receptionist_section(row.name, employee_names)
 
+        is_open = bool(st.session_state.get(open_key, False))
         if is_open:
             _render_receptionist_section(row)
 
-    synced_employees = all_receptionists_synced()
-    employee_results = [calculate_receptionist_payroll(e) for e in synced_employees]
+    employee_rows, synced_employees, employee_results = _live_receptionist_payroll()
     summary_rows = [
         _summary_row(row, synced_employees[i], employee_results[i])
         for i, row in enumerate(employee_rows)

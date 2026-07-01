@@ -111,6 +111,8 @@ def _tires_widgets_active(name: str) -> bool:
 
 
 def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
+    store = st.session_state.get("receptionist_value_store", {})
+    saved = store.get(row.name, {})
     entry: Dict[str, object] = {}
     for field in RECEPTIONIST_FIELDS:
         if field in ("tires_sold", "appointment_rate"):
@@ -118,20 +120,30 @@ def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
         key = rec_key(row.name, field)
         if key in st.session_state:
             entry[field] = st.session_state[key]
+        elif field in saved:
+            entry[field] = saved[field]
     entry["appointment_rate"] = _parse_appointment_rate(row.name, row)
     entry["tires_sold"] = _parse_tires_value(row.name, row)
     label_key = rec_key(row.name, "bonus_label")
     if label_key in st.session_state:
         entry["bonus_label"] = st.session_state[label_key]
+    elif "bonus_label" in saved:
+        entry["bonus_label"] = saved["bonus_label"]
     warranty_key = rec_key(row.name, "warranty_bonus")
     if warranty_key in st.session_state:
         entry["warranty_bonus"] = st.session_state[warranty_key]
+    elif "warranty_bonus" in saved:
+        entry["warranty_bonus"] = saved["warranty_bonus"]
     csi_key = rec_key(row.name, "csi_tier")
     if csi_key in st.session_state:
         entry["csi_tier"] = st.session_state[csi_key]
+    elif "csi_tier" in saved:
+        entry["csi_tier"] = saved["csi_tier"]
     notes_key = rec_key(row.name, "notes")
     if notes_key in st.session_state:
         entry["notes"] = st.session_state[notes_key]
+    elif "notes" in saved:
+        entry["notes"] = saved["notes"]
     return entry
 
 
@@ -172,6 +184,7 @@ def save_receptionist_form(name: str):
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
+    st.rerun()
 
 
 def capture_open_receptionist_inputs():
@@ -189,13 +202,39 @@ def apply_roster_appointment_rates_to_session():
     store = st.session_state.get("receptionist_value_store", {})
     for row in flatten_roster(st.session_state.receptionist_roster):
         saved = store.get(row.name, {})
+        is_open = bool(st.session_state.get(section_open_key(row.name), False))
         rate = float(saved.get("appointment_rate", row.appointment_rate) or 0)
         num_key = rec_key(row.name, "appointment_rate")
         text_key = _appointment_rate_text_key(row.name)
-        if num_key not in st.session_state:
+        text_val = str(st.session_state.get(text_key, "")).strip()
+        if not is_open or num_key not in st.session_state:
             st.session_state[num_key] = rate
-        if text_key not in st.session_state:
+        if not is_open or text_key not in st.session_state or not text_val:
             st.session_state[text_key] = _format_rate_text(rate)
+
+
+def apply_receptionist_value_store():
+    apply_roster_appointment_rates_to_session()
+    store = st.session_state.get("receptionist_value_store", {})
+    for row in flatten_roster(st.session_state.receptionist_roster):
+        saved = store.get(row.name, {})
+        is_open = bool(st.session_state.get(section_open_key(row.name), False))
+
+        def _hydrate(key: str, value):
+            if not is_open or key not in st.session_state:
+                st.session_state[key] = value
+
+        for field, default in RECEPTIONIST_FIELDS.items():
+            if field in ("appointment_rate", "tires_sold"):
+                continue
+            val = saved.get(field, getattr(row, field, default))
+            _hydrate(rec_key(row.name, field), float(val if val is not None else default))
+        tires = float(saved.get("tires_sold", _parse_tires_value(row.name, row)) or 0)
+        _hydrate(_tires_text_key(row.name), str(int(tires)) if tires else "")
+        _hydrate(rec_key(row.name, "bonus_label"), saved.get("bonus_label", row.bonus_label or "Bonus"))
+        _hydrate(rec_key(row.name, "warranty_bonus"), bool(saved.get("warranty_bonus", False)))
+        _hydrate(rec_key(row.name, "csi_tier"), saved.get("csi_tier", CSI_TIER_NONE))
+        _hydrate(rec_key(row.name, "notes"), str(saved.get("notes", row.notes) or ""))
 
 
 def _read_appointment_rate(name: str, row: ReceptionistPayrollRow) -> float:
@@ -270,49 +309,15 @@ def _session_text(row: ReceptionistPayrollRow, field: str, default: str = "") ->
     return str(_saved_field(row, field, default) or "")
 
 
-def apply_receptionist_value_store():
-    apply_roster_appointment_rates_to_session()
-    store = st.session_state.get("receptionist_value_store", {})
-    for row in flatten_roster(st.session_state.receptionist_roster):
-        saved = store.get(row.name, {})
-        for field, default in RECEPTIONIST_FIELDS.items():
-            if field == "appointment_rate":
-                continue
-            key = rec_key(row.name, field)
-            if key not in st.session_state:
-                val = saved.get(field, getattr(row, field, default))
-                st.session_state[key] = float(val if val is not None else default)
-        tires = float(saved.get("tires_sold", st.session_state.get(rec_key(row.name, "tires_sold"), 0)) or 0)
-        text_key = _tires_text_key(row.name)
-        if text_key not in st.session_state:
-            st.session_state[text_key] = str(int(tires)) if tires else ""
-        rate = float(saved.get("appointment_rate", _parse_appointment_rate(row.name, row)) or 0)
-        num_key = rec_key(row.name, "appointment_rate")
-        rate_text_key = _appointment_rate_text_key(row.name)
-        if num_key not in st.session_state:
-            st.session_state[num_key] = rate
-        if rate_text_key not in st.session_state:
-            st.session_state[rate_text_key] = _format_rate_text(rate)
-        label_key = rec_key(row.name, "bonus_label")
-        if label_key not in st.session_state:
-            st.session_state[label_key] = saved.get("bonus_label", row.bonus_label or "Bonus")
-        warranty_key = rec_key(row.name, "warranty_bonus")
-        if warranty_key not in st.session_state:
-            st.session_state[warranty_key] = bool(saved.get("warranty_bonus", False))
-        csi_key = rec_key(row.name, "csi_tier")
-        if csi_key not in st.session_state:
-            st.session_state[csi_key] = saved.get("csi_tier", CSI_TIER_NONE)
-        notes_key = rec_key(row.name, "notes")
-        if notes_key not in st.session_state:
-            st.session_state[notes_key] = str(saved.get("notes", row.notes) or "")
-
-
 def persist_receptionist_changes(name: str | None = None):
     """Capture pay-period field edits without touching $/appointment."""
+    if name:
+        st.session_state[section_open_key(name)] = True
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
+    st.rerun()
 
 
 def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
@@ -392,6 +397,7 @@ def init_receptionist_payroll_session():
 
     apply_roster_appointment_rates_to_session()
     apply_receptionist_value_store()
+    refresh_receptionist_value_store()
     for row in flatten_roster(st.session_state.receptionist_roster):
         legacy_open = rec_key(row.name, "expanded")
         open_key = section_open_key(row.name)
@@ -457,9 +463,11 @@ def all_receptionists_synced() -> list:
 
 
 def toggle_receptionist_section(name: str, employee_names: list[str]):
+    capture_open_receptionist_inputs()
     open_key = section_open_key(name)
     is_open = st.session_state.get(open_key, False)
     if is_open:
+        refresh_receptionist_value_store()
         st.session_state[open_key] = False
     else:
         for other in employee_names:

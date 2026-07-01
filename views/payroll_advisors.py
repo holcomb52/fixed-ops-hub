@@ -511,10 +511,12 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         else:
             expires = parse_guarantee_expires(synced.guarantee_expires)
             exp_text = f" Expires **{expires.strftime('%m/%d/%y')}**." if expires else ""
+            paid_on = "commission sales" if result.commission_total >= result.guarantee_amount else "weekly guarantee"
             st.caption(
+                f"**New Advisors commission:** {_money(result.commission_total)} · "
                 f"**Weekly guarantee:** ${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks = "
-                f"**{_money(result.guarantee_amount)}** · New Advisors commission: "
-                f"**{_money(result.commission_total)}**.{exp_text}"
+                f"**{_money(result.guarantee_amount)}** · "
+                f"**Paid on {paid_on}** ({_money(result.total_pay)}).{exp_text}"
             )
     elif row.plan_type == PLAN_SEASONED:
         if result.cp_bump_active:
@@ -562,9 +564,9 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
     if plan_has_weekly_guarantee(row.plan_type) and result.guarantee_eligible:
         pay_rows.append(
             {
-                "Pay": "Commission subtotal",
+                "Pay": "Commission sales (New Advisors plan)",
                 "Amount": result.commission_total,
-                "Detail": "New Advisors pay plan",
+                "Detail": "Labor + parts + CSI + alignment + SPIFF",
             }
         )
         if result.guarantee_active:
@@ -572,7 +574,10 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
                 {
                     "Pay": "Weekly guarantee top-up",
                     "Amount": result.guarantee_top_up,
-                    "Detail": f"${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks",
+                    "Detail": (
+                        f"Guarantee {_money(result.guarantee_amount)} exceeds commission — "
+                        f"${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks"
+                    ),
                 }
             )
         else:
@@ -580,7 +585,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
                 {
                     "Pay": "Weekly guarantee",
                     "Amount": result.guarantee_amount,
-                    "Detail": "Commission exceeded guarantee",
+                    "Detail": "Commission sales exceeded guarantee — not added",
                 }
             )
     pay_rows.append({"Pay": "TOTAL", "Amount": result.total_pay, "Detail": ""})

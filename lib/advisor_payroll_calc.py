@@ -361,10 +361,9 @@ def calculate_advisor_payroll(
     ):
         guarantee_eligible = True
         guarantee_amount = row.weekly_guarantee * max(pay_period_weeks, 0.0)
-        if guarantee_amount > commission_total:
-            guarantee_active = True
-            guarantee_top_up = guarantee_amount - commission_total
-            total = guarantee_amount
+        guarantee_active = guarantee_amount > commission_total
+        guarantee_top_up = max(0.0, guarantee_amount - commission_total)
+        total = max(commission_total, guarantee_amount)
 
     payroll_pct = (total / row.parts_labor_sales) if row.parts_labor_sales else 0.0
 

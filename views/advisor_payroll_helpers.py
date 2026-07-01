@@ -196,10 +196,14 @@ def apply_roster_to_session(roster: dict, values_by_name: Optional[dict] = None)
 
 
 def init_advisor_payroll_session():
+    from lib.advisor_roster import ensure_guarantee_roster_advisors, save_roster
+
     if "advisor_roster" not in st.session_state:
         apply_roster_to_session(load_roster())
     else:
         st.session_state.advisor_roster = normalize_roster(st.session_state.advisor_roster)
+        if ensure_guarantee_roster_advisors(st.session_state.advisor_roster):
+            save_roster(st.session_state.advisor_roster)
     if "advisor_report_loaded" not in st.session_state:
         st.session_state.advisor_report_loaded = False
 

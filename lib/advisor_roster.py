@@ -25,6 +25,36 @@ ROSTER_PATH = Path(__file__).resolve().parent.parent / "data" / "advisor_roster.
 
 PLAN_ORDER = [PLAN_SEASONED, PLAN_NEW_ADVISORS, PLAN_NEW_ADVISORS_GUARANTEE]
 
+# Advisors who belong on the weekly-guarantee plan (backfilled / moved on roster load).
+GUARANTEE_ROSTER_ADVISORS = frozenset({"Brady Hatcher"})
+
+
+def _name_on_guarantee_plan(name: str) -> bool:
+    clean = (name or "").strip()
+    if not clean:
+        return False
+    if clean in GUARANTEE_ROSTER_ADVISORS:
+        return True
+    return clean.split()[0].lower() == "shane"
+
+
+def ensure_guarantee_roster_advisors(roster: Dict[str, List[AdvisorPayrollRow]]) -> bool:
+    """Move known guarantee advisors onto the guarantee plan. Returns True if roster changed."""
+    changed = False
+    for plan in PLAN_ORDER:
+        if plan == PLAN_NEW_ADVISORS_GUARANTEE:
+            continue
+        rows = roster.get(plan, [])
+        for row in list(rows):
+            if not _name_on_guarantee_plan(row.name):
+                continue
+            rows.remove(row)
+            row.plan_type = PLAN_NEW_ADVISORS_GUARANTEE
+            apply_plan_defaults(row, PLAN_NEW_ADVISORS_GUARANTEE)
+            roster.setdefault(PLAN_NEW_ADVISORS_GUARANTEE, []).append(row)
+            changed = True
+    return changed
+
 
 def _clone_row(row: AdvisorPayrollRow) -> AdvisorPayrollRow:
     return ensure_advisor_row_fields(AdvisorPayrollRow(**copy.deepcopy(row.__dict__)))
@@ -58,12 +88,17 @@ def default_roster() -> Dict[str, List[AdvisorPayrollRow]]:
                 AdvisorPayrollRow("Matthew Garrigan", plan_type=PLAN_NEW_ADVISORS, advisor_id="3809"),
                 PLAN_NEW_ADVISORS,
             ),
+        ],
+        PLAN_NEW_ADVISORS_GUARANTEE: [
             apply_plan_defaults(
-                AdvisorPayrollRow("Brady Hatcher", plan_type=PLAN_NEW_ADVISORS, advisor_id="3816"),
-                PLAN_NEW_ADVISORS,
+                AdvisorPayrollRow(
+                    "Brady Hatcher",
+                    plan_type=PLAN_NEW_ADVISORS_GUARANTEE,
+                    advisor_id="3816",
+                ),
+                PLAN_NEW_ADVISORS_GUARANTEE,
             ),
         ],
-        PLAN_NEW_ADVISORS_GUARANTEE: [],
     }
 
 
@@ -119,14 +154,18 @@ def load_roster() -> Dict[str, List[AdvisorPayrollRow]]:
 
     remote = load_roster_data(ROSTER_KEY_ADVISORS)
     if remote is not None:
-        return roster_from_saved_data(remote)
-    if ROSTER_PATH.exists():
+        roster = roster_from_saved_data(remote)
+    elif ROSTER_PATH.exists():
         try:
             data = json.loads(ROSTER_PATH.read_text())
-            return roster_from_saved_data(data)
+            roster = roster_from_saved_data(data)
         except (json.JSONDecodeError, OSError):
-            pass
-    return clone_roster(default_roster())
+            roster = clone_roster(default_roster())
+    else:
+        roster = clone_roster(default_roster())
+    if ensure_guarantee_roster_advisors(roster):
+        save_roster(roster)
+    return roster
 
 
 def save_roster(roster: Dict[str, List[AdvisorPayrollRow]]) -> None:

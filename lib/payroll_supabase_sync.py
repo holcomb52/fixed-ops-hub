@@ -41,3 +41,12 @@ def load_remote_run(client, table: str, run_id: str) -> Optional[dict]:
     except Exception:
         return None
     return None
+
+
+def delete_remote_run(client, table: str, run_id: str) -> Tuple[bool, str]:
+    """Delete a saved run from Supabase. Returns (ok, error_message)."""
+    try:
+        client.table(table).delete().eq("id", run_id).execute()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import List, Optional, Tuple
 
 import streamlit as st
 
-from lib.payroll_supabase_sync import load_remote_run, merge_run_records, upsert_payroll_run
+from lib.payroll_supabase_sync import delete_remote_run, load_remote_run, merge_run_records, upsert_payroll_run
 from lib.receptionist_payroll_calc import ReceptionistPayrollRow, calculate_receptionist_payroll
 from lib.receptionist_payroll_export_data import build_receptionist_payroll_snapshot
 from lib.receptionist_roster import roster_from_saved_data, serialize_roster
@@ -234,3 +235,28 @@ def load_receptionist_payroll_run(run_id: str) -> Optional[dict]:
             return remote
 
     return _load_local(run_id)
+
+
+def delete_receptionist_payroll_run(run_id: str) -> Tuple[bool, str]:
+    """Delete a receptionist payroll run from local archive and Supabase."""
+    if not run_id:
+        return False, "Missing report id."
+
+    deleted_local = False
+    path = _local_path(run_id)
+    if path.exists():
+        shutil.rmtree(path)
+        deleted_local = True
+
+    client = get_supabase()
+    if client:
+        ok, err = delete_remote_run(client, TABLE, run_id)
+        if not ok:
+            if deleted_local:
+                return True, f"Removed locally; cloud delete failed: {err}"
+            return False, err
+        return True, ""
+
+    if deleted_local:
+        return True, ""
+    return False, "Report not found."

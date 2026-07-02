@@ -1,4 +1,5 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
+from typing import Callable, Optional
 
 import pandas as pd
 import streamlit as st
@@ -22,17 +23,20 @@ from lib.payroll_pdf_export import generate_payroll_pdf
 from lib.advisor_payroll_pdf_export import generate_advisor_payroll_pdf
 from lib.advisor_payroll_storage import (
     apply_advisor_snapshot_to_session,
+    delete_advisor_payroll_run,
     list_advisor_payroll_runs,
     load_advisor_payroll_run,
 )
 from lib.receptionist_payroll_pdf_export import generate_receptionist_payroll_pdf
 from lib.receptionist_payroll_storage import (
     apply_receptionist_snapshot_to_session,
+    delete_receptionist_payroll_run,
     list_receptionist_payroll_runs,
     load_receptionist_payroll_run,
 )
 from lib.payroll_storage import (
     apply_snapshot_to_session,
+    delete_payroll_run,
     list_payroll_runs,
     load_payroll_run,
     snapshot_to_teams,
@@ -41,6 +45,7 @@ from lib.supabase_client import is_configured
 from lib.warranty_labor_calc import summarize_reviewed_running_total, summarize_rows
 from lib.warranty_labor_storage import (
     apply_warranty_snapshot_to_session,
+    delete_warranty_labor_run,
     deserialize_warranty_row,
     list_warranty_labor_runs,
     load_warranty_labor_run,
@@ -197,6 +202,68 @@ def _render_earnings_lookup():
             )
 
 
+def _delete_confirm_key(prefix: str, run_id: str) -> str:
+    return f"report_delete_confirm_{prefix}_{run_id}"
+
+
+def _clear_active_report_session(active_key: str, run_id: str, extra_keys: Optional[list[str]] = None):
+    if st.session_state.get(active_key) != run_id:
+        return
+    st.session_state.pop(active_key, None)
+    for key in extra_keys or []:
+        st.session_state.pop(key, None)
+
+
+def _render_delete_report_button(prefix: str, run_id: str):
+    if st.button("🗑 Delete", key=f"{prefix}_delete_{run_id}", use_container_width=True):
+        st.session_state[_delete_confirm_key(prefix, run_id)] = run_id
+        st.rerun()
+
+
+def _render_delete_report_controls(
+    *,
+    prefix: str,
+    run_id: str,
+    run_label: str,
+    delete_fn: Callable[[str], tuple[bool, str]],
+    active_session_key: Optional[str] = None,
+    extra_clear_keys: Optional[list[str]] = None,
+):
+    confirm_key = _delete_confirm_key(prefix, run_id)
+    if st.session_state.get(confirm_key) != run_id:
+        return
+
+    st.warning(f"Delete **{run_label}**? This cannot be undone.")
+    yes_col, no_col = st.columns(2)
+    with yes_col:
+        if st.button(
+            "Yes, delete report",
+            key=f"{prefix}_delete_yes_{run_id}",
+            use_container_width=True,
+            type="primary",
+        ):
+            ok, err = delete_fn(run_id)
+            st.session_state.pop(confirm_key, None)
+            if not ok:
+                st.error(err or "Could not delete this report.")
+            else:
+                if active_session_key:
+                    _clear_active_report_session(active_session_key, run_id, extra_clear_keys)
+                if err:
+                    st.warning(err)
+                else:
+                    st.success(f"Deleted {run_label}.")
+                st.rerun()
+    with no_col:
+        if st.button(
+            "Cancel",
+            key=f"{prefix}_delete_no_{run_id}",
+            use_container_width=True,
+        ):
+            st.session_state.pop(confirm_key, None)
+            st.rerun()
+
+
 def _export_pdf_from_run(loaded: dict) -> bytes:
     snap = loaded.get("snapshot", {})
     teams = snapshot_to_teams(snap)
@@ -308,7 +375,15 @@ def _render_warranty_runs():
                     use_container_width=True,
                 )
         with a4:
-            st.caption(f"ID: {run_id[:8]}…")
+            _render_delete_report_button("warranty", run_id)
+        _render_delete_report_controls(
+            prefix="warranty",
+            run_id=run_id,
+            run_label=run_label,
+            delete_fn=delete_warranty_labor_run,
+            active_session_key="active_warranty_run_id",
+        )
+        st.caption(f"ID: {run_id[:8]}…")
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
@@ -409,7 +484,16 @@ def render():
                         st.session_state.pending_nav = "Flag Sheet"
                         st.rerun()
             with a4:
-                st.caption(f"ID: {run_id[:8]}…")
+                _render_delete_report_button("tech", run_id)
+            _render_delete_report_controls(
+                prefix="tech",
+                run_id=run_id,
+                run_label=pay_period,
+                delete_fn=delete_payroll_run,
+                active_session_key="active_run_id",
+                extra_clear_keys=["payroll_completed", "pdf_loaded"],
+            )
+            st.caption(f"ID: {run_id[:8]}…")
             st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     st.markdown(team_section_divider(ACCENT_ADVISOR), unsafe_allow_html=True)
@@ -484,7 +568,16 @@ def render():
                         use_container_width=True,
                     )
             with a3:
-                st.caption(f"ID: {run_id[:8]}…")
+                _render_delete_report_button("adv", run_id)
+            _render_delete_report_controls(
+                prefix="adv",
+                run_id=run_id,
+                run_label=pay_period,
+                delete_fn=delete_advisor_payroll_run,
+                active_session_key="active_advisor_run_id",
+                extra_clear_keys=["advisor_payroll_completed"],
+            )
+            st.caption(f"ID: {run_id[:8]}…")
             st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     st.markdown(team_section_divider(ACCENT_RECEPTIONIST), unsafe_allow_html=True)
@@ -563,7 +656,16 @@ def render():
                         use_container_width=True,
                     )
             with a3:
-                st.caption(f"ID: {run_id[:8]}…")
+                _render_delete_report_button("rec", run_id)
+            _render_delete_report_controls(
+                prefix="rec",
+                run_id=run_id,
+                run_label=pay_period,
+                delete_fn=delete_receptionist_payroll_run,
+                active_session_key="active_receptionist_run_id",
+                extra_clear_keys=["receptionist_payroll_completed"],
+            )
+            st.caption(f"ID: {run_id[:8]}…")
             st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     _render_warranty_runs()

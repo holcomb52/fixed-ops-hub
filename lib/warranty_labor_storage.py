@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import streamlit as st
 
@@ -259,3 +260,30 @@ def load_warranty_labor_run(run_id: str) -> Optional[dict]:
             pass
 
     return record
+
+
+def delete_warranty_labor_run(run_id: str) -> Tuple[bool, str]:
+    """Delete a warranty ELR analysis run from local archive and Supabase."""
+    from lib.payroll_supabase_sync import delete_remote_run
+
+    if not run_id:
+        return False, "Missing report id."
+
+    deleted_local = False
+    path = _local_path(run_id)
+    if path.exists():
+        shutil.rmtree(path)
+        deleted_local = True
+
+    client = get_supabase()
+    if client:
+        ok, err = delete_remote_run(client, TABLE, run_id)
+        if not ok:
+            if deleted_local:
+                return True, f"Removed locally; cloud delete failed: {err}"
+            return False, err
+        return True, ""
+
+    if deleted_local:
+        return True, ""
+    return False, "Report not found."

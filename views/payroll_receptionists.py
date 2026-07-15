@@ -45,6 +45,7 @@ from views.receptionist_payroll_helpers import (
     sync_receptionist,
     toggle_receptionist_section,
     _appointment_rate_text_key,
+    _appointments_text_key,
     _read_appointment_rate,
     _tires_text_key,
 )
@@ -273,11 +274,12 @@ def _render_receptionist_section(row) -> None:
 
     c1, c2 = st.columns(2)
     with c1:
-        appointments_set = sync_receptionist(row).appointments_set
-        st.metric(
+        st.text_input(
             "Appointments set",
-            f"{appointments_set:.0f}",
-            help="Auto-filled from CASHIERS .xlsx by last name / taker code.",
+            key=_appointments_text_key(row.name),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
+            help="Auto-filled from CASHIERS .xlsx by last name / taker code. Type a number to override.",
         )
     with c2:
         st.text_input(
@@ -375,8 +377,8 @@ def render():
     init_receptionist_payroll_session()
 
     st.markdown(
-        '<span class="legend-chip chip-manual">Click a name · enter tires, SPIFF, bonuses</span> '
-        '<span class="legend-chip chip-calc">Appointments from CASHIERS .xlsx</span> '
+        '<span class="legend-chip chip-manual">Click a name · enter appts, tires, SPIFF, bonuses</span> '
+        '<span class="legend-chip chip-calc">Appointments auto-fill from CASHIERS .xlsx — editable</span> '
         '<span class="legend-chip chip-live">Summary chart updates on each change</span>',
         unsafe_allow_html=True,
     )

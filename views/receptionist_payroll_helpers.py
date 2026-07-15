@@ -59,6 +59,10 @@ def _tires_text_key(name: str) -> str:
     return rec_key(name, "tires_sold_input")
 
 
+def _appointments_text_key(name: str) -> str:
+    return rec_key(name, "appointments_set_input")
+
+
 def _appointment_rate_text_key(name: str) -> str:
     return rec_key(name, "appointment_rate_input")
 
@@ -87,6 +91,25 @@ def _parse_appointment_rate(name: str, row: ReceptionistPayrollRow | None = None
     return 0.0
 
 
+def _parse_appointments_value(name: str, row: ReceptionistPayrollRow | None = None) -> float:
+    text_key = _appointments_text_key(name)
+    if text_key in st.session_state:
+        raw = str(st.session_state.get(text_key, "")).strip()
+        try:
+            return max(float(raw) if raw else 0.0, 0.0)
+        except ValueError:
+            return 0.0
+    num_key = rec_key(name, "appointments_set")
+    if num_key in st.session_state:
+        return float(st.session_state.get(num_key, 0) or 0)
+    store = st.session_state.get("receptionist_value_store", {})
+    if name in store and "appointments_set" in store[name]:
+        return float(store[name]["appointments_set"] or 0)
+    if row is not None:
+        return float(row.appointments_set or 0)
+    return 0.0
+
+
 def _parse_tires_value(name: str, row: ReceptionistPayrollRow | None = None) -> float:
     text_key = _tires_text_key(name)
     if text_key in st.session_state:
@@ -110,12 +133,19 @@ def _tires_widgets_active(name: str) -> bool:
     return _tires_text_key(name) in st.session_state or rec_key(name, "tires_sold") in st.session_state
 
 
+def _appointments_widgets_active(name: str) -> bool:
+    return (
+        _appointments_text_key(name) in st.session_state
+        or rec_key(name, "appointments_set") in st.session_state
+    )
+
+
 def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
     store = st.session_state.get("receptionist_value_store", {})
     saved = store.get(row.name, {})
     entry: Dict[str, object] = {}
     for field in RECEPTIONIST_FIELDS:
-        if field in ("tires_sold", "appointment_rate"):
+        if field in ("appointments_set", "tires_sold", "appointment_rate"):
             continue
         key = rec_key(row.name, field)
         if key in st.session_state:
@@ -123,6 +153,7 @@ def _capture_store_entry(row: ReceptionistPayrollRow) -> dict:
         elif field in saved:
             entry[field] = saved[field]
     entry["appointment_rate"] = _parse_appointment_rate(row.name, row)
+    entry["appointments_set"] = _parse_appointments_value(row.name, row)
     entry["tires_sold"] = _parse_tires_value(row.name, row)
     label_key = rec_key(row.name, "bonus_label")
     if label_key in st.session_state:
@@ -180,11 +211,18 @@ def _commit_receptionist_inputs(name: str):
     if row is None:
         return
     rate = _parse_appointment_rate(name, row)
+    appointments = _parse_appointments_value(name, row)
     tires = _parse_tires_value(name, row)
     st.session_state[rec_key(name, "appointment_rate")] = rate
+    st.session_state[rec_key(name, "appointments_set")] = appointments
     st.session_state[rec_key(name, "tires_sold")] = tires
     store = st.session_state.setdefault("receptionist_value_store", {})
-    store[name] = {**store.get(name, {}), "appointment_rate": rate, "tires_sold": tires}
+    store[name] = {
+        **store.get(name, {}),
+        "appointment_rate": rate,
+        "appointments_set": appointments,
+        "tires_sold": tires,
+    }
 
 
 def save_receptionist_form(name: str):
@@ -203,6 +241,10 @@ def capture_open_receptionist_inputs():
     for row in flatten_roster(st.session_state.receptionist_roster):
         rate = _parse_appointment_rate(row.name, row)
         st.session_state[rec_key(row.name, "appointment_rate")] = rate
+        if _appointments_widgets_active(row.name):
+            st.session_state[rec_key(row.name, "appointments_set")] = _parse_appointments_value(
+                row.name, row
+            )
         if _tires_widgets_active(row.name):
             st.session_state[rec_key(row.name, "tires_sold")] = _parse_tires_value(row.name, row)
     refresh_receptionist_value_store()
@@ -236,10 +278,18 @@ def apply_receptionist_value_store():
                 st.session_state[key] = value
 
         for field, default in RECEPTIONIST_FIELDS.items():
-            if field in ("appointment_rate", "tires_sold"):
+            if field in ("appointment_rate", "appointments_set", "tires_sold"):
                 continue
             val = saved.get(field, getattr(row, field, default))
             _hydrate(rec_key(row.name, field), float(val if val is not None else default))
+        appointments = float(
+            saved.get("appointments_set", _parse_appointments_value(row.name, row)) or 0
+        )
+        _hydrate(rec_key(row.name, "appointments_set"), appointments)
+        _hydrate(
+            _appointments_text_key(row.name),
+            str(int(appointments)) if appointments else "",
+        )
         tires = float(saved.get("tires_sold", _parse_tires_value(row.name, row)) or 0)
         _hydrate(rec_key(row.name, "tires_sold"), tires)
         _hydrate(_tires_text_key(row.name), str(int(tires)) if tires else "")
@@ -298,6 +348,8 @@ def _saved_field(row: ReceptionistPayrollRow, field: str, default):
 
 
 def _session_float(row: ReceptionistPayrollRow, field: str, default: float = 0.0) -> float:
+    if field == "appointments_set":
+        return _parse_appointments_value(row.name, row)
     if field == "tires_sold":
         return _parse_tires_value(row.name, row)
     if field == "appointment_rate":
@@ -338,9 +390,7 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
     values: Dict[str, dict] = {}
     for row in rows:
         values[row.name] = {
-            "appointments_set": float(
-                st.session_state.get(rec_key(row.name, "appointments_set"), row.appointments_set) or 0
-            ),
+            "appointments_set": _parse_appointments_value(row.name, row),
             "tires_sold": float(
                 st.session_state.get(rec_key(row.name, "tires_sold"), _parse_tires_value(row.name)) or 0
             ),
@@ -383,6 +433,16 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
     )
     st.session_state[rec_key(row.name, "csi_tier")] = overrides.get("csi_tier", CSI_TIER_NONE)
     st.session_state[rec_key(row.name, "notes")] = overrides.get("notes", row.notes or "")
+    appointments = float(
+        overrides.get(
+            "appointments_set",
+            st.session_state.get(rec_key(row.name, "appointments_set"), 0),
+        )
+        or 0
+    )
+    st.session_state[_appointments_text_key(row.name)] = (
+        str(int(appointments)) if appointments else ""
+    )
     tires = float(overrides.get("tires_sold", st.session_state.get(rec_key(row.name, "tires_sold"), 0)) or 0)
     st.session_state[_tires_text_key(row.name)] = str(int(tires)) if tires else ""
     rate = float(overrides.get("appointment_rate", st.session_state.get(rec_key(row.name, "appointment_rate"), 0)) or 0)
@@ -445,7 +505,11 @@ def apply_cashiers_report_to_session(report_rows) -> int:
             if report:
                 appt_count = report.appointments_set
         if appt_count:
-            st.session_state[rec_key(row.name, "appointments_set")] = float(appt_count)
+            appt_value = float(appt_count)
+            st.session_state[rec_key(row.name, "appointments_set")] = appt_value
+            st.session_state[_appointments_text_key(row.name)] = (
+                str(int(appt_value)) if appt_value else ""
+            )
             matched += 1
 
     st.session_state.receptionist_report_loaded = matched > 0

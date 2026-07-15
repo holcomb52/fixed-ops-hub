@@ -92,16 +92,17 @@ def _parse_appointment_rate(name: str, row: ReceptionistPayrollRow | None = None
 
 
 def _parse_appointments_value(name: str, row: ReceptionistPayrollRow | None = None) -> float:
-    text_key = _appointments_text_key(name)
-    if text_key in st.session_state:
-        raw = str(st.session_state.get(text_key, "")).strip()
-        try:
-            return max(float(raw) if raw else 0.0, 0.0)
-        except ValueError:
-            return 0.0
     num_key = rec_key(name, "appointments_set")
     if num_key in st.session_state:
         return float(st.session_state.get(num_key, 0) or 0)
+    text_key = _appointments_text_key(name)
+    if text_key in st.session_state:
+        raw = str(st.session_state.get(text_key, "")).strip()
+        if raw:
+            try:
+                return max(float(raw), 0.0)
+            except ValueError:
+                return 0.0
     store = st.session_state.get("receptionist_value_store", {})
     if name in store and "appointments_set" in store[name]:
         return float(store[name]["appointments_set"] or 0)
@@ -114,10 +115,11 @@ def _parse_tires_value(name: str, row: ReceptionistPayrollRow | None = None) -> 
     text_key = _tires_text_key(name)
     if text_key in st.session_state:
         raw = str(st.session_state.get(text_key, "")).strip()
-        try:
-            return max(float(raw) if raw else 0.0, 0.0)
-        except ValueError:
-            return 0.0
+        if raw:
+            try:
+                return max(float(raw), 0.0)
+            except ValueError:
+                return 0.0
     num_key = rec_key(name, "tires_sold")
     if num_key in st.session_state:
         return float(st.session_state.get(num_key, 0) or 0)
@@ -216,6 +218,10 @@ def _commit_receptionist_inputs(name: str):
     st.session_state[rec_key(name, "appointment_rate")] = rate
     st.session_state[rec_key(name, "appointments_set")] = appointments
     st.session_state[rec_key(name, "tires_sold")] = tires
+    st.session_state[_appointments_text_key(name)] = (
+        str(int(appointments)) if appointments else ""
+    )
+    st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
     store = st.session_state.setdefault("receptionist_value_store", {})
     store[name] = {
         **store.get(name, {}),
@@ -240,13 +246,17 @@ def capture_open_receptionist_inputs():
     """Snapshot widget values before unrelated controls (export, confirm) rerun."""
     for row in flatten_roster(st.session_state.receptionist_roster):
         rate = _parse_appointment_rate(row.name, row)
+        appointments = _parse_appointments_value(row.name, row)
+        tires = _parse_tires_value(row.name, row)
         st.session_state[rec_key(row.name, "appointment_rate")] = rate
+        st.session_state[rec_key(row.name, "appointments_set")] = appointments
+        st.session_state[rec_key(row.name, "tires_sold")] = tires
         if _appointments_widgets_active(row.name):
-            st.session_state[rec_key(row.name, "appointments_set")] = _parse_appointments_value(
-                row.name, row
+            st.session_state[_appointments_text_key(row.name)] = (
+                str(int(appointments)) if appointments else ""
             )
         if _tires_widgets_active(row.name):
-            st.session_state[rec_key(row.name, "tires_sold")] = _parse_tires_value(row.name, row)
+            st.session_state[_tires_text_key(row.name)] = str(int(tires)) if tires else ""
     refresh_receptionist_value_store()
 
 

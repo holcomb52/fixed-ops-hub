@@ -45,9 +45,9 @@ from views.receptionist_payroll_helpers import (
     sync_receptionist,
     toggle_receptionist_section,
     _appointment_rate_text_key,
-    _appointments_text_key,
     _read_appointment_rate,
     _tires_text_key,
+    _commit_receptionist_inputs,
 )
 from views.payroll_helpers import render_payroll_sync_error, render_roster_sync_error
 
@@ -245,8 +245,9 @@ def _summary_row(row, synced, result) -> dict:
 def _render_recall_pulse_plan_panel(row) -> None:
     st.markdown("##### RecallPulse tiered appointment bonus")
     st.caption(
-        "Effective 06/26/26 — incremental tiers: 1–15 @ $3 · 16–25 @ $8 · 26–35 @ $12 · 36+ @ $15 per appointment. "
-        "Replaces flat $/appointment for Brandy only."
+        "Effective 06/26/26 — incremental tiers only: 1–15 @ $3 · 16–25 @ $8 · 26–35 @ $12 · 36+ @ $15. "
+        "Each rate applies only to appointments inside that tier (not retroactively). "
+        "Example: 45 appts = $395 tiered bonus per Brandy's pay plan."
     )
     st.checkbox(
         f"Monthly stretch bonus — {_money(RECALL_PULSE_STRETCH_BONUS)} "
@@ -274,12 +275,15 @@ def _render_receptionist_section(row) -> None:
 
     c1, c2 = st.columns(2)
     with c1:
-        st.text_input(
+        st.number_input(
             "Appointments set",
-            key=_appointments_text_key(row.name),
+            min_value=0.0,
+            step=1.0,
+            format="%.0f",
+            key=rec_key(row.name, "appointments_set"),
             on_change=persist_receptionist_changes,
             args=(row.name,),
-            help="Auto-filled from CASHIERS .xlsx by last name / taker code. Type a number to override.",
+            help="Auto-filled from CASHIERS .xlsx by last name / taker code. Change the number to override.",
         )
     with c2:
         st.text_input(
@@ -320,6 +324,7 @@ def _render_receptionist_section(row) -> None:
     if row.has_csi_bonus:
         _render_receptionist_csi_buttons(row)
 
+    _commit_receptionist_inputs(row.name)
     synced = sync_receptionist(row)
     result = calculate_receptionist_payroll(synced)
 

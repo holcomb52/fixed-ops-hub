@@ -22,6 +22,9 @@ class RecallPulseBonusTests(unittest.TestCase):
     def test_twenty_five_appointments(self):
         self.assertEqual(calculate_recall_pulse_appointment_bonus(25), 125.0)
 
+    def test_forty_five_appointments(self):
+        self.assertEqual(calculate_recall_pulse_appointment_bonus(45), 395.0)
+
     def test_stretch_toggle_adds_to_total(self):
         row = ReceptionistPayrollRow(
             name="Brandy Sistrunk",

@@ -32,6 +32,25 @@ RECALL_PULSE_TIERS = (
     (36, None, 15.0),
 )
 
+
+def recall_pulse_qualified_tier(appointments: float) -> tuple[str, float]:
+    """Highest tier reached — that rate applies to every appointment in the period."""
+    total_appts = max(int(appointments), 0)
+    if total_appts >= 36:
+        return "Tier 4 · 36+ appointments", 15.0
+    if total_appts >= 26:
+        return "Tier 3 · 26–35 appointments", 12.0
+    if total_appts >= 16:
+        return "Tier 2 · 16–25 appointments", 8.0
+    if total_appts >= 1:
+        return "Tier 1 · 1–15 appointments", 3.0
+    return "No appointments", 0.0
+
+
+def recall_pulse_rate_for_appointments(appointments: float) -> float:
+    _, rate = recall_pulse_qualified_tier(appointments)
+    return rate
+
 TYPE_RECEPTIONIST = "receptionist"
 TYPE_BONUS = "bonus"
 
@@ -78,41 +97,29 @@ class ReceptionistPayrollResult:
 
 
 def calculate_recall_pulse_appointment_bonus(appointments: float) -> float:
-    """Tiered recall appointment bonus — incremental tiers per Brandy's pay plan."""
+    """Recall appointment bonus — highest tier reached pays that rate on all appts."""
     total_appts = max(int(appointments), 0)
     if total_appts == 0:
         return 0.0
-    bonus = 0.0
-    for tier_start, tier_end, rate in RECALL_PULSE_TIERS:
-        if total_appts < tier_start:
-            break
-        upper = tier_end if tier_end is not None else total_appts
-        tier_appts = min(total_appts, upper) - tier_start + 1
-        bonus += tier_appts * rate
-    return bonus
+    rate = recall_pulse_rate_for_appointments(total_appts)
+    return total_appts * rate
 
 
 def recall_pulse_tier_breakdown(appointments: float) -> list[tuple[str, float]]:
-    """Human-readable tier lines for UI and PDF detail."""
+    """Human-readable pay line for UI and PDF detail."""
     total_appts = max(int(appointments), 0)
-    lines: list[tuple[str, float]] = []
-    for tier_start, tier_end, rate in RECALL_PULSE_TIERS:
-        if total_appts < tier_start:
-            break
-        upper = tier_end if tier_end is not None else total_appts
-        tier_appts = min(total_appts, upper) - tier_start + 1
-        if tier_appts <= 0:
-            continue
-        end_label = str(tier_end) if tier_end is not None else "+"
-        lines.append((f"Tier {tier_start}–{end_label}: {tier_appts} × ${rate:.0f}", tier_appts * rate))
-    return lines
+    if total_appts == 0:
+        return []
+    label, rate = recall_pulse_qualified_tier(total_appts)
+    return [(f"{label}: {total_appts} × ${rate:.0f}", total_appts * rate)]
 
 
 def describe_recall_pulse_appointment_pay(appointments: float) -> str:
-    parts = [f"{label} = ${amount:,.2f}" for label, amount in recall_pulse_tier_breakdown(appointments)]
-    if not parts:
+    total_appts = max(int(appointments), 0)
+    if total_appts == 0:
         return "0 recall appointments"
-    return " · ".join(parts)
+    label, rate = recall_pulse_qualified_tier(total_appts)
+    return f"{total_appts} appts × ${rate:.0f} ({label})"
 
 
 def ensure_receptionist_row_fields(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:

@@ -8,22 +8,33 @@ from lib.receptionist_payroll_calc import (
     RECALL_PULSE_STRETCH_BONUS,
     calculate_recall_pulse_appointment_bonus,
     calculate_receptionist_payroll,
+    recall_pulse_qualified_tier,
+    recall_pulse_rate_for_appointments,
     ReceptionistPayrollRow,
 )
 
 
 class RecallPulseBonusTests(unittest.TestCase):
-    def test_pdf_example_forty_appointments(self):
-        self.assertEqual(calculate_recall_pulse_appointment_bonus(40), 320.0)
-
-    def test_tier_one_only(self):
+    def test_tier_one_rate_on_all_appointments(self):
+        self.assertEqual(recall_pulse_rate_for_appointments(15), 3.0)
         self.assertEqual(calculate_recall_pulse_appointment_bonus(15), 45.0)
 
-    def test_twenty_five_appointments(self):
-        self.assertEqual(calculate_recall_pulse_appointment_bonus(25), 125.0)
+    def test_tier_two_rate_on_all_appointments(self):
+        self.assertEqual(recall_pulse_rate_for_appointments(25), 8.0)
+        self.assertEqual(calculate_recall_pulse_appointment_bonus(25), 200.0)
 
-    def test_forty_five_appointments(self):
-        self.assertEqual(calculate_recall_pulse_appointment_bonus(45), 395.0)
+    def test_tier_three_rate_on_all_appointments(self):
+        self.assertEqual(recall_pulse_rate_for_appointments(35), 12.0)
+        self.assertEqual(calculate_recall_pulse_appointment_bonus(35), 420.0)
+
+    def test_tier_four_rate_on_all_appointments(self):
+        label, rate = recall_pulse_qualified_tier(45)
+        self.assertEqual(label, "Tier 4 · 36+ appointments")
+        self.assertEqual(rate, 15.0)
+        self.assertEqual(calculate_recall_pulse_appointment_bonus(45), 675.0)
+
+    def test_forty_appointments_top_tier(self):
+        self.assertEqual(calculate_recall_pulse_appointment_bonus(40), 600.0)
 
     def test_stretch_toggle_adds_to_total(self):
         row = ReceptionistPayrollRow(
@@ -35,9 +46,9 @@ class RecallPulseBonusTests(unittest.TestCase):
             stretch_bonus_amount=RECALL_PULSE_STRETCH_BONUS,
         )
         result = calculate_receptionist_payroll(row)
-        self.assertEqual(result.appointment_pay, 245.0)
+        self.assertEqual(result.appointment_pay, 420.0)
         self.assertEqual(result.stretch_pay, 500.0)
-        self.assertEqual(result.total_pay, 745.0)
+        self.assertEqual(result.total_pay, 920.0)
 
     def test_other_receptionists_unaffected(self):
         row = ReceptionistPayrollRow(

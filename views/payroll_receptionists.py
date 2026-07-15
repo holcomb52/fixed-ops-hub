@@ -11,7 +11,6 @@ from lib.receptionist_payroll_calc import (
     TIRE_PAY_RATE,
     calculate_receptionist_payroll,
     describe_recall_pulse_appointment_pay,
-    recall_pulse_tier_breakdown,
 )
 from lib.receptionist_payroll_export_data import build_receptionist_payroll_snapshot
 from lib.receptionist_payroll_parser import parse_cashiers_report
@@ -223,7 +222,7 @@ def _render_receptionist_csi_buttons(row) -> None:
 
 def _summary_row(row, synced, result) -> dict:
     appt_plan = (
-        "Tiered recall ($3–$15)"
+        "RecallPulse tier (rate on all appts)"
         if row.has_recall_pulse_plan
         else f"${float(synced.appointment_rate or 0):.2f}"
     )
@@ -245,9 +244,9 @@ def _summary_row(row, synced, result) -> dict:
 def _render_recall_pulse_plan_panel(row) -> None:
     st.markdown("##### RecallPulse tiered appointment bonus")
     st.caption(
-        "Effective 06/26/26 — incremental tiers only: 1–15 @ $3 · 16–25 @ $8 · 26–35 @ $12 · 36+ @ $15. "
-        "Each rate applies only to appointments inside that tier (not retroactively). "
-        "Example: 45 appts = $395 tiered bonus per Brandy's pay plan."
+        "Effective 06/26/26 — the highest tier reached sets the rate on **every** appointment "
+        "in the pay period: 1–15 @ $3 · 16–25 @ $8 · 26–35 @ $12 · 36+ @ $15. "
+        "Example: 45 appts qualifies for Tier 4 → 45 × $15 = $675."
     )
     st.checkbox(
         f"Monthly stretch bonus — {_money(RECALL_PULSE_STRETCH_BONUS)} "
@@ -330,10 +329,8 @@ def _render_receptionist_section(row) -> None:
 
     pay_rows = []
     if row.has_recall_pulse_plan:
-        for label, amount in recall_pulse_tier_breakdown(synced.appointments_set):
-            pay_rows.append({"Pay": label, "Amount": amount, "Detail": ""})
         pay_rows.append({
-            "Pay": "Tiered appointment bonus",
+            "Pay": "Appointment bonus",
             "Amount": result.appointment_pay,
             "Detail": describe_recall_pulse_appointment_pay(synced.appointments_set),
         })

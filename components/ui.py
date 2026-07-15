@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 def page_hero(title: str, subtitle: str, tag: str = "", tag_style: str = "live") -> str:
     tag_html = ""
     if tag:

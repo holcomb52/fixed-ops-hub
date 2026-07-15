@@ -205,7 +205,7 @@ def _commit_appointment_rate_input(name: str):
 
 
 def _commit_receptionist_inputs(name: str):
-    """Copy live widget values into session keys the summary chart reads."""
+    """Copy live widget values into the value store (never widget session keys)."""
     row = next(
         (item for item in flatten_roster(st.session_state.receptionist_roster) if item.name == name),
         None,
@@ -215,13 +215,6 @@ def _commit_receptionist_inputs(name: str):
     rate = _parse_appointment_rate(name, row)
     appointments = _parse_appointments_value(name, row)
     tires = _parse_tires_value(name, row)
-    st.session_state[rec_key(name, "appointment_rate")] = rate
-    st.session_state[rec_key(name, "appointments_set")] = appointments
-    st.session_state[rec_key(name, "tires_sold")] = tires
-    st.session_state[_appointments_text_key(name)] = (
-        str(int(appointments)) if appointments else ""
-    )
-    st.session_state[_tires_text_key(name)] = str(int(tires)) if tires else ""
     store = st.session_state.setdefault("receptionist_value_store", {})
     store[name] = {
         **store.get(name, {}),
@@ -243,20 +236,15 @@ def save_receptionist_form(name: str):
 
 
 def capture_open_receptionist_inputs():
-    """Snapshot widget values before unrelated controls (export, confirm) rerun."""
+    """Snapshot widget values into the value store before unrelated reruns."""
     for row in flatten_roster(st.session_state.receptionist_roster):
-        rate = _parse_appointment_rate(row.name, row)
-        appointments = _parse_appointments_value(row.name, row)
-        tires = _parse_tires_value(row.name, row)
-        st.session_state[rec_key(row.name, "appointment_rate")] = rate
-        st.session_state[rec_key(row.name, "appointments_set")] = appointments
-        st.session_state[rec_key(row.name, "tires_sold")] = tires
-        if _appointments_widgets_active(row.name):
-            st.session_state[_appointments_text_key(row.name)] = (
-                str(int(appointments)) if appointments else ""
-            )
-        if _tires_widgets_active(row.name):
-            st.session_state[_tires_text_key(row.name)] = str(int(tires)) if tires else ""
+        store = st.session_state.setdefault("receptionist_value_store", {})
+        store[row.name] = {
+            **store.get(row.name, {}),
+            "appointment_rate": _parse_appointment_rate(row.name, row),
+            "appointments_set": _parse_appointments_value(row.name, row),
+            "tires_sold": _parse_tires_value(row.name, row),
+        }
     refresh_receptionist_value_store()
 
 

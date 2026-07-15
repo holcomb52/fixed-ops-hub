@@ -46,7 +46,6 @@ from views.receptionist_payroll_helpers import (
     _appointment_rate_text_key,
     _read_appointment_rate,
     _tires_text_key,
-    _commit_receptionist_inputs,
 )
 from views.payroll_helpers import render_payroll_sync_error, render_roster_sync_error
 
@@ -323,7 +322,6 @@ def _render_receptionist_section(row) -> None:
     if row.has_csi_bonus:
         _render_receptionist_csi_buttons(row)
 
-    _commit_receptionist_inputs(row.name)
     synced = sync_receptionist(row)
     result = calculate_receptionist_payroll(synced)
 

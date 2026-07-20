@@ -512,9 +512,12 @@ def render():
         st.session_state.get("active_warranty_run_id") and st.session_state.warranty_labor_rows
     )
     upload_help = (
-        "Add more customer-pay ROs to this saved analysis. Duplicate RO numbers are ignored."
+        "Add more customer-pay ROs to this saved analysis. Duplicate RO numbers are ignored. "
+        "Accepts DMS exports (RECID / TECH HRS / LBR SALE) and attorney FINAL lists "
+        "(RO# / HOURS / BILL-AMT)."
         if incremental_mode
-        else "Import customer-pay RO lines with labor sale and tech flagged hours."
+        else "Import customer-pay RO lines. Accepts DMS exports (RECID / TECH HRS / LBR SALE) "
+        "and attorney FINAL lists (RO# / HOURS / BILL-AMT)."
     )
 
     uploaded = st.file_uploader(
@@ -635,7 +638,9 @@ def render():
     if not rows:
         st.info(
             "Upload your warranty labor rate spreadsheet to analyze customer-pay effective labor rate. "
-            "Each line can be tagged with an exclusion before calculating the shop ELR."
+            "Works with dealership DMS exports and the attorney FINAL RO list "
+            "(RO#, Hours, Bill Amount). Each line can be tagged with an exclusion before calculating "
+            "the shop ELR."
         )
         return
 

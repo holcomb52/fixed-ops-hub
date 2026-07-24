@@ -433,7 +433,42 @@ def render():
         strong_hi=result.strong_hi,
     )
 
-    d1, d2, d3 = st.columns(3)
+    save_label = (
+        "Update saved report"
+        if st.session_state.get("active_labor_rate_run_id")
+        else "Save to Reports"
+    )
+    if st.button(
+        f"💾 {save_label}",
+        type="primary",
+        use_container_width=True,
+        key="labor_save_reports",
+    ):
+        run_id = save_labor_rate_run(
+            result,
+            hour_range=hour_range,
+            boost_pct=int(boost_pct),
+            use_custom_base=bool(use_custom_base),
+            amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
+            run_id=st.session_state.get("active_labor_rate_run_id"),
+        )
+        st.session_state.active_labor_rate_run_id = run_id
+        st.session_state.labor_rate_run_label = (
+            f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
+            f"${result.target_elr:,.0f}/hr"
+        )
+        st.session_state["_labor_rate_saved_label"] = (
+            st.session_state.labor_rate_run_label
+        )
+        st.rerun()
+
+    saved_flash = st.session_state.pop("_labor_rate_saved_label", None)
+    if saved_flash:
+        st.success(
+            f"Labor rate grid saved — find it in **Reports → Labor Rate Grids** ({saved_flash})."
+        )
+
+    d1, d2 = st.columns(2)
     with d1:
         st.download_button(
             "Download CSV",
@@ -451,41 +486,6 @@ def render():
             mime="application/pdf",
             use_container_width=True,
             key="labor_pdf",
-        )
-    with d3:
-        save_label = (
-            "Update saved report"
-            if st.session_state.get("active_labor_rate_run_id")
-            else "Save to Reports"
-        )
-        if st.button(
-            f"💾 {save_label}",
-            type="primary",
-            use_container_width=True,
-            key="labor_save_reports",
-        ):
-            run_id = save_labor_rate_run(
-                result,
-                hour_range=hour_range,
-                boost_pct=int(boost_pct),
-                use_custom_base=bool(use_custom_base),
-                amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
-                run_id=st.session_state.get("active_labor_rate_run_id"),
-            )
-            st.session_state.active_labor_rate_run_id = run_id
-            st.session_state.labor_rate_run_label = (
-                f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
-                f"${result.target_elr:,.0f}/hr"
-            )
-            st.session_state["_labor_rate_saved_label"] = (
-                st.session_state.labor_rate_run_label
-            )
-            st.rerun()
-
-    saved_flash = st.session_state.pop("_labor_rate_saved_label", None)
-    if saved_flash:
-        st.success(
-            f"Labor rate grid saved — find it in **Reports → Labor Rate Grids** ({saved_flash})."
         )
 
     st.markdown(

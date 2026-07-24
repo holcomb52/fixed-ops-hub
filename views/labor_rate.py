@@ -201,19 +201,6 @@ def render():
                 "Example: 2.0 row + +.3 column = 2.3 hours."
             )
 
-    s1, s2, s3, s4 = st.columns(4)
-    cards = [
-        ("Range ELR", f"${result.target_elr:,.2f}", "cyan", "$"),
-        ("Strong-band avg", f"${result.strong_avg_elr:,.2f}", "green", "◎"),
-        ("Strong band", f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h", "orange", "⏱"),
-        ("Outside ELR", f"${result.base_elr:,.2f}", "violet", "◇"),
-    ]
-    for col, (label, value, accent, icon) in zip([s1, s2, s3, s4], cards):
-        with col:
-            st.markdown(stat_card(label, value, accent, icon), unsafe_allow_html=True)
-
-    e1, e2, e3, e4 = st.columns(4)
-
     def _stat_with_sub(label: str, value: str, accent: str, icon: str, sub: str) -> None:
         card = stat_card(label, value, accent, icon)
         card = card.replace(
@@ -223,6 +210,35 @@ def render():
             f'        <div class="stat-glow"></div>',
         )
         st.markdown(card, unsafe_allow_html=True)
+
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        st.markdown(
+            stat_card("Range ELR", f"${result.target_elr:,.2f}", "cyan", "$"),
+            unsafe_allow_html=True,
+        )
+    with s2:
+        st.markdown(
+            stat_card(
+                "Strong-band avg", f"${result.strong_avg_elr:,.2f}", "green", "◎"
+            ),
+            unsafe_allow_html=True,
+        )
+    with s3:
+        _stat_with_sub(
+            "Grid avg ELR",
+            f"${result.overall_avg_elr:,.2f}",
+            "orange",
+            "∑",
+            f"All {result.cells_scored} cells",
+        )
+    with s4:
+        st.markdown(
+            stat_card("Outside ELR", f"${result.base_elr:,.2f}", "violet", "◇"),
+            unsafe_allow_html=True,
+        )
+
+    e1, e2, e3, e4 = st.columns(4)
 
     with e1:
         _stat_with_sub(
@@ -348,6 +364,7 @@ def render():
         status_banner(
             f"For {result.strong_lo:.1f}–{result.strong_hi:.1f} hrs, grid averages "
             f"${result.strong_avg_elr:,.2f}/hr (you set ${result.target_elr:,.2f}). "
+            f"Whole-grid avg ${result.overall_avg_elr:,.2f}/hr. "
             f"Outside that band uses ${result.base_elr:,.2f}/hr "
             f"(avg ${result.outside_avg_elr:,.2f}). "
             f"Lowest ELR ${result.lowest_elr:,.2f} at {result.lowest_elr_hours:.1f}h · "
@@ -417,6 +434,7 @@ def render():
             ("Strong hour range", f"{result.strong_lo:.1f}–{result.strong_hi:.1f} hrs"),
             ("ELR for that range", f"${result.target_elr:,.2f}"),
             ("Strong-band avg ELR", f"${result.strong_avg_elr:,.2f}"),
+            ("Grid avg ELR", f"${result.overall_avg_elr:,.2f}"),
             ("ELR outside range", f"${result.base_elr:,.2f}"),
             (
                 "Lowest ELR",

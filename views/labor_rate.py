@@ -121,56 +121,84 @@ def render():
             st.markdown(stat_card(label, value, accent, icon), unsafe_allow_html=True)
 
     e1, e2, e3, e4 = st.columns(4)
+
+    def _stat_with_sub(label: str, value: str, accent: str, icon: str, sub: str) -> None:
+        card = stat_card(label, value, accent, icon)
+        card = card.replace(
+            "</div>\n        <div class=\"stat-glow\"></div>",
+            f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
+            f'opacity:0.85;">{sub}</div>\n'
+            f'        <div class="stat-glow"></div>',
+        )
+        st.markdown(card, unsafe_allow_html=True)
+
     with e1:
-        card = stat_card("Lowest ELR", f"${result.lowest_elr:,.2f}", "orange", "↓")
-        card = card.replace(
-            "</div>\n        <div class=\"stat-glow\"></div>",
-            f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
-            f'opacity:0.85;">At {result.lowest_elr_hours:.1f} hrs</div>\n'
-            f'        <div class="stat-glow"></div>',
+        _stat_with_sub(
+            "Lowest ELR",
+            f"${result.lowest_elr:,.2f}",
+            "orange",
+            "↓",
+            f"At {result.lowest_elr_hours:.1f} hrs",
         )
-        st.markdown(card, unsafe_allow_html=True)
     with e2:
-        card = stat_card("Highest ELR", f"${result.highest_elr:,.2f}", "green", "↑")
-        card = card.replace(
-            "</div>\n        <div class=\"stat-glow\"></div>",
-            f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
-            f'opacity:0.85;">At {result.highest_elr_hours:.1f} hrs</div>\n'
-            f'        <div class="stat-glow"></div>',
+        _stat_with_sub(
+            "Highest ELR",
+            f"${result.highest_elr:,.2f}",
+            "green",
+            "↑",
+            f"At {result.highest_elr_hours:.1f} hrs",
         )
-        st.markdown(card, unsafe_allow_html=True)
     with e3:
+        _stat_with_sub(
+            "% Above target",
+            f"{result.pct_above_target:.1f}%",
+            "cyan",
+            "▲",
+            f"Of {result.cells_scored} grid cells",
+        )
+        above_open = st.session_state.get("labor_elr_drill") == "above"
         if st.button(
-            f"▲  {result.pct_above_target:.1f}%\n% Above target\n"
-            f"Of {result.cells_scored} cells · click for hours",
+            "Hide hours" if above_open else "Show hours above target",
             use_container_width=True,
             key="labor_drill_above",
-            type=(
-                "primary"
-                if st.session_state.get("labor_elr_drill") == "above"
-                else "secondary"
-            ),
-            help="Show every hour increment above your range ELR",
+            type="primary" if above_open else "secondary",
         ):
-            cur = st.session_state.get("labor_elr_drill")
-            st.session_state.labor_elr_drill = None if cur == "above" else "above"
+            st.session_state.labor_elr_drill = None if above_open else "above"
             st.rerun()
     with e4:
+        _stat_with_sub(
+            "% Below target",
+            f"{result.pct_below_target:.1f}%",
+            "violet",
+            "▼",
+            f"Of {result.cells_scored} grid cells",
+        )
+        below_open = st.session_state.get("labor_elr_drill") == "below"
         if st.button(
-            f"▼  {result.pct_below_target:.1f}%\n% Below target\n"
-            f"Of {result.cells_scored} cells · click for hours",
+            "Hide hours" if below_open else "Show hours below target",
             use_container_width=True,
             key="labor_drill_below",
-            type=(
-                "primary"
-                if st.session_state.get("labor_elr_drill") == "below"
-                else "secondary"
-            ),
-            help="Show every hour increment below your range ELR",
+            type="primary" if below_open else "secondary",
         ):
-            cur = st.session_state.get("labor_elr_drill")
-            st.session_state.labor_elr_drill = None if cur == "below" else "below"
+            st.session_state.labor_elr_drill = None if below_open else "below"
             st.rerun()
+
+    # Keep drill buttons compact so they don't steal the stat-card look
+    st.markdown(
+        """
+        <style>
+        div.st-key-labor_drill_above button,
+        div.st-key-labor_drill_below button,
+        div.st-key-labor_drill_close button {
+            min-height: 2.5rem !important;
+            padding: 0.45rem 0.85rem !important;
+            white-space: normal !important;
+            font-size: 0.85rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     drill = st.session_state.get("labor_elr_drill")
     if drill in ("above", "below"):
@@ -233,7 +261,7 @@ def render():
                 if result.pct_at_target
                 else ""
             )
-            + ". Click % Above / % Below to see each hour’s ELR. "
+            + ". Use Show hours under % Above / % Below for each increment. "
             "Highlighted rows are your strong range.",
             "success",
         ),

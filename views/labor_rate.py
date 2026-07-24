@@ -612,7 +612,6 @@ def render():
             )
             st.session_state.active_labor_rate_run_id = run_id
             st.session_state.labor_rate_run_label = chosen_name
-            st.session_state.labor_grid_name = chosen_name
             st.session_state["_labor_rate_saved_label"] = chosen_name
             st.rerun()
     if st.session_state.get("active_labor_rate_run_id"):
@@ -639,7 +638,6 @@ def render():
                 )
                 st.session_state.active_labor_rate_run_id = run_id
                 st.session_state.labor_rate_run_label = chosen_name
-                st.session_state.labor_grid_name = chosen_name
                 st.session_state["_labor_rate_saved_label"] = chosen_name
                 st.rerun()
 

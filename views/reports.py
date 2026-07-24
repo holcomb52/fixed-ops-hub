@@ -59,6 +59,7 @@ from lib.labor_rate_storage import (
     delete_labor_rate_run,
     list_labor_rate_runs,
     load_labor_rate_run,
+    rename_labor_rate_run,
 )
 from lib.labor_rate_pdf_export import build_labor_rate_grid_pdf
 from views.payroll_helpers import init_payroll_session
@@ -467,7 +468,7 @@ def _render_labor_rate_runs():
                 grid_rows = snapshot.get("grid_rows") or []
                 result_meta = snapshot.get("result") or {}
                 pdf_bytes = build_labor_rate_grid_pdf(
-                    title="Customer-Pay Labor Rate Grid",
+                    title=str(run_label),
                     subtitle=(
                         f"Strong range {result_meta.get('strong_lo', lo)}–"
                         f"{result_meta.get('strong_hi', hi)} hrs @ "
@@ -515,6 +516,34 @@ def _render_labor_rate_runs():
                 )
         with a3:
             _render_delete_report_button("labor", run_id)
+
+        rename_key = f"labor_rename_name_{run_id}"
+        if rename_key not in st.session_state:
+            st.session_state[rename_key] = str(run_label)
+        r1, r2 = st.columns([3, 1])
+        with r1:
+            new_name = st.text_input(
+                "Rename grid",
+                key=rename_key,
+                label_visibility="collapsed",
+                placeholder="Type a new name for this grid",
+            )
+        with r2:
+            if st.button(
+                "Rename",
+                key=f"labor_rename_btn_{run_id}",
+                use_container_width=True,
+            ):
+                ok, err = rename_labor_rate_run(run_id, new_name)
+                if ok:
+                    if st.session_state.get("active_labor_rate_run_id") == run_id:
+                        st.session_state.labor_rate_run_label = str(new_name).strip()
+                        st.session_state.labor_grid_name = str(new_name).strip()
+                    st.success(f"Renamed to **{str(new_name).strip()}**")
+                    st.rerun()
+                else:
+                    st.error(err or "Could not rename.")
+
         _render_delete_report_controls(
             prefix="labor",
             run_id=run_id,

@@ -305,6 +305,45 @@ def load_labor_rate_run(run_id: str) -> Optional[dict]:
     return record
 
 
+def rename_labor_rate_run(run_id: str, new_label: str) -> Tuple[bool, str]:
+    """Rename a saved labor rate grid in local archive and Supabase."""
+    label = str(new_label or "").strip()
+    if not run_id:
+        return False, "Missing report id."
+    if not label:
+        return False, "Enter a name."
+
+    record = load_labor_rate_run(run_id)
+    if not record:
+        return False, "Report not found."
+
+    now = _now_iso()
+    record["run_label"] = label
+    record["updated_at"] = now
+    snapshot = dict(record.get("snapshot") or {})
+    snapshot["run_label"] = label
+    inputs = dict(snapshot.get("inputs") or {})
+    inputs["grid_name"] = label
+    snapshot["inputs"] = inputs
+    record["snapshot"] = snapshot
+    _save_local(run_id, record)
+
+    client = get_supabase()
+    if client:
+        try:
+            client.table(TABLE).update(
+                {
+                    "run_label": label,
+                    "snapshot": snapshot,
+                    "updated_at": now,
+                }
+            ).eq("id", run_id).execute()
+        except Exception as exc:
+            return True, f"Renamed locally; cloud update failed: {exc}"
+
+    return True, ""
+
+
 def delete_labor_rate_run(run_id: str) -> Tuple[bool, str]:
     """Delete a labor rate grid run from local archive and Supabase."""
     from lib.payroll_supabase_sync import delete_remote_run

@@ -571,75 +571,83 @@ def render():
         strong_hi=result.strong_hi,
     )
 
-    save_label = (
-        "Update saved report"
-        if st.session_state.get("active_labor_rate_run_id")
-        else "Save to Reports"
+    st.markdown("##### Name & save this grid")
+    st.caption(
+        "Type a name before saving — this is how it appears in Reports "
+        "(and on CSV/PDF downloads)."
     )
-    default_name = (
-        st.session_state.get("labor_rate_run_label")
-        or f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
+
+    fallback_name = (
+        f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
         f"${result.target_elr:,.0f}/hr"
     )
     if "labor_grid_name" not in st.session_state:
-        st.session_state.labor_grid_name = default_name
+        # Prefill only when reopening a saved report; otherwise leave blank
+        # so you deliberately name each grid.
+        st.session_state.labor_grid_name = (
+            str(st.session_state.get("labor_rate_run_label") or "")
+            if st.session_state.get("active_labor_rate_run_id")
+            else ""
+        )
 
     grid_name = st.text_input(
         "Grid name",
-        key="labor_grid_name",
         placeholder="e.g. Current DMS grid, Proposed $330 grid",
-        help="Name this grid so you can tell it apart from your other saved grids in Reports.",
+        help="Required. This name shows in Reports → Labor Rate Grids.",
+        key="labor_grid_name",
     )
-    save_cols = st.columns(2 if st.session_state.get("active_labor_rate_run_id") else 1)
-    with save_cols[0]:
-        if st.button(
-            f"💾 {save_label}",
-            type="primary",
-            use_container_width=True,
-            key="labor_save_reports",
-        ):
-            chosen_name = str(grid_name or "").strip() or default_name
-            run_id = save_labor_rate_run(
-                result,
-                hour_range=hour_range,
-                boost_pct=int(boost_pct),
-                use_custom_base=bool(use_custom_base),
-                amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
-                run_label=chosen_name,
-                current_warranty_rate=current_rate,
-                warranty_hours=hours_vol,
-                run_id=st.session_state.get("active_labor_rate_run_id"),
+    chosen_name = str(grid_name or "").strip()
+
+    editing = bool(st.session_state.get("active_labor_rate_run_id"))
+    if editing:
+        c_save, c_new = st.columns(2)
+        with c_save:
+            do_update = st.button(
+                "💾 Update saved report",
+                type="primary",
+                use_container_width=True,
+                key="labor_save_reports",
             )
-            st.session_state.active_labor_rate_run_id = run_id
-            st.session_state.labor_rate_run_label = chosen_name
-            st.session_state["_labor_rate_saved_label"] = chosen_name
-            st.rerun()
-    if st.session_state.get("active_labor_rate_run_id"):
-        with save_cols[1]:
-            if st.button(
+        with c_new:
+            do_new = st.button(
                 "💾 Save as new grid",
                 use_container_width=True,
                 key="labor_save_as_new",
-                help="Keep the current saved grid and also save this as a separate named report.",
-            ):
-                chosen_name = str(grid_name or "").strip() or default_name
-                run_id = save_labor_rate_run(
-                    result,
-                    hour_range=hour_range,
-                    boost_pct=int(boost_pct),
-                    use_custom_base=bool(use_custom_base),
-                    amount_overrides=dict(
-                        st.session_state.get("labor_grid_overrides") or {}
-                    ),
-                    run_label=chosen_name,
-                    current_warranty_rate=current_rate,
-                    warranty_hours=hours_vol,
-                    run_id=None,
-                )
-                st.session_state.active_labor_rate_run_id = run_id
-                st.session_state.labor_rate_run_label = chosen_name
-                st.session_state["_labor_rate_saved_label"] = chosen_name
-                st.rerun()
+            )
+        do_save = False
+    else:
+        do_save = st.button(
+            "💾 Save to Reports",
+            type="primary",
+            use_container_width=True,
+            key="labor_save_reports",
+        )
+        do_update = False
+        do_new = False
+
+    save_requested = bool(do_save or do_update or do_new)
+    if save_requested and not chosen_name:
+        st.warning("Enter a grid name above before saving.")
+    elif save_requested:
+        run_id = save_labor_rate_run(
+            result,
+            hour_range=hour_range,
+            boost_pct=int(boost_pct),
+            use_custom_base=bool(use_custom_base),
+            amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
+            run_label=chosen_name,
+            current_warranty_rate=current_rate,
+            warranty_hours=hours_vol,
+            run_id=(
+                None
+                if do_new
+                else st.session_state.get("active_labor_rate_run_id")
+            ),
+        )
+        st.session_state.active_labor_rate_run_id = run_id
+        st.session_state.labor_rate_run_label = chosen_name
+        st.session_state["_labor_rate_saved_label"] = chosen_name
+        st.rerun()
 
     saved_flash = st.session_state.pop("_labor_rate_saved_label", None)
     if saved_flash:
@@ -648,12 +656,18 @@ def render():
             "**Reports → Labor Rate Grids**."
         )
 
+    export_stem = "".join(
+        ch if ch.isalnum() or ch in ("-", "_") else "_"
+        for ch in (chosen_name or fallback_name)
+    ).strip("_") or "customer-pay-labor-grid"
+    export_stem = export_stem[:80]
+
     d1, d2 = st.columns(2)
     with d1:
         st.download_button(
             "Download CSV",
             data=csv_buf,
-            file_name="customer-pay-labor-grid.csv",
+            file_name=f"{export_stem}.csv",
             mime="text/csv",
             use_container_width=True,
             key="labor_csv",
@@ -662,7 +676,7 @@ def render():
         st.download_button(
             "Export PDF",
             data=pdf_bytes,
-            file_name="customer-pay-labor-grid.pdf",
+            file_name=f"{export_stem}.pdf",
             mime="application/pdf",
             use_container_width=True,
             key="labor_pdf",

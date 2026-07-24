@@ -521,7 +521,7 @@ def _render_labor_rate_runs():
             run_label=run_label,
             delete_fn=delete_labor_rate_run,
             active_session_key="active_labor_rate_run_id",
-            extra_clear_keys=["labor_rate_run_label"],
+            extra_clear_keys=["labor_rate_run_label", "labor_grid_name"],
         )
         st.caption(f"ID: {run_id[:8]}…")
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)

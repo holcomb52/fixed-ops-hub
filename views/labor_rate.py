@@ -108,7 +108,7 @@ def render():
     st.markdown("##### Warranty rate request")
     st.caption(
         "Enter what you are paid today for warranty labor. We compare it to your "
-        "strong-range ELR above to project the rate / labor-sale increase."
+        "entire-grid average ELR to project the rate / labor-sale increase."
     )
     w1, w2 = st.columns([1.1, 1.1])
     with w1:
@@ -172,7 +172,7 @@ def render():
     result = apply_amount_overrides(generated, overrides)
     manual_count = len(overrides)
 
-    proposed_rate = float(result.target_elr)
+    proposed_rate = float(result.overall_avg_elr)
     current_rate = float(current_warranty_rate or 0.0)
     rate_increase_dollars = proposed_rate - current_rate if current_rate > 0 else None
     rate_increase_pct = (
@@ -209,11 +209,11 @@ def render():
             )
         with wi2:
             _stat_with_sub(
-                "Proposed (range ELR)",
+                "Proposed (grid avg)",
                 f"${proposed_rate:,.2f}",
                 "cyan",
                 "→",
-                "Strong-range customer-pay ELR",
+                "Entire-grid average ELR",
             )
         with wi3:
             if rate_increase_dollars is not None:

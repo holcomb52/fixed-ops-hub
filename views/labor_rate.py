@@ -19,40 +19,60 @@ def render():
     st.markdown(
         page_hero(
             "Labor Rate",
-            "Build a customer-pay labor grid from your target ELR and the hour range "
-            "where most of your work falls — ready for a Stellantis warranty rate request.",
+            "Set the hour range where most of your work falls and the ELR for that range. "
+            "The grid builds itself for a Stellantis warranty labor rate request.",
             tag="Warranty Support",
             tag_style="live",
         ),
         unsafe_allow_html=True,
     )
 
+    st.markdown("##### Strong labor range")
     st.caption(
-        "Enter target Effective Labor Rate and the hour band that carries most of your "
-        "customer-pay mix. The grid is priced strongest in that band so you do not have "
-        "to build the matrix by hand."
+        "This is your main customer-pay mix. Enter the hour band and the ELR you want "
+        "that band to deliver — the grid is priced strongest here."
     )
 
-    i1, i2, i3 = st.columns([1.1, 1.3, 1.0])
-    with i1:
-        target_elr = st.number_input(
-            "Target ELR ($/hr)",
+    r1, r2 = st.columns([1.4, 1.1])
+    with r1:
+        hour_range = st.text_input(
+            "Hour range",
+            value="1.0-3.5",
+            key="labor_hour_range",
+            placeholder="e.g. 1.0-3.5",
+            help="Where most of your customer-pay labor hours fall.",
+        )
+    with r2:
+        range_elr = st.number_input(
+            "ELR for this range ($/hr)",
             min_value=50.0,
             max_value=1000.0,
             value=295.0,
             step=1.0,
-            key="labor_target_elr",
-            help="Customer-pay effective labor rate you want the strong hour band to deliver.",
+            key="labor_range_elr",
+            help="Effective labor rate you want this hour range to average.",
         )
-    with i2:
-        hour_range = st.text_input(
-            "Strong hour range (most of your work)",
-            value="1.0-3.5",
-            key="labor_hour_range",
-            placeholder="e.g. 1.0-3.5",
-            help="Jobs in this hour band are priced strongest to carry your target ELR.",
+
+    st.markdown("##### Rest of the grid")
+    o1, o2, o3 = st.columns([1.1, 1.1, 1.0])
+    with o1:
+        use_custom_base = st.checkbox(
+            "Set a different ELR outside this range",
+            value=False,
+            key="labor_use_base",
         )
-    with i3:
+    with o2:
+        base_elr_input = st.number_input(
+            "ELR outside strong range ($/hr)",
+            min_value=50.0,
+            max_value=1000.0,
+            value=round(float(range_elr) * 0.92, 2),
+            step=1.0,
+            key="labor_base_elr",
+            disabled=not use_custom_base,
+            help="Hours outside your strong range use this rate. Leave unchecked to auto-set ~8% below.",
+        )
+    with o3:
         max_hours = st.number_input(
             "Grid through (hrs)",
             min_value=4.0,
@@ -63,22 +83,23 @@ def render():
         )
 
     boost_pct = st.slider(
-        "How strong in that hour range",
+        "Extra lift at the center of the strong range",
         min_value=0,
         max_value=20,
         value=10,
         step=1,
         format="%d%%",
         key="labor_boost_pct",
-        help="Extra lift at the center of your strong band (0–20%).",
+        help="Peaks the dollars in the middle of your strong hour band (0–20%).",
     )
 
     try:
         strong_lo, strong_hi = parse_hour_range(hour_range)
         result = build_labor_grid(
-            float(target_elr),
+            float(range_elr),
             strong_lo,
             strong_hi,
+            base_elr=float(base_elr_input) if use_custom_base else None,
             max_hours=float(max_hours),
             strength_boost=float(boost_pct) / 100.0,
         )
@@ -88,15 +109,10 @@ def render():
 
     s1, s2, s3, s4 = st.columns(4)
     cards = [
-        ("Target ELR", f"${result.target_elr:,.2f}", "cyan", "$"),
-        ("Strong-band ELR", f"${result.strong_avg_elr:,.2f}", "green", "◎"),
+        ("Range ELR", f"${result.target_elr:,.2f}", "cyan", "$"),
+        ("Strong-band avg", f"${result.strong_avg_elr:,.2f}", "green", "◎"),
         ("Strong band", f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h", "orange", "⏱"),
-        (
-            "Band ELR range",
-            f"${result.strong_min_elr:,.0f}–${result.strong_max_elr:,.0f}",
-            "violet",
-            "↕",
-        ),
+        ("Outside ELR", f"${result.base_elr:,.2f}", "violet", "◇"),
     ]
     for col, (label, value, accent, icon) in zip([s1, s2, s3, s4], cards):
         with col:
@@ -104,9 +120,10 @@ def render():
 
     st.markdown(
         status_banner(
-            f"Grid is strongest from {result.strong_lo:.1f} to {result.strong_hi:.1f} hours. "
-            f"Average ELR in that band: ${result.strong_avg_elr:,.2f}/hr "
-            f"(target ${result.target_elr:,.2f}). Highlighted rows are in your strong range.",
+            f"For {result.strong_lo:.1f}–{result.strong_hi:.1f} hrs, grid averages "
+            f"${result.strong_avg_elr:,.2f}/hr (you set ${result.target_elr:,.2f}). "
+            f"Outside that band uses ${result.base_elr:,.2f}/hr "
+            f"(avg ${result.outside_avg_elr:,.2f}). Highlighted rows are your strong range.",
             "success",
         ),
         unsafe_allow_html=True,
@@ -176,19 +193,17 @@ def render():
     pdf_bytes = build_labor_rate_grid_pdf(
         title="Customer-Pay Labor Rate Grid",
         subtitle=(
-            f"Target ELR ${result.target_elr:,.2f}/hr · "
-            f"Strong band {result.strong_lo:.1f}–{result.strong_hi:.1f} hrs · "
-            f"Band avg ${result.strong_avg_elr:,.2f}/hr"
+            f"Strong range {result.strong_lo:.1f}–{result.strong_hi:.1f} hrs @ "
+            f"${result.target_elr:,.2f}/hr · "
+            f"Band avg ${result.strong_avg_elr:,.2f}/hr · "
+            f"Outside ${result.base_elr:,.2f}/hr"
         ),
         grid_rows=grid_rows,
         summary=[
-            ("Target ELR", f"${result.target_elr:,.2f}"),
+            ("Strong hour range", f"{result.strong_lo:.1f}–{result.strong_hi:.1f} hrs"),
+            ("ELR for that range", f"${result.target_elr:,.2f}"),
             ("Strong-band avg ELR", f"${result.strong_avg_elr:,.2f}"),
-            ("Strong band", f"{result.strong_lo:.1f}–{result.strong_hi:.1f} hrs"),
-            (
-                "Band ELR min–max",
-                f"${result.strong_min_elr:,.2f}–${result.strong_max_elr:,.2f}",
-            ),
+            ("ELR outside range", f"${result.base_elr:,.2f}"),
         ],
         strong_lo=result.strong_lo,
         strong_hi=result.strong_hi,

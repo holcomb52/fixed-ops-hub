@@ -21,11 +21,21 @@ def test_strong_band_hits_target_elr():
     result = build_labor_grid(300.0, 1.0, 3.5, max_hours=12.0, strength_boost=0.10)
     assert abs(result.strong_avg_elr - 300.0) < 2.0  # rounding tolerance
     assert result.strong_max_elr >= result.strong_min_elr
+    assert abs(result.outside_avg_elr - result.base_elr) < 2.0
     # Center of band should be at least as strong as a short fringe cell outside
     amt_2 = lookup_amount(result, 2.0)
     amt_8 = lookup_amount(result, 8.0)
     assert amt_2 is not None and amt_8 is not None
     assert (amt_2 / 2.0) >= (amt_8 / 8.0) - 5.0
+
+
+def test_custom_base_elr_outside_range():
+    result = build_labor_grid(
+        320.0, 1.0, 2.5, base_elr=280.0, max_hours=10.0, strength_boost=0.05
+    )
+    assert abs(result.strong_avg_elr - 320.0) < 2.0
+    assert abs(result.base_elr - 280.0) < 0.01
+    assert abs(result.outside_avg_elr - 280.0) < 2.0
 
 
 def test_grid_layout_and_pdf():

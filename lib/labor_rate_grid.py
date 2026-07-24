@@ -12,7 +12,9 @@ TENTH_LABELS = ("+.0", "+.1", "+.2", "+.3", "+.4")
 
 @dataclass(frozen=True)
 class LaborGridResult:
+    # ELR applied to the strong hour range (primary input)
     target_elr: float
+    base_elr: float
     strong_lo: float
     strong_hi: float
     max_hours: float
@@ -25,6 +27,7 @@ class LaborGridResult:
     strong_min_elr: float
     strong_max_elr: float
     overall_avg_elr: float
+    outside_avg_elr: float
     scale_factor: float
 
 
@@ -58,36 +61,26 @@ def _round_money(value: float) -> float:
     return round(value * 2.0) / 2.0
 
 
-def _strength(
-    hours: float,
-    strong_lo: float,
-    strong_hi: float,
-    boost: float,
-) -> float:
-    """
-    Multiplier peaking inside the strong hour band.
-
-    Inside the band: 1.0 at the edges → (1 + boost) at the center.
-    Outside: gently lower so the submission ELR is carried by your real mix.
-    """
-    if hours <= 0:
-        return 1.0
+def _inside_strength(hours: float, strong_lo: float, strong_hi: float, boost: float) -> float:
+    """1.0 at band edges → (1 + boost) at center."""
     mid = (strong_lo + strong_hi) / 2.0
     half = max((strong_hi - strong_lo) / 2.0, 0.25)
-    if strong_lo <= hours <= strong_hi:
-        proximity = 1.0 - min(abs(hours - mid) / half, 1.0)
-        return 1.0 + max(0.0, boost) * proximity
+    proximity = 1.0 - min(abs(hours - mid) / half, 1.0)
+    return 1.0 + max(0.0, boost) * proximity
+
+
+def _outside_fade(hours: float, strong_lo: float, strong_hi: float) -> float:
+    """Gentle taper away from the strong band (keeps outside near base ELR)."""
     if hours < strong_lo:
         gap = strong_lo - hours
-        return max(0.80, 1.0 - 0.045 * gap)
+        return max(0.92, 1.0 - 0.02 * gap)
     gap = hours - strong_hi
-    return max(0.84, 1.0 - 0.028 * gap)
+    return max(0.94, 1.0 - 0.015 * gap)
 
 
 def _iter_hours(max_hours: float) -> List[float]:
     """All billable times on the classic +.0 … +.4 grid through max_hours."""
     max_h = max(0.5, float(max_hours))
-    # Cap at the last tenth column on the final half-hour row
     out: List[float] = []
     base = 0.0
     while base <= max_h + 1e-9:
@@ -104,22 +97,28 @@ def build_labor_grid(
     strong_lo: float,
     strong_hi: float,
     *,
+    base_elr: Optional[float] = None,
     max_hours: float = 16.0,
     strength_boost: float = 0.10,
 ) -> LaborGridResult:
     """
-    Build a customer-pay labor matrix aimed at `target_elr`.
+    Build a customer-pay labor matrix.
 
-    Amounts are scaled so the average ELR across times in the strong hour
-    range matches the target (what you want Stellantis to see from your mix).
+    `target_elr` is the ELR for the strong hour range (your main mix).
+    `base_elr` is the ELR for hours outside that range (defaults slightly below).
+    Strong-band cells are scaled so their average ELR matches `target_elr`.
     """
-    elr = float(target_elr)
-    if elr <= 0:
-        raise ValueError("Target ELR must be greater than zero.")
+    range_elr = float(target_elr)
+    if range_elr <= 0:
+        raise ValueError("ELR for the strong hour range must be greater than zero.")
     lo = float(strong_lo)
     hi = float(strong_hi)
     if hi < lo:
         lo, hi = hi, lo
+    if base_elr is None or float(base_elr) <= 0:
+        base = round(range_elr * 0.92, 2)
+    else:
+        base = float(base_elr)
     boost = max(0.0, min(0.25, float(strength_boost)))
     max_h = max(hi + 1.0, float(max_hours))
 
@@ -129,25 +128,42 @@ def build_labor_grid(
         if hours <= 0:
             raw_amounts[hours] = 0.0
             continue
-        raw_amounts[hours] = hours * elr * _strength(hours, lo, hi, boost)
+        in_strong = lo - 1e-9 <= hours <= hi + 1e-9
+        if in_strong:
+            raw_amounts[hours] = (
+                hours * range_elr * _inside_strength(hours, lo, hi, boost)
+            )
+        else:
+            raw_amounts[hours] = hours * base * _outside_fade(hours, lo, hi)
 
-    # Scale so strong-band average ELR == target
+    # Scale strong band so average ELR == range_elr
     strong_pairs = [
         (h, raw_amounts[h])
         for h in hours_list
         if h > 0 and lo - 1e-9 <= h <= hi + 1e-9
     ]
     if not strong_pairs:
-        # Fallback: nearest hour cells around the requested band
         strong_pairs = [(h, raw_amounts[h]) for h in hours_list if h > 0][:10]
 
     strong_elrs = [amt / h for h, amt in strong_pairs if h > 0]
-    avg_raw = sum(strong_elrs) / len(strong_elrs) if strong_elrs else elr
-    scale = elr / avg_raw if avg_raw else 1.0
+    avg_raw = sum(strong_elrs) / len(strong_elrs) if strong_elrs else range_elr
+    strong_scale = range_elr / avg_raw if avg_raw else 1.0
+
+    # Scale outside band so average ELR == base
+    outside_pairs = [
+        (h, raw_amounts[h])
+        for h in hours_list
+        if h > 0 and not (lo - 1e-9 <= h <= hi + 1e-9)
+    ]
+    outside_elrs = [amt / h for h, amt in outside_pairs if h > 0]
+    avg_out = sum(outside_elrs) / len(outside_elrs) if outside_elrs else base
+    outside_scale = base / avg_out if avg_out else 1.0
 
     cells: List[Dict[str, float | bool]] = []
     matrix: Dict[float, Dict[float, float]] = {}
     for hours in hours_list:
+        in_strong = bool(hours > 0 and lo - 1e-9 <= hours <= hi + 1e-9)
+        scale = strong_scale if in_strong or hours <= 0 else outside_scale
         amount = _round_money(raw_amounts[hours] * scale)
         tenths_int = int(round(hours * 10))
         base_tenths = (tenths_int // 5) * 5
@@ -158,7 +174,6 @@ def build_labor_grid(
         matrix.setdefault(base_row, {})
         matrix[base_row][tenth_col] = amount
         cell_elr = (amount / hours) if hours > 0 else 0.0
-        in_strong = bool(hours > 0 and lo - 1e-9 <= hours <= hi + 1e-9)
         cells.append(
             {
                 "hours": hours,
@@ -170,10 +185,15 @@ def build_labor_grid(
 
     strong_cells = [c for c in cells if c["in_strong"] and float(c["hours"]) > 0]
     strong_elr_vals = [float(c["elr"]) for c in strong_cells]
+    outside_cells = [
+        c for c in cells if not c["in_strong"] and float(c["hours"]) > 0
+    ]
+    outside_elr_vals = [float(c["elr"]) for c in outside_cells]
     all_elr_vals = [float(c["elr"]) for c in cells if float(c["hours"]) > 0]
 
     return LaborGridResult(
-        target_elr=elr,
+        target_elr=range_elr,
+        base_elr=base,
         strong_lo=lo,
         strong_hi=hi,
         max_hours=max_h,
@@ -188,7 +208,10 @@ def build_labor_grid(
         overall_avg_elr=round(sum(all_elr_vals) / len(all_elr_vals), 2)
         if all_elr_vals
         else 0.0,
-        scale_factor=round(scale, 4),
+        outside_avg_elr=round(sum(outside_elr_vals) / len(outside_elr_vals), 2)
+        if outside_elr_vals
+        else 0.0,
+        scale_factor=round(strong_scale, 4),
     )
 
 
@@ -200,10 +223,11 @@ def grid_to_dataframe_rows(result: LaborGridResult) -> List[Dict[str, str]]:
         for tenth, label in zip(TENTHS, TENTH_LABELS):
             amount = result.matrix.get(base, {}).get(tenth)
             row[label] = f"{amount:.2f}" if amount is not None else ""
-        # Mark if this half-hour row intersects the strong band
         row_hours = [round(base + t, 1) for t in TENTHS]
         row["_strong"] = any(
-            result.strong_lo - 1e-9 <= h <= result.strong_hi + 1e-9 for h in row_hours if h > 0
+            result.strong_lo - 1e-9 <= h <= result.strong_hi + 1e-9
+            for h in row_hours
+            if h > 0
         )
         rows.append(row)
     return rows

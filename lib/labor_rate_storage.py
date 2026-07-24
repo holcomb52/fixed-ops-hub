@@ -36,6 +36,7 @@ def serialize_labor_rate_snapshot(
     boost_pct: int,
     use_custom_base: bool,
     notes: str = "",
+    amount_overrides: Optional[Dict[str, float]] = None,
 ) -> dict:
     """Flatten a generated grid into a JSON-safe snapshot for save/reopen."""
     matrix_out: Dict[str, Dict[str, float]] = {}
@@ -43,6 +44,13 @@ def serialize_labor_rate_snapshot(
         matrix_out[f"{float(base):.1f}"] = {
             f"{float(tenth):.1f}": float(amount) for tenth, amount in cols.items()
         }
+
+    overrides_out: Dict[str, float] = {}
+    for raw_h, raw_amt in (amount_overrides or {}).items():
+        try:
+            overrides_out[f"{float(raw_h):.1f}"] = round(float(raw_amt), 2)
+        except (TypeError, ValueError):
+            continue
 
     return {
         "run_label": _run_label(result),
@@ -79,6 +87,7 @@ def serialize_labor_rate_snapshot(
         },
         "matrix": matrix_out,
         "cells": list(result.cells),
+        "amount_overrides": overrides_out,
         "grid_rows": grid_to_dataframe_rows(result),
         "saved_at": _now_iso(),
     }
@@ -109,6 +118,17 @@ def apply_labor_rate_snapshot_to_session(record: dict, run_id: str) -> None:
     st.session_state["active_labor_rate_run_id"] = run_id
     st.session_state["labor_rate_run_label"] = str(
         record.get("run_label") or snapshot.get("run_label") or "Labor rate grid"
+    )
+    restored_overrides: Dict[str, float] = {}
+    for raw_h, raw_amt in (snapshot.get("amount_overrides") or {}).items():
+        try:
+            restored_overrides[f"{float(raw_h):.1f}"] = float(raw_amt)
+        except (TypeError, ValueError):
+            continue
+    st.session_state["labor_grid_overrides"] = restored_overrides
+    st.session_state["_labor_keep_overrides"] = True
+    st.session_state["labor_editor_nonce"] = (
+        int(st.session_state.get("labor_editor_nonce") or 0) + 1
     )
     st.session_state.pop("labor_elr_drill", None)
 
@@ -149,6 +169,7 @@ def save_labor_rate_run(
     boost_pct: int,
     use_custom_base: bool,
     notes: str = "",
+    amount_overrides: Optional[Dict[str, float]] = None,
     run_id: Optional[str] = None,
 ) -> str:
     snapshot = serialize_labor_rate_snapshot(
@@ -157,6 +178,7 @@ def save_labor_rate_run(
         boost_pct=boost_pct,
         use_custom_base=use_custom_base,
         notes=notes,
+        amount_overrides=amount_overrides,
     )
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()

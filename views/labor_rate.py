@@ -7,10 +7,13 @@ import streamlit as st
 
 from components.ui import page_hero, stat_card, status_banner
 from lib.labor_rate_grid import (
+    apply_amount_overrides,
     build_labor_grid,
     cells_vs_target,
     grid_to_dataframe_rows,
+    grid_to_editor_dataframe,
     lookup_amount,
+    overrides_from_editor_dataframe,
     parse_hour_range,
     summarize_hour_ranges,
 )
@@ -104,7 +107,7 @@ def render():
 
     try:
         strong_lo, strong_hi = parse_hour_range(hour_range)
-        result = build_labor_grid(
+        generated = build_labor_grid(
             float(range_elr),
             strong_lo,
             strong_hi,
@@ -115,6 +118,88 @@ def render():
     except ValueError as exc:
         st.error(str(exc))
         return
+
+    # Clear manual edits when the generator inputs change
+    grid_sig = (
+        f"{float(range_elr):.2f}|{hour_range}|{float(base_elr_input):.2f}|"
+        f"{bool(use_custom_base)}|{float(max_hours):.1f}|{int(boost_pct)}"
+    )
+    if st.session_state.get("_labor_grid_sig") != grid_sig:
+        st.session_state._labor_grid_sig = grid_sig
+        # Keep overrides restored from a saved report once; then track signature
+        if not st.session_state.pop("_labor_keep_overrides", None):
+            st.session_state.labor_grid_overrides = {}
+            st.session_state.labor_editor_nonce = (
+                int(st.session_state.get("labor_editor_nonce") or 0) + 1
+            )
+
+    if "labor_grid_overrides" not in st.session_state:
+        st.session_state.labor_grid_overrides = {}
+    if "labor_editor_nonce" not in st.session_state:
+        st.session_state.labor_editor_nonce = 0
+
+    overrides = {
+        round(float(h), 1): float(a)
+        for h, a in (st.session_state.labor_grid_overrides or {}).items()
+    }
+    preview = apply_amount_overrides(generated, overrides)
+
+    st.markdown("##### Customer-pay labor grid")
+    st.caption(
+        "Click any dollar cell to type a new amount. HOUR column stays locked. "
+        "Stats below update from your edits. Manual cells are kept until you reset "
+        "or change the generator inputs above."
+    )
+
+    editor_df = grid_to_editor_dataframe(preview)
+    edited_df = st.data_editor(
+        editor_df,
+        use_container_width=True,
+        hide_index=True,
+        height=520,
+        disabled=["HOUR"],
+        num_rows="fixed",
+        key=f"labor_grid_editor_{int(st.session_state.labor_editor_nonce)}",
+        column_config={
+            "HOUR": st.column_config.NumberColumn("HOUR", format="%.1f"),
+            "+.0": st.column_config.NumberColumn("+.0", format="%.2f", min_value=0.0),
+            "+.1": st.column_config.NumberColumn("+.1", format="%.2f", min_value=0.0),
+            "+.2": st.column_config.NumberColumn("+.2", format="%.2f", min_value=0.0),
+            "+.3": st.column_config.NumberColumn("+.3", format="%.2f", min_value=0.0),
+            "+.4": st.column_config.NumberColumn("+.4", format="%.2f", min_value=0.0),
+        },
+    )
+
+    new_overrides = overrides_from_editor_dataframe(generated, edited_df)
+    st.session_state.labor_grid_overrides = {
+        f"{h:.1f}": float(a) for h, a in new_overrides.items()
+    }
+    result = apply_amount_overrides(generated, new_overrides)
+    manual_count = len(new_overrides)
+
+    rset1, rset2 = st.columns([1, 3])
+    with rset1:
+        if st.button(
+            "Reset manual edits",
+            use_container_width=True,
+            key="labor_reset_overrides",
+            disabled=manual_count == 0,
+        ):
+            st.session_state.labor_grid_overrides = {}
+            st.session_state.labor_editor_nonce = (
+                int(st.session_state.get("labor_editor_nonce") or 0) + 1
+            )
+            st.rerun()
+    with rset2:
+        if manual_count:
+            st.caption(
+                f"{manual_count} cell(s) manually adjusted from the generated grid."
+            )
+        else:
+            st.caption(
+                "Read like your DMS: row = base hours, column = tenths. "
+                "Example: 2.0 row + +.3 column = 2.3 hours."
+            )
 
     s1, s2, s3, s4 = st.columns(4)
     cards = [
@@ -196,7 +281,8 @@ def render():
         <style>
         div.st-key-labor_drill_above button,
         div.st-key-labor_drill_below button,
-        div.st-key-labor_drill_close button {
+        div.st-key-labor_drill_close button,
+        div.st-key-labor_reset_overrides button {
             min-height: 2.5rem !important;
             padding: 0.45rem 0.85rem !important;
             white-space: normal !important;
@@ -253,6 +339,11 @@ def render():
                     st.session_state.labor_elr_drill = None
                     st.rerun()
 
+    manual_note = (
+        f" · {manual_count} manual cell edit(s) applied"
+        if manual_count
+        else ""
+    )
     st.markdown(
         status_banner(
             f"For {result.strong_lo:.1f}–{result.strong_hi:.1f} hrs, grid averages "
@@ -268,50 +359,26 @@ def render():
                 if result.pct_at_target
                 else ""
             )
-            + ". Use Show hours under % Above / % Below for each increment. "
-            "Highlighted rows are your strong range.",
+            + manual_note
+            + ". Use Show hours under % Above / % Below for each increment.",
             "success",
         ),
         unsafe_allow_html=True,
     )
 
     grid_rows = grid_to_dataframe_rows(result)
-    display_rows = [
-        {
-            "HOUR": r["HOUR"],
-            "+.0": r["+.0"],
-            "+.1": r["+.1"],
-            "+.2": r["+.2"],
-            "+.3": r["+.3"],
-            "+.4": r["+.4"],
-        }
-        for r in grid_rows
-    ]
-    df = pd.DataFrame(display_rows)
-
-    def _style_strong(row):
-        hour = str(row["HOUR"])
-        strong = next(
-            (gr.get("_strong") for gr in grid_rows if gr.get("HOUR") == hour),
-            False,
-        )
-        if strong:
-            return ["background-color: rgba(8, 145, 178, 0.18)"] * len(row)
-        return [""] * len(row)
-
-    try:
-        st.dataframe(
-            df.style.apply(_style_strong, axis=1),
-            use_container_width=True,
-            hide_index=True,
-            height=520,
-        )
-    except Exception:
-        st.dataframe(df, use_container_width=True, hide_index=True, height=520)
-
-    st.caption(
-        "Read like your DMS: row = base hours, column = tenths. "
-        "Example: 2.0 row + +.3 column = 2.3 hours → dollar amount in that cell."
+    export_df = pd.DataFrame(
+        [
+            {
+                "HOUR": r["HOUR"],
+                "+.0": r["+.0"],
+                "+.1": r["+.1"],
+                "+.2": r["+.2"],
+                "+.3": r["+.3"],
+                "+.4": r["+.4"],
+            }
+            for r in grid_rows
+        ]
     )
 
     with st.expander("Look up one labor time"):
@@ -335,7 +402,7 @@ def render():
                 f"(${elr_one:,.2f}/hr)"
             )
 
-    csv_buf = df.to_csv(index=False).encode("utf-8")
+    csv_buf = export_df.to_csv(index=False).encode("utf-8")
     pdf_bytes = build_labor_rate_grid_pdf(
         title="Customer-Pay Labor Rate Grid",
         subtitle=(
@@ -343,6 +410,7 @@ def render():
             f"${result.target_elr:,.2f}/hr · "
             f"Band avg ${result.strong_avg_elr:,.2f}/hr · "
             f"Outside ${result.base_elr:,.2f}/hr"
+            + (f" · {manual_count} manual edits" if manual_count else "")
         ),
         grid_rows=grid_rows,
         summary=[
@@ -401,6 +469,7 @@ def render():
                 hour_range=hour_range,
                 boost_pct=int(boost_pct),
                 use_custom_base=bool(use_custom_base),
+                amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
                 run_id=st.session_state.get("active_labor_rate_run_id"),
             )
             st.session_state.active_labor_rate_run_id = run_id

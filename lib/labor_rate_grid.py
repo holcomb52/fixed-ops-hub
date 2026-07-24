@@ -194,6 +194,31 @@ def build_labor_grid(
             }
         )
 
+    return _finalize_labor_grid_result(
+        range_elr=range_elr,
+        base=base,
+        lo=lo,
+        hi=hi,
+        max_h=max_h,
+        boost=boost,
+        matrix=matrix,
+        cells=cells,
+        scale_factor=strong_scale,
+    )
+
+
+def _finalize_labor_grid_result(
+    *,
+    range_elr: float,
+    base: float,
+    lo: float,
+    hi: float,
+    max_h: float,
+    boost: float,
+    matrix: Dict[float, Dict[float, float]],
+    cells: List[Dict[str, float | bool]],
+    scale_factor: float,
+) -> LaborGridResult:
     strong_cells = [c for c in cells if c["in_strong"] and float(c["hours"]) > 0]
     strong_elr_vals = [float(c["elr"]) for c in strong_cells]
     outside_cells = [
@@ -210,7 +235,6 @@ def build_labor_grid(
         lowest_hours = float(lowest["hours"])
         highest_elr = float(highest["elr"])
         highest_hours = float(highest["hours"])
-        # Tolerance: treat within $0.50/hr of target as "at target"
         tol = ELR_TARGET_TOLERANCE
         above = sum(1 for c in scored if float(c["elr"]) > range_elr + tol)
         below = sum(1 for c in scored if float(c["elr"]) < range_elr - tol)
@@ -243,7 +267,7 @@ def build_labor_grid(
         outside_avg_elr=round(sum(outside_elr_vals) / len(outside_elr_vals), 2)
         if outside_elr_vals
         else 0.0,
-        scale_factor=round(strong_scale, 4),
+        scale_factor=round(float(scale_factor), 4),
         lowest_elr=round(lowest_elr, 2),
         lowest_elr_hours=lowest_hours,
         highest_elr=round(highest_elr, 2),
@@ -253,6 +277,113 @@ def build_labor_grid(
         pct_at_target=pct_at,
         cells_scored=len(scored),
     )
+
+
+def apply_amount_overrides(
+    result: LaborGridResult,
+    overrides: Dict[float, float] | None,
+) -> LaborGridResult:
+    """
+    Replace selected cell dollar amounts and recalculate ELRs / summary stats.
+
+    overrides maps labor hours (e.g. 2.3) -> dollar amount.
+    """
+    if not overrides:
+        return result
+
+    clean: Dict[float, float] = {}
+    for raw_h, raw_amt in overrides.items():
+        try:
+            hours = round(float(raw_h), 1)
+            amount = float(raw_amt)
+        except (TypeError, ValueError):
+            continue
+        if hours < 0 or amount < 0:
+            continue
+        clean[hours] = round(amount, 2)
+
+    if not clean:
+        return result
+
+    matrix: Dict[float, Dict[float, float]] = {
+        base: dict(cols) for base, cols in result.matrix.items()
+    }
+    cells: List[Dict[str, float | bool]] = []
+    for cell in result.cells:
+        hours = float(cell["hours"])
+        amount = float(clean.get(hours, cell["amount"]))
+        tenths_int = int(round(hours * 10))
+        base_tenths = (tenths_int // 5) * 5
+        tenth_tenths = tenths_int - base_tenths
+        base_row = round(base_tenths / 10.0, 1)
+        tenth_col = round(tenth_tenths / 10.0, 1)
+        matrix.setdefault(base_row, {})
+        matrix[base_row][tenth_col] = amount
+        cell_elr = (amount / hours) if hours > 0 else 0.0
+        cells.append(
+            {
+                "hours": hours,
+                "amount": amount,
+                "elr": round(cell_elr, 2),
+                "in_strong": bool(cell.get("in_strong")),
+            }
+        )
+
+    return _finalize_labor_grid_result(
+        range_elr=float(result.target_elr),
+        base=float(result.base_elr),
+        lo=float(result.strong_lo),
+        hi=float(result.strong_hi),
+        max_h=float(result.max_hours),
+        boost=float(result.strength_boost),
+        matrix=matrix,
+        cells=cells,
+        scale_factor=float(result.scale_factor),
+    )
+
+
+def grid_to_editor_dataframe(result: LaborGridResult):
+    """Numeric dataframe for st.data_editor (HOUR + +.0…+.4)."""
+    import pandas as pd
+
+    rows = []
+    for base in sorted(result.matrix.keys()):
+        row: Dict[str, float] = {"HOUR": float(base)}
+        for tenth, label in zip(TENTHS, TENTH_LABELS):
+            amount = result.matrix.get(base, {}).get(tenth)
+            row[label] = float(amount) if amount is not None else None
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def overrides_from_editor_dataframe(
+    base_result: LaborGridResult,
+    edited_df,
+) -> Dict[float, float]:
+    """Diff edited dollars vs generated grid → manual override map."""
+    overrides: Dict[float, float] = {}
+    if edited_df is None:
+        return overrides
+    for _, row in edited_df.iterrows():
+        try:
+            base = round(float(row["HOUR"]), 1)
+        except (TypeError, ValueError, KeyError):
+            continue
+        for tenth, label in zip(TENTHS, TENTH_LABELS):
+            hours = round(base + tenth, 1)
+            raw = row.get(label)
+            if raw is None or (isinstance(raw, float) and raw != raw):  # NaN
+                continue
+            try:
+                amount = round(float(raw), 2)
+            except (TypeError, ValueError):
+                continue
+            generated = lookup_amount(base_result, hours)
+            if generated is None:
+                continue
+            if abs(amount - float(generated)) > 0.009:
+                overrides[hours] = amount
+    return overrides
 
 
 def grid_to_dataframe_rows(result: LaborGridResult) -> List[Dict[str, str]]:

@@ -457,34 +457,74 @@ def render():
         if st.session_state.get("active_labor_rate_run_id")
         else "Save to Reports"
     )
-    if st.button(
-        f"💾 {save_label}",
-        type="primary",
-        use_container_width=True,
-        key="labor_save_reports",
-    ):
-        run_id = save_labor_rate_run(
-            result,
-            hour_range=hour_range,
-            boost_pct=int(boost_pct),
-            use_custom_base=bool(use_custom_base),
-            amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
-            run_id=st.session_state.get("active_labor_rate_run_id"),
-        )
-        st.session_state.active_labor_rate_run_id = run_id
-        st.session_state.labor_rate_run_label = (
-            f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
-            f"${result.target_elr:,.0f}/hr"
-        )
-        st.session_state["_labor_rate_saved_label"] = (
-            st.session_state.labor_rate_run_label
-        )
-        st.rerun()
+    default_name = (
+        st.session_state.get("labor_rate_run_label")
+        or f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
+        f"${result.target_elr:,.0f}/hr"
+    )
+    if "labor_grid_name" not in st.session_state:
+        st.session_state.labor_grid_name = default_name
+
+    grid_name = st.text_input(
+        "Grid name",
+        key="labor_grid_name",
+        placeholder="e.g. Current DMS grid, Proposed $330 grid",
+        help="Name this grid so you can tell it apart from your other saved grids in Reports.",
+    )
+    save_cols = st.columns(2 if st.session_state.get("active_labor_rate_run_id") else 1)
+    with save_cols[0]:
+        if st.button(
+            f"💾 {save_label}",
+            type="primary",
+            use_container_width=True,
+            key="labor_save_reports",
+        ):
+            chosen_name = str(grid_name or "").strip() or default_name
+            run_id = save_labor_rate_run(
+                result,
+                hour_range=hour_range,
+                boost_pct=int(boost_pct),
+                use_custom_base=bool(use_custom_base),
+                amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
+                run_label=chosen_name,
+                run_id=st.session_state.get("active_labor_rate_run_id"),
+            )
+            st.session_state.active_labor_rate_run_id = run_id
+            st.session_state.labor_rate_run_label = chosen_name
+            st.session_state.labor_grid_name = chosen_name
+            st.session_state["_labor_rate_saved_label"] = chosen_name
+            st.rerun()
+    if st.session_state.get("active_labor_rate_run_id"):
+        with save_cols[1]:
+            if st.button(
+                "💾 Save as new grid",
+                use_container_width=True,
+                key="labor_save_as_new",
+                help="Keep the current saved grid and also save this as a separate named report.",
+            ):
+                chosen_name = str(grid_name or "").strip() or default_name
+                run_id = save_labor_rate_run(
+                    result,
+                    hour_range=hour_range,
+                    boost_pct=int(boost_pct),
+                    use_custom_base=bool(use_custom_base),
+                    amount_overrides=dict(
+                        st.session_state.get("labor_grid_overrides") or {}
+                    ),
+                    run_label=chosen_name,
+                    run_id=None,
+                )
+                st.session_state.active_labor_rate_run_id = run_id
+                st.session_state.labor_rate_run_label = chosen_name
+                st.session_state.labor_grid_name = chosen_name
+                st.session_state["_labor_rate_saved_label"] = chosen_name
+                st.rerun()
 
     saved_flash = st.session_state.pop("_labor_rate_saved_label", None)
     if saved_flash:
         st.success(
-            f"Labor rate grid saved — find it in **Reports → Labor Rate Grids** ({saved_flash})."
+            f"Labor rate grid **{saved_flash}** saved — find it in "
+            "**Reports → Labor Rate Grids**."
         )
 
     d1, d2 = st.columns(2)

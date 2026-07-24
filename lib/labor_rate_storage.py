@@ -22,7 +22,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _run_label(result: LaborGridResult) -> str:
+def _default_run_label(result: LaborGridResult) -> str:
     return (
         f"{result.strong_lo:.1f}–{result.strong_hi:.1f}h @ "
         f"${result.target_elr:,.0f}/hr"
@@ -37,6 +37,7 @@ def serialize_labor_rate_snapshot(
     use_custom_base: bool,
     notes: str = "",
     amount_overrides: Optional[Dict[str, float]] = None,
+    run_label: Optional[str] = None,
 ) -> dict:
     """Flatten a generated grid into a JSON-safe snapshot for save/reopen."""
     matrix_out: Dict[str, Dict[str, float]] = {}
@@ -52,8 +53,10 @@ def serialize_labor_rate_snapshot(
         except (TypeError, ValueError):
             continue
 
+    label = str(run_label or "").strip() or _default_run_label(result)
+
     return {
-        "run_label": _run_label(result),
+        "run_label": label,
         "notes": str(notes or "").strip(),
         "inputs": {
             "hour_range": str(hour_range or "").strip(),
@@ -62,6 +65,7 @@ def serialize_labor_rate_snapshot(
             "use_custom_base": bool(use_custom_base),
             "max_hours": float(result.max_hours),
             "boost_pct": int(boost_pct),
+            "grid_name": label,
         },
         "result": {
             "target_elr": float(result.target_elr),
@@ -116,9 +120,14 @@ def apply_labor_rate_snapshot_to_session(record: dict, run_id: str) -> None:
     )
     st.session_state["labor_boost_pct"] = int(inputs.get("boost_pct") or 10)
     st.session_state["active_labor_rate_run_id"] = run_id
-    st.session_state["labor_rate_run_label"] = str(
-        record.get("run_label") or snapshot.get("run_label") or "Labor rate grid"
+    label = str(
+        record.get("run_label")
+        or snapshot.get("run_label")
+        or inputs.get("grid_name")
+        or "Labor rate grid"
     )
+    st.session_state["labor_rate_run_label"] = label
+    st.session_state["labor_grid_name"] = label
     restored_overrides: Dict[str, float] = {}
     for raw_h, raw_amt in (snapshot.get("amount_overrides") or {}).items():
         try:
@@ -170,6 +179,7 @@ def save_labor_rate_run(
     use_custom_base: bool,
     notes: str = "",
     amount_overrides: Optional[Dict[str, float]] = None,
+    run_label: Optional[str] = None,
     run_id: Optional[str] = None,
 ) -> str:
     snapshot = serialize_labor_rate_snapshot(
@@ -179,6 +189,7 @@ def save_labor_rate_run(
         use_custom_base=use_custom_base,
         notes=notes,
         amount_overrides=amount_overrides,
+        run_label=run_label,
     )
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()

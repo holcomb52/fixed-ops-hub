@@ -170,11 +170,11 @@ def render():
         )
     with s3:
         _stat_with_sub(
-            "Grid avg ELR",
+            "Entire-grid avg",
             f"${result.overall_avg_elr:,.2f}",
             "orange",
             "∑",
-            f"All {result.cells_scored} cells",
+            f"Avg ELR across all {result.cells_scored} cells",
         )
     with s4:
         st.markdown(

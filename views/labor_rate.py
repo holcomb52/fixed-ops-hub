@@ -105,6 +105,33 @@ def render():
         help="Peaks the dollars in the middle of your strong hour band (0–20%).",
     )
 
+    st.markdown("##### Warranty rate request")
+    st.caption(
+        "Enter what you are paid today for warranty labor. We compare it to your "
+        "strong-range ELR above to project the rate / labor-sale increase."
+    )
+    w1, w2 = st.columns([1.1, 1.1])
+    with w1:
+        current_warranty_rate = st.number_input(
+            "Current warranty labor rate ($/hr)",
+            min_value=0.0,
+            max_value=1000.0,
+            value=0.0,
+            step=1.0,
+            key="labor_current_warranty_rate",
+            help="Your present OEM warranty labor rate per hour.",
+        )
+    with w2:
+        warranty_hours = st.number_input(
+            "Warranty labor hours (optional)",
+            min_value=0.0,
+            max_value=1_000_000.0,
+            value=0.0,
+            step=100.0,
+            key="labor_warranty_hours",
+            help="Annual or period warranty hours sold. Used to project total labor-sale $ increase.",
+        )
+
     try:
         strong_lo, strong_hi = parse_hour_range(hour_range)
         generated = build_labor_grid(
@@ -145,6 +172,21 @@ def render():
     result = apply_amount_overrides(generated, overrides)
     manual_count = len(overrides)
 
+    proposed_rate = float(result.target_elr)
+    current_rate = float(current_warranty_rate or 0.0)
+    rate_increase_dollars = proposed_rate - current_rate if current_rate > 0 else None
+    rate_increase_pct = (
+        (rate_increase_dollars / current_rate) * 100.0
+        if rate_increase_dollars is not None and current_rate > 0
+        else None
+    )
+    hours_vol = float(warranty_hours or 0.0)
+    sale_increase_dollars = (
+        rate_increase_dollars * hours_vol
+        if rate_increase_dollars is not None and hours_vol > 0
+        else None
+    )
+
     def _stat_with_sub(label: str, value: str, accent: str, icon: str, sub: str) -> None:
         card = stat_card(label, value, accent, icon)
         card = card.replace(
@@ -154,6 +196,61 @@ def render():
             f'        <div class="stat-glow"></div>',
         )
         st.markdown(card, unsafe_allow_html=True)
+
+    if current_rate > 0:
+        wi1, wi2, wi3, wi4 = st.columns(4)
+        with wi1:
+            _stat_with_sub(
+                "Current warranty",
+                f"${current_rate:,.2f}",
+                "violet",
+                "W",
+                "Today's warranty $/hr",
+            )
+        with wi2:
+            _stat_with_sub(
+                "Proposed (range ELR)",
+                f"${proposed_rate:,.2f}",
+                "cyan",
+                "→",
+                "Strong-range customer-pay ELR",
+            )
+        with wi3:
+            if rate_increase_dollars is not None:
+                _stat_with_sub(
+                    "Rate increase",
+                    f"{'+' if rate_increase_dollars >= 0 else ''}"
+                    f"${rate_increase_dollars:,.2f}",
+                    "green" if rate_increase_dollars >= 0 else "orange",
+                    "↑" if rate_increase_dollars >= 0 else "↓",
+                    "Per warranty labor hour",
+                )
+        with wi4:
+            if rate_increase_pct is not None:
+                _stat_with_sub(
+                    "Rate increase %",
+                    f"{'+' if rate_increase_pct >= 0 else ''}{rate_increase_pct:.1f}%",
+                    "green" if rate_increase_pct >= 0 else "orange",
+                    "%",
+                    "vs current warranty rate",
+                )
+        if sale_increase_dollars is not None:
+            st.markdown(
+                status_banner(
+                    f"Projected warranty labor sale increase: "
+                    f"${sale_increase_dollars:,.0f} "
+                    f"({'+' if (rate_increase_pct or 0) >= 0 else ''}"
+                    f"{rate_increase_pct:.1f}%) on {hours_vol:,.0f} warranty hours "
+                    f"at a ${rate_increase_dollars:,.2f}/hr rate lift "
+                    f"(${current_rate:,.2f} → ${proposed_rate:,.2f}).",
+                    "success" if sale_increase_dollars >= 0 else "warn",
+                ),
+                unsafe_allow_html=True,
+            )
+        elif rate_increase_dollars is not None:
+            st.caption(
+                "Add warranty labor hours above to also project total labor-sale $ increase."
+            )
 
     s1, s2, s3, s4 = st.columns(4)
     with s1:
@@ -447,6 +544,28 @@ def render():
             ),
             ("% above target", f"{result.pct_above_target:.1f}%"),
             ("% below target", f"{result.pct_below_target:.1f}%"),
+            *(
+                [
+                    ("Current warranty rate", f"${current_rate:,.2f}"),
+                    (
+                        "Proposed rate increase",
+                        f"${rate_increase_dollars:,.2f}/hr "
+                        f"({rate_increase_pct:+.1f}%)",
+                    ),
+                ]
+                if rate_increase_dollars is not None and rate_increase_pct is not None
+                else []
+            ),
+            *(
+                [
+                    (
+                        "Projected labor sale increase",
+                        f"${sale_increase_dollars:,.0f} on {hours_vol:,.0f} hrs",
+                    )
+                ]
+                if sale_increase_dollars is not None
+                else []
+            ),
         ],
         strong_lo=result.strong_lo,
         strong_hi=result.strong_hi,
@@ -487,6 +606,8 @@ def render():
                 use_custom_base=bool(use_custom_base),
                 amount_overrides=dict(st.session_state.get("labor_grid_overrides") or {}),
                 run_label=chosen_name,
+                current_warranty_rate=current_rate,
+                warranty_hours=hours_vol,
                 run_id=st.session_state.get("active_labor_rate_run_id"),
             )
             st.session_state.active_labor_rate_run_id = run_id
@@ -512,6 +633,8 @@ def render():
                         st.session_state.get("labor_grid_overrides") or {}
                     ),
                     run_label=chosen_name,
+                    current_warranty_rate=current_rate,
+                    warranty_hours=hours_vol,
                     run_id=None,
                 )
                 st.session_state.active_labor_rate_run_id = run_id

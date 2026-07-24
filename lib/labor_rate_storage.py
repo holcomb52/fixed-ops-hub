@@ -38,6 +38,8 @@ def serialize_labor_rate_snapshot(
     notes: str = "",
     amount_overrides: Optional[Dict[str, float]] = None,
     run_label: Optional[str] = None,
+    current_warranty_rate: Optional[float] = None,
+    warranty_hours: Optional[float] = None,
 ) -> dict:
     """Flatten a generated grid into a JSON-safe snapshot for save/reopen."""
     matrix_out: Dict[str, Dict[str, float]] = {}
@@ -54,6 +56,14 @@ def serialize_labor_rate_snapshot(
             continue
 
     label = str(run_label or "").strip() or _default_run_label(result)
+    try:
+        curr_w = float(current_warranty_rate) if current_warranty_rate is not None else 0.0
+    except (TypeError, ValueError):
+        curr_w = 0.0
+    try:
+        w_hours = float(warranty_hours) if warranty_hours is not None else 0.0
+    except (TypeError, ValueError):
+        w_hours = 0.0
 
     return {
         "run_label": label,
@@ -66,6 +76,8 @@ def serialize_labor_rate_snapshot(
             "max_hours": float(result.max_hours),
             "boost_pct": int(boost_pct),
             "grid_name": label,
+            "current_warranty_rate": curr_w,
+            "warranty_hours": w_hours,
         },
         "result": {
             "target_elr": float(result.target_elr),
@@ -119,6 +131,10 @@ def apply_labor_rate_snapshot_to_session(record: dict, run_id: str) -> None:
         inputs.get("max_hours") or result.get("max_hours") or 16.0
     )
     st.session_state["labor_boost_pct"] = int(inputs.get("boost_pct") or 10)
+    st.session_state["labor_current_warranty_rate"] = float(
+        inputs.get("current_warranty_rate") or 0.0
+    )
+    st.session_state["labor_warranty_hours"] = float(inputs.get("warranty_hours") or 0.0)
     st.session_state["active_labor_rate_run_id"] = run_id
     label = str(
         record.get("run_label")
@@ -180,6 +196,8 @@ def save_labor_rate_run(
     notes: str = "",
     amount_overrides: Optional[Dict[str, float]] = None,
     run_label: Optional[str] = None,
+    current_warranty_rate: Optional[float] = None,
+    warranty_hours: Optional[float] = None,
     run_id: Optional[str] = None,
 ) -> str:
     snapshot = serialize_labor_rate_snapshot(
@@ -190,6 +208,8 @@ def save_labor_rate_run(
         notes=notes,
         amount_overrides=amount_overrides,
         run_label=run_label,
+        current_warranty_rate=current_warranty_rate,
+        warranty_hours=warranty_hours,
     )
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()

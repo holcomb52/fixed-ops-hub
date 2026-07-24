@@ -54,12 +54,20 @@ from lib.warranty_labor_pdf_export import (
     generate_warranty_analysis_pdf,
     generate_warranty_original_pdf,
 )
+from lib.labor_rate_storage import (
+    apply_labor_rate_snapshot_to_session,
+    delete_labor_rate_run,
+    list_labor_rate_runs,
+    load_labor_rate_run,
+)
+from lib.labor_rate_pdf_export import build_labor_rate_grid_pdf
 from views.payroll_helpers import init_payroll_session
 
 ACCENT_TECH = "orange"
 ACCENT_ADVISOR = "cyan"
 ACCENT_RECEPTIONIST = "violet"
 ACCENT_WARRANTY = "amber"
+ACCENT_LABOR = "cyan"
 
 
 def _fmt_date(iso: str) -> str:
@@ -387,13 +395,145 @@ def _render_warranty_runs():
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
+def _render_labor_rate_runs():
+    labor_runs = list_labor_rate_runs()
+
+    st.markdown(team_section_divider(ACCENT_LABOR), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "Labor Rate Grids",
+            "Saved customer-pay grids for warranty rate submissions",
+            accent=ACCENT_LABOR,
+            icon="📈",
+            run_count=len(labor_runs) if labor_runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not labor_runs:
+        st.markdown(
+            status_banner(
+                "No saved labor rate grids yet. Build one on **Labor Rate** "
+                "and click **Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in labor_runs:
+        run_id = run["id"]
+        run_label = run.get("run_label") or "Labor rate grid"
+        completed = _fmt_date(run.get("completed_at", ""))
+        band_elr = _money(run.get("strong_avg_elr") or run.get("target_elr"))
+        loaded = load_labor_rate_run(run_id)
+        lo = run.get("strong_lo")
+        hi = run.get("strong_hi")
+        band_meta = (
+            f"{float(lo):.1f}–{float(hi):.1f}h"
+            if lo is not None and hi is not None
+            else "—"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                run_label,
+                ACCENT_LABOR,
+                caption=f"Saved {completed}",
+                amount=band_elr,
+                meta=(
+                    f"Strong band {band_meta} · "
+                    f"{float(run.get('pct_above_target') or 0):.0f}% above / "
+                    f"{float(run.get('pct_below_target') or 0):.0f}% below target"
+                ),
+                badge_html='<span class="badge badge-live">Saved</span>',
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"labor_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_labor_rate_snapshot_to_session(loaded, run_id)
+                    st.session_state.pending_nav = "Labor Rate"
+                    st.rerun()
+        with a2:
+            if loaded:
+                snapshot = loaded.get("snapshot") or {}
+                grid_rows = snapshot.get("grid_rows") or []
+                result_meta = snapshot.get("result") or {}
+                pdf_bytes = build_labor_rate_grid_pdf(
+                    title="Customer-Pay Labor Rate Grid",
+                    subtitle=(
+                        f"Strong range {result_meta.get('strong_lo', lo)}–"
+                        f"{result_meta.get('strong_hi', hi)} hrs @ "
+                        f"${float(result_meta.get('target_elr') or run.get('target_elr') or 0):,.2f}/hr"
+                    ),
+                    grid_rows=grid_rows,
+                    summary=[
+                        (
+                            "Strong hour range",
+                            f"{float(result_meta.get('strong_lo') or lo or 0):.1f}–"
+                            f"{float(result_meta.get('strong_hi') or hi or 0):.1f} hrs",
+                        ),
+                        (
+                            "ELR for that range",
+                            _money(result_meta.get("target_elr") or run.get("target_elr")),
+                        ),
+                        (
+                            "Strong-band avg ELR",
+                            _money(
+                                result_meta.get("strong_avg_elr")
+                                or run.get("strong_avg_elr")
+                            ),
+                        ),
+                        (
+                            "ELR outside range",
+                            _money(result_meta.get("base_elr") or run.get("base_elr")),
+                        ),
+                    ],
+                    strong_lo=float(result_meta.get("strong_lo") or lo or 0),
+                    strong_hi=float(result_meta.get("strong_hi") or hi or 0),
+                )
+                safe_name = (
+                    str(run_label)
+                    .replace("/", "-")
+                    .replace(" ", "_")
+                    .replace("$", "")
+                )
+                st.download_button(
+                    "📄 Grid PDF",
+                    data=pdf_bytes,
+                    file_name=f"LABOR_RATE_GRID_{safe_name}.pdf",
+                    mime="application/pdf",
+                    key=f"labor_pdf_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("labor", run_id)
+        _render_delete_report_controls(
+            prefix="labor",
+            run_id=run_id,
+            run_label=run_label,
+            delete_fn=delete_labor_rate_run,
+            active_session_key="active_labor_rate_run_id",
+            extra_clear_keys=["labor_rate_run_label"],
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
 def render():
     init_payroll_session()
 
     st.markdown(
         page_hero(
             "Reports",
-            "Saved payroll and warranty ELR runs — reopen any report to pick up where you left off.",
+            "Saved payroll, warranty ELR, and labor rate grids — reopen any report to pick up where you left off.",
             tag="History",
             tag_style="live",
         ),
@@ -669,3 +809,4 @@ def render():
             st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     _render_warranty_runs()
+    _render_labor_rate_runs()

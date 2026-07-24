@@ -51,8 +51,8 @@ def render():
     cols = st.columns(3)
     cards = [
         ("💰 Payroll", "Technician flag sheets + service advisor pay plans", "Live", "cyan"),
-        ("📦 Inventory", "Parts tracking, stock alerts, and reorder workflows.", "Queued", "orange"),
-        ("📊 Reports", "KPI dashboards, trends, and one-click exports.", "Queued", "violet"),
+        ("🛡️ Warranty", "Customer-pay ELR analysis for rate submissions.", "Live", "green"),
+        ("📈 Labor Rate", "Build a customer-pay grid from target ELR + hour mix.", "Live", "violet"),
     ]
     for col, (title, desc, status, accent) in zip(cols, cards):
         with col:

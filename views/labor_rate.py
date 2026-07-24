@@ -142,64 +142,8 @@ def render():
         round(float(h), 1): float(a)
         for h, a in (st.session_state.labor_grid_overrides or {}).items()
     }
-    preview = apply_amount_overrides(generated, overrides)
-
-    st.markdown("##### Customer-pay labor grid")
-    st.caption(
-        "Click any dollar cell to type a new amount. HOUR column stays locked. "
-        "Stats below update from your edits. Manual cells are kept until you reset "
-        "or change the generator inputs above."
-    )
-
-    editor_df = grid_to_editor_dataframe(preview)
-    edited_df = st.data_editor(
-        editor_df,
-        use_container_width=True,
-        hide_index=True,
-        height=520,
-        disabled=["HOUR"],
-        num_rows="fixed",
-        key=f"labor_grid_editor_{int(st.session_state.labor_editor_nonce)}",
-        column_config={
-            "HOUR": st.column_config.NumberColumn("HOUR", format="%.1f"),
-            "+.0": st.column_config.NumberColumn("+.0", format="%.2f", min_value=0.0),
-            "+.1": st.column_config.NumberColumn("+.1", format="%.2f", min_value=0.0),
-            "+.2": st.column_config.NumberColumn("+.2", format="%.2f", min_value=0.0),
-            "+.3": st.column_config.NumberColumn("+.3", format="%.2f", min_value=0.0),
-            "+.4": st.column_config.NumberColumn("+.4", format="%.2f", min_value=0.0),
-        },
-    )
-
-    new_overrides = overrides_from_editor_dataframe(generated, edited_df)
-    st.session_state.labor_grid_overrides = {
-        f"{h:.1f}": float(a) for h, a in new_overrides.items()
-    }
-    result = apply_amount_overrides(generated, new_overrides)
-    manual_count = len(new_overrides)
-
-    rset1, rset2 = st.columns([1, 3])
-    with rset1:
-        if st.button(
-            "Reset manual edits",
-            use_container_width=True,
-            key="labor_reset_overrides",
-            disabled=manual_count == 0,
-        ):
-            st.session_state.labor_grid_overrides = {}
-            st.session_state.labor_editor_nonce = (
-                int(st.session_state.get("labor_editor_nonce") or 0) + 1
-            )
-            st.rerun()
-    with rset2:
-        if manual_count:
-            st.caption(
-                f"{manual_count} cell(s) manually adjusted from the generated grid."
-            )
-        else:
-            st.caption(
-                "Read like your DMS: row = base hours, column = tenths. "
-                "Example: 2.0 row + +.3 column = 2.3 hours."
-            )
+    result = apply_amount_overrides(generated, overrides)
+    manual_count = len(overrides)
 
     def _stat_with_sub(label: str, value: str, accent: str, icon: str, sub: str) -> None:
         card = stat_card(label, value, accent, icon)
@@ -291,7 +235,7 @@ def render():
             st.session_state.labor_elr_drill = None if below_open else "below"
             st.rerun()
 
-    # Keep drill buttons compact so they don't steal the stat-card look
+    # Keep drill / reset buttons compact so they don't steal the stat-card look
     st.markdown(
         """
         <style>
@@ -382,6 +326,63 @@ def render():
         ),
         unsafe_allow_html=True,
     )
+
+    st.markdown("##### Customer-pay labor grid")
+    st.caption(
+        "Click any dollar cell to type a new amount. HOUR column stays locked. "
+        "Stats at the top update from your edits. Manual cells are kept until you reset "
+        "or change the generator inputs above."
+    )
+
+    editor_df = grid_to_editor_dataframe(result)
+    edited_df = st.data_editor(
+        editor_df,
+        use_container_width=True,
+        hide_index=True,
+        height=520,
+        disabled=["HOUR"],
+        num_rows="fixed",
+        key=f"labor_grid_editor_{int(st.session_state.labor_editor_nonce)}",
+        column_config={
+            "HOUR": st.column_config.NumberColumn("HOUR", format="%.1f"),
+            "+.0": st.column_config.NumberColumn("+.0", format="%.2f", min_value=0.0),
+            "+.1": st.column_config.NumberColumn("+.1", format="%.2f", min_value=0.0),
+            "+.2": st.column_config.NumberColumn("+.2", format="%.2f", min_value=0.0),
+            "+.3": st.column_config.NumberColumn("+.3", format="%.2f", min_value=0.0),
+            "+.4": st.column_config.NumberColumn("+.4", format="%.2f", min_value=0.0),
+        },
+    )
+
+    new_overrides = overrides_from_editor_dataframe(generated, edited_df)
+    new_override_state = {f"{h:.1f}": float(a) for h, a in new_overrides.items()}
+    old_override_state = {f"{h:.1f}": float(a) for h, a in overrides.items()}
+    if new_override_state != old_override_state:
+        st.session_state.labor_grid_overrides = new_override_state
+        st.rerun()
+
+    rset1, rset2 = st.columns([1, 3])
+    with rset1:
+        if st.button(
+            "Reset manual edits",
+            use_container_width=True,
+            key="labor_reset_overrides",
+            disabled=manual_count == 0,
+        ):
+            st.session_state.labor_grid_overrides = {}
+            st.session_state.labor_editor_nonce = (
+                int(st.session_state.get("labor_editor_nonce") or 0) + 1
+            )
+            st.rerun()
+    with rset2:
+        if manual_count:
+            st.caption(
+                f"{manual_count} cell(s) manually adjusted from the generated grid."
+            )
+        else:
+            st.caption(
+                "Read like your DMS: row = base hours, column = tenths. "
+                "Example: 2.0 row + +.3 column = 2.3 hours."
+            )
 
     grid_rows = grid_to_dataframe_rows(result)
     export_df = pd.DataFrame(

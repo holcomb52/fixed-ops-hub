@@ -8,6 +8,8 @@ from typing import Dict, List, Optional, Tuple
 
 TENTHS = (0.0, 0.1, 0.2, 0.3, 0.4)
 TENTH_LABELS = ("+.0", "+.1", "+.2", "+.3", "+.4")
+# Cells within this $/hr of target count as "at target"
+ELR_TARGET_TOLERANCE = 0.50
 
 
 @dataclass(frozen=True)
@@ -209,7 +211,7 @@ def build_labor_grid(
         highest_elr = float(highest["elr"])
         highest_hours = float(highest["hours"])
         # Tolerance: treat within $0.50/hr of target as "at target"
-        tol = 0.50
+        tol = ELR_TARGET_TOLERANCE
         above = sum(1 for c in scored if float(c["elr"]) > range_elr + tol)
         below = sum(1 for c in scored if float(c["elr"]) < range_elr - tol)
         at = len(scored) - above - below
@@ -277,3 +279,72 @@ def lookup_amount(result: LaborGridResult, hours: float) -> Optional[float]:
         if abs(float(cell["hours"]) - h) < 1e-9:
             return float(cell["amount"])
     return None
+
+
+def classify_cell_vs_target(
+    elr: float,
+    target_elr: float,
+    *,
+    tolerance: float = ELR_TARGET_TOLERANCE,
+) -> str:
+    """Return 'above' | 'below' | 'at' relative to target ELR."""
+    if elr > target_elr + tolerance:
+        return "above"
+    if elr < target_elr - tolerance:
+        return "below"
+    return "at"
+
+
+def cells_vs_target(
+    result: LaborGridResult,
+    category: str,
+    *,
+    tolerance: float = ELR_TARGET_TOLERANCE,
+) -> List[Dict[str, float | bool | str]]:
+    """
+    Cells in the grid that are above / below / at the range target ELR.
+
+    category: 'above' | 'below' | 'at'
+    """
+    cat = str(category or "").strip().lower()
+    if cat not in {"above", "below", "at"}:
+        return []
+    target = float(result.target_elr)
+    rows: List[Dict[str, float | bool | str]] = []
+    for cell in result.cells:
+        hours = float(cell["hours"])
+        if hours <= 0:
+            continue
+        elr = float(cell["elr"])
+        bucket = classify_cell_vs_target(elr, target, tolerance=tolerance)
+        if bucket != cat:
+            continue
+        rows.append(
+            {
+                "hours": hours,
+                "amount": float(cell["amount"]),
+                "elr": elr,
+                "vs_target": round(elr - target, 2),
+                "in_strong": bool(cell.get("in_strong")),
+                "category": bucket,
+            }
+        )
+    rows.sort(key=lambda r: float(r["hours"]))
+    return rows
+
+
+def summarize_hour_ranges(hours_list: List[float]) -> List[str]:
+    """Collapse sorted hour points into readable ranges, e.g. 2.0–3.4, 5.1."""
+    if not hours_list:
+        return []
+    ordered = sorted({round(float(h), 1) for h in hours_list})
+    ranges: List[str] = []
+    start = prev = ordered[0]
+    for h in ordered[1:]:
+        if abs(h - prev - 0.1) < 1e-9:
+            prev = h
+            continue
+        ranges.append(f"{start:.1f}" if start == prev else f"{start:.1f}–{prev:.1f}")
+        start = prev = h
+    ranges.append(f"{start:.1f}" if start == prev else f"{start:.1f}–{prev:.1f}")
+    return ranges

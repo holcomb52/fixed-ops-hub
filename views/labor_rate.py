@@ -8,9 +8,11 @@ import streamlit as st
 from components.ui import page_hero, stat_card, status_banner
 from lib.labor_rate_grid import (
     build_labor_grid,
+    cells_vs_target,
     grid_to_dataframe_rows,
     lookup_amount,
     parse_hour_range,
+    summarize_hour_ranges,
 )
 from lib.labor_rate_pdf_export import build_labor_rate_grid_pdf
 
@@ -119,48 +121,102 @@ def render():
             st.markdown(stat_card(label, value, accent, icon), unsafe_allow_html=True)
 
     e1, e2, e3, e4 = st.columns(4)
-    extreme_cards = [
-        (
-            "Lowest ELR",
-            f"${result.lowest_elr:,.2f}",
-            "orange",
-            "↓",
-            f"At {result.lowest_elr_hours:.1f} hrs",
-        ),
-        (
-            "Highest ELR",
-            f"${result.highest_elr:,.2f}",
-            "green",
-            "↑",
-            f"At {result.highest_elr_hours:.1f} hrs",
-        ),
-        (
-            "% Above target",
-            f"{result.pct_above_target:.1f}%",
-            "cyan",
-            "▲",
-            f"Of {result.cells_scored} grid cells",
-        ),
-        (
-            "% Below target",
-            f"{result.pct_below_target:.1f}%",
-            "violet",
-            "▼",
-            f"Of {result.cells_scored} grid cells",
-        ),
-    ]
-    for col, (label, value, accent, icon, sub) in zip(
-        [e1, e2, e3, e4], extreme_cards
-    ):
-        with col:
-            card = stat_card(label, value, accent, icon)
-            # Append hour / cell context under the main value
-            card = card.replace(
-                "</div>\n        <div class=\"stat-glow\"></div>",
-                f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
-                f'opacity:0.85;">{sub}</div>\n        <div class="stat-glow"></div>',
+    with e1:
+        card = stat_card("Lowest ELR", f"${result.lowest_elr:,.2f}", "orange", "↓")
+        card = card.replace(
+            "</div>\n        <div class=\"stat-glow\"></div>",
+            f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
+            f'opacity:0.85;">At {result.lowest_elr_hours:.1f} hrs</div>\n'
+            f'        <div class="stat-glow"></div>',
+        )
+        st.markdown(card, unsafe_allow_html=True)
+    with e2:
+        card = stat_card("Highest ELR", f"${result.highest_elr:,.2f}", "green", "↑")
+        card = card.replace(
+            "</div>\n        <div class=\"stat-glow\"></div>",
+            f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
+            f'opacity:0.85;">At {result.highest_elr_hours:.1f} hrs</div>\n'
+            f'        <div class="stat-glow"></div>',
+        )
+        st.markdown(card, unsafe_allow_html=True)
+    with e3:
+        if st.button(
+            f"▲  {result.pct_above_target:.1f}%\n% Above target\n"
+            f"Of {result.cells_scored} cells · click for hours",
+            use_container_width=True,
+            key="labor_drill_above",
+            type=(
+                "primary"
+                if st.session_state.get("labor_elr_drill") == "above"
+                else "secondary"
+            ),
+            help="Show every hour increment above your range ELR",
+        ):
+            cur = st.session_state.get("labor_elr_drill")
+            st.session_state.labor_elr_drill = None if cur == "above" else "above"
+            st.rerun()
+    with e4:
+        if st.button(
+            f"▼  {result.pct_below_target:.1f}%\n% Below target\n"
+            f"Of {result.cells_scored} cells · click for hours",
+            use_container_width=True,
+            key="labor_drill_below",
+            type=(
+                "primary"
+                if st.session_state.get("labor_elr_drill") == "below"
+                else "secondary"
+            ),
+            help="Show every hour increment below your range ELR",
+        ):
+            cur = st.session_state.get("labor_elr_drill")
+            st.session_state.labor_elr_drill = None if cur == "below" else "below"
+            st.rerun()
+
+    drill = st.session_state.get("labor_elr_drill")
+    if drill in ("above", "below"):
+        drill_rows = cells_vs_target(result, drill)
+        ranges = summarize_hour_ranges([float(r["hours"]) for r in drill_rows])
+        title = "Above target ELR" if drill == "above" else "Below target ELR"
+        tone = "success" if drill == "above" else "warn"
+        st.markdown(
+            status_banner(
+                f"{title}: {len(drill_rows)} cell(s) · "
+                f"hour ranges {', '.join(ranges) if ranges else '—'} · "
+                f"target ${result.target_elr:,.2f}/hr (±$0.50 counts as at target).",
+                tone,
+            ),
+            unsafe_allow_html=True,
+        )
+        if not drill_rows:
+            st.info(f"No grid cells are {drill} your target ELR.")
+        else:
+            detail = pd.DataFrame(
+                [
+                    {
+                        "Hours": f"{float(r['hours']):.1f}",
+                        "Labor $": f"${float(r['amount']):,.2f}",
+                        "ELR $/hr": f"${float(r['elr']):,.2f}",
+                        "vs Target": (
+                            f"+${float(r['vs_target']):,.2f}"
+                            if float(r["vs_target"]) >= 0
+                            else f"-${abs(float(r['vs_target'])):,.2f}"
+                        ),
+                        "Strong band": "Yes" if r["in_strong"] else "No",
+                    }
+                    for r in drill_rows
+                ]
             )
-            st.markdown(card, unsafe_allow_html=True)
+            st.dataframe(
+                detail,
+                use_container_width=True,
+                hide_index=True,
+                height=min(420, 80 + 28 * len(drill_rows)),
+            )
+            c_close, _ = st.columns([1, 3])
+            with c_close:
+                if st.button("Close detail", key="labor_drill_close"):
+                    st.session_state.labor_elr_drill = None
+                    st.rerun()
 
     st.markdown(
         status_banner(
@@ -177,7 +233,8 @@ def render():
                 if result.pct_at_target
                 else ""
             )
-            + ". Highlighted rows are your strong range.",
+            + ". Click % Above / % Below to see each hour’s ELR. "
+            "Highlighted rows are your strong range.",
             "success",
         ),
         unsafe_allow_html=True,

@@ -51,6 +51,22 @@ def test_elr_extremes_and_above_below_share():
     assert abs(total_pct - 100.0) < 0.2
 
 
+def test_cells_vs_target_drilldown():
+    from lib.labor_rate_grid import cells_vs_target, summarize_hour_ranges
+
+    result = build_labor_grid(330.0, 2.0, 4.0, base_elr=320.0, max_hours=8.0)
+    above = cells_vs_target(result, "above")
+    below = cells_vs_target(result, "below")
+    assert above or below
+    for row in above:
+        assert float(row["elr"]) > 330.0
+    for row in below:
+        assert float(row["elr"]) < 330.0
+    ranges = summarize_hour_ranges([1.0, 1.1, 1.2, 3.0])
+    assert "1.0–1.2" in ranges
+    assert "3.0" in ranges
+
+
 def test_grid_layout_and_pdf():
     result = build_labor_grid(295.0, 1.5, 4.0, max_hours=10.0)
     rows = grid_to_dataframe_rows(result)

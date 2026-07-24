@@ -896,6 +896,9 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     font-family: 'DM Sans', sans-serif !important;
     padding: 0.6rem 1.2rem !important;
     transition: all 0.2s ease !important;
+    white-space: pre-line !important;
+    line-height: 1.35 !important;
+    min-height: 5.25rem !important;
 }
 
 .stButton > button:hover {

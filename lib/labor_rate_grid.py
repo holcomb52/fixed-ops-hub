@@ -29,6 +29,15 @@ class LaborGridResult:
     overall_avg_elr: float
     outside_avg_elr: float
     scale_factor: float
+    # Grid-wide ELR extremes + share vs target
+    lowest_elr: float
+    lowest_elr_hours: float
+    highest_elr: float
+    highest_elr_hours: float
+    pct_above_target: float
+    pct_below_target: float
+    pct_at_target: float
+    cells_scored: int
 
 
 def parse_hour_range(text: str) -> Tuple[float, float]:
@@ -189,7 +198,28 @@ def build_labor_grid(
         c for c in cells if not c["in_strong"] and float(c["hours"]) > 0
     ]
     outside_elr_vals = [float(c["elr"]) for c in outside_cells]
-    all_elr_vals = [float(c["elr"]) for c in cells if float(c["hours"]) > 0]
+    scored = [c for c in cells if float(c["hours"]) > 0]
+    all_elr_vals = [float(c["elr"]) for c in scored]
+
+    if scored:
+        lowest = min(scored, key=lambda c: (float(c["elr"]), float(c["hours"])))
+        highest = max(scored, key=lambda c: (float(c["elr"]), -float(c["hours"])))
+        lowest_elr = float(lowest["elr"])
+        lowest_hours = float(lowest["hours"])
+        highest_elr = float(highest["elr"])
+        highest_hours = float(highest["hours"])
+        # Tolerance: treat within $0.50/hr of target as "at target"
+        tol = 0.50
+        above = sum(1 for c in scored if float(c["elr"]) > range_elr + tol)
+        below = sum(1 for c in scored if float(c["elr"]) < range_elr - tol)
+        at = len(scored) - above - below
+        pct_above = round(100.0 * above / len(scored), 1)
+        pct_below = round(100.0 * below / len(scored), 1)
+        pct_at = round(100.0 * at / len(scored), 1)
+    else:
+        lowest_elr = highest_elr = 0.0
+        lowest_hours = highest_hours = 0.0
+        pct_above = pct_below = pct_at = 0.0
 
     return LaborGridResult(
         target_elr=range_elr,
@@ -212,6 +242,14 @@ def build_labor_grid(
         if outside_elr_vals
         else 0.0,
         scale_factor=round(strong_scale, 4),
+        lowest_elr=round(lowest_elr, 2),
+        lowest_elr_hours=lowest_hours,
+        highest_elr=round(highest_elr, 2),
+        highest_elr_hours=highest_hours,
+        pct_above_target=pct_above,
+        pct_below_target=pct_below,
+        pct_at_target=pct_at,
+        cells_scored=len(scored),
     )
 
 

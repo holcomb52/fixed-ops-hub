@@ -118,12 +118,66 @@ def render():
         with col:
             st.markdown(stat_card(label, value, accent, icon), unsafe_allow_html=True)
 
+    e1, e2, e3, e4 = st.columns(4)
+    extreme_cards = [
+        (
+            "Lowest ELR",
+            f"${result.lowest_elr:,.2f}",
+            "orange",
+            "↓",
+            f"At {result.lowest_elr_hours:.1f} hrs",
+        ),
+        (
+            "Highest ELR",
+            f"${result.highest_elr:,.2f}",
+            "green",
+            "↑",
+            f"At {result.highest_elr_hours:.1f} hrs",
+        ),
+        (
+            "% Above target",
+            f"{result.pct_above_target:.1f}%",
+            "cyan",
+            "▲",
+            f"Of {result.cells_scored} grid cells",
+        ),
+        (
+            "% Below target",
+            f"{result.pct_below_target:.1f}%",
+            "violet",
+            "▼",
+            f"Of {result.cells_scored} grid cells",
+        ),
+    ]
+    for col, (label, value, accent, icon, sub) in zip(
+        [e1, e2, e3, e4], extreme_cards
+    ):
+        with col:
+            card = stat_card(label, value, accent, icon)
+            # Append hour / cell context under the main value
+            card = card.replace(
+                "</div>\n        <div class=\"stat-glow\"></div>",
+                f'</div>\n        <div class="stat-sub" style="margin-top:0.35rem;font-size:0.82rem;'
+                f'opacity:0.85;">{sub}</div>\n        <div class="stat-glow"></div>',
+            )
+            st.markdown(card, unsafe_allow_html=True)
+
     st.markdown(
         status_banner(
             f"For {result.strong_lo:.1f}–{result.strong_hi:.1f} hrs, grid averages "
             f"${result.strong_avg_elr:,.2f}/hr (you set ${result.target_elr:,.2f}). "
             f"Outside that band uses ${result.base_elr:,.2f}/hr "
-            f"(avg ${result.outside_avg_elr:,.2f}). Highlighted rows are your strong range.",
+            f"(avg ${result.outside_avg_elr:,.2f}). "
+            f"Lowest ELR ${result.lowest_elr:,.2f} at {result.lowest_elr_hours:.1f}h · "
+            f"Highest ${result.highest_elr:,.2f} at {result.highest_elr_hours:.1f}h · "
+            f"{result.pct_above_target:.1f}% of cells above target, "
+            f"{result.pct_below_target:.1f}% below"
+            + (
+                f", {result.pct_at_target:.1f}% at target"
+                if result.pct_at_target
+                else ""
+            )
+            + ". Highlighted rows are your strong range.",
             "success",
         ),
         unsafe_allow_html=True,
@@ -204,6 +258,16 @@ def render():
             ("ELR for that range", f"${result.target_elr:,.2f}"),
             ("Strong-band avg ELR", f"${result.strong_avg_elr:,.2f}"),
             ("ELR outside range", f"${result.base_elr:,.2f}"),
+            (
+                "Lowest ELR",
+                f"${result.lowest_elr:,.2f} at {result.lowest_elr_hours:.1f} hrs",
+            ),
+            (
+                "Highest ELR",
+                f"${result.highest_elr:,.2f} at {result.highest_elr_hours:.1f} hrs",
+            ),
+            ("% above target", f"{result.pct_above_target:.1f}%"),
+            ("% below target", f"{result.pct_below_target:.1f}%"),
         ],
         strong_lo=result.strong_lo,
         strong_hi=result.strong_hi,

@@ -38,6 +38,19 @@ def test_custom_base_elr_outside_range():
     assert abs(result.outside_avg_elr - 280.0) < 2.0
 
 
+def test_elr_extremes_and_above_below_share():
+    result = build_labor_grid(330.0, 2.0, 4.0, base_elr=320.0, max_hours=8.0)
+    assert result.lowest_elr > 0
+    assert result.highest_elr >= result.lowest_elr
+    assert result.lowest_elr_hours > 0
+    assert result.highest_elr_hours > 0
+    assert result.cells_scored > 0
+    total_pct = (
+        result.pct_above_target + result.pct_below_target + result.pct_at_target
+    )
+    assert abs(total_pct - 100.0) < 0.2
+
+
 def test_grid_layout_and_pdf():
     result = build_labor_grid(295.0, 1.5, 4.0, max_hours=10.0)
     rows = grid_to_dataframe_rows(result)

@@ -577,9 +577,9 @@ def render():
             ("% below target", f"{result.pct_below_target:.1f}%"),
             *(
                 [
-                    ("Current warranty rate", f"${current_rate:,.2f}"),
+                    ("Labor rate achieved", f"${proposed_rate:,.2f}"),
                     (
-                        "Proposed rate increase",
+                        "Rate increase vs warranty",
                         f"${rate_increase_dollars:,.2f}/hr "
                         f"({rate_increase_pct:+.1f}%)",
                     ),

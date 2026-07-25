@@ -199,7 +199,13 @@ def save_labor_rate_run(
     current_warranty_rate: Optional[float] = None,
     warranty_hours: Optional[float] = None,
     run_id: Optional[str] = None,
-) -> str:
+) -> Tuple[str, Optional[str]]:
+    """
+    Save a labor rate grid locally and to Supabase when configured.
+
+    Returns (run_id, cloud_error). cloud_error is None when cloud sync succeeded
+    or Supabase is not configured; otherwise a short message for the UI.
+    """
     snapshot = serialize_labor_rate_snapshot(
         result,
         hour_range=hour_range,
@@ -233,34 +239,60 @@ def save_labor_rate_run(
     _save_local(run_id, record)
 
     client = get_supabase()
-    if client:
-        row = {
-            "id": run_id,
-            "run_label": run_label,
-            "status": "saved",
-            "snapshot": snapshot,
-            "target_elr": record["target_elr"],
-            "strong_avg_elr": record["strong_avg_elr"],
-            "base_elr": record["base_elr"],
-            "strong_lo": record["strong_lo"],
-            "strong_hi": record["strong_hi"],
-            "pct_above_target": record["pct_above_target"],
-            "pct_below_target": record["pct_below_target"],
-            "completed_at": completed_at,
-            "updated_at": completed_at,
-        }
-        try:
-            existing = client.table(TABLE).select("id").eq("id", run_id).execute()
-            if existing.data:
-                client.table(TABLE).update(row).eq("id", run_id).execute()
-            else:
-                row["created_at"] = completed_at
-                client.table(TABLE).insert(row).execute()
-        except Exception:
-            pass
+    if not client:
+        return run_id, (
+            "Supabase is not connected. This save is only on this server and will "
+            "disappear when Streamlit Cloud redeploys."
+        )
 
-    return run_id
+    row = {
+        "id": run_id,
+        "run_label": run_label,
+        "status": "saved",
+        "snapshot": snapshot,
+        "target_elr": record["target_elr"],
+        "strong_avg_elr": record["strong_avg_elr"],
+        "base_elr": record["base_elr"],
+        "strong_lo": record["strong_lo"],
+        "strong_hi": record["strong_hi"],
+        "pct_above_target": record["pct_above_target"],
+        "pct_below_target": record["pct_below_target"],
+        "completed_at": completed_at,
+        "updated_at": completed_at,
+    }
+    try:
+        existing = client.table(TABLE).select("id").eq("id", run_id).execute()
+        if existing.data:
+            client.table(TABLE).update(row).eq("id", run_id).execute()
+        else:
+            row["created_at"] = completed_at
+            client.table(TABLE).insert(row).execute()
+    except Exception as exc:
+        return run_id, (
+            "Cloud backup failed — this grid may disappear after the next app redeploy. "
+            f"Details: {exc}"
+        )
 
+    return run_id, None
+
+
+def labor_rate_cloud_status() -> Tuple[bool, str]:
+    """Return (ok, message) describing whether Labor Rate Reports can persist in cloud."""
+    client = get_supabase()
+    if not client:
+        return False, (
+            "Supabase is not connected. Labor Rate grids only save on this server and "
+            "are wiped when Streamlit Cloud redeploys."
+        )
+    try:
+        client.table(TABLE).select("id").limit(1).execute()
+        return True, ""
+    except Exception as exc:
+        return False, (
+            "The labor_rate_runs table is missing or unreachable in Supabase. "
+            "Saved grids will not survive a redeploy until you create that table. "
+            f"Details: {exc}"
+        )
 
 def list_labor_rate_runs() -> List[dict]:
     runs: Dict[str, dict] = {}

@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from pathlib import Path
 from typing import Callable, Optional
 
 import pandas as pd
@@ -57,6 +58,7 @@ from lib.warranty_labor_pdf_export import (
 from lib.labor_rate_storage import (
     apply_labor_rate_snapshot_to_session,
     delete_labor_rate_run,
+    labor_rate_cloud_status,
     list_labor_rate_runs,
     load_labor_rate_run,
     rename_labor_rate_run,
@@ -410,6 +412,30 @@ def _render_labor_rate_runs():
         ),
         unsafe_allow_html=True,
     )
+
+    cloud_ok, cloud_msg = labor_rate_cloud_status()
+    if not cloud_ok:
+        st.markdown(
+            status_banner(
+                "Labor Rate grids need a Supabase table to survive Streamlit Cloud redeploys. "
+                "Yesterday’s save was likely wiped when the app redeployed. "
+                "Create the table below, then rebuild and Save again.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        with st.expander("Create labor_rate_runs table in Supabase (one time)", expanded=True):
+            st.caption(cloud_msg)
+            sql_path = (
+                Path(__file__).resolve().parent.parent
+                / "supabase"
+                / "labor_rate_runs_table.sql"
+            )
+            st.code(sql_path.read_text() if sql_path.exists() else "", language="sql")
+            st.caption(
+                "Supabase → SQL Editor → New query → paste → Run → refresh this app → "
+                "re-save your grids from Labor Rate."
+            )
 
     if not labor_runs:
         st.markdown(

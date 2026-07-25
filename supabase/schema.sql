@@ -93,6 +93,27 @@ create table if not exists warranty_labor_runs (
 
 create index if not exists idx_warranty_labor_runs_completed on warranty_labor_runs (completed_at desc);
 
+-- Saved customer-pay labor rate grids (Reports → Labor Rate Grids)
+create table if not exists labor_rate_runs (
+    id uuid primary key,
+    run_label text not null,
+    status text not null default 'saved',
+    snapshot jsonb not null,
+    target_elr numeric,
+    strong_avg_elr numeric,
+    base_elr numeric,
+    strong_lo numeric,
+    strong_hi numeric,
+    pct_above_target numeric,
+    pct_below_target numeric,
+    created_at timestamptz default now(),
+    completed_at timestamptz,
+    updated_at timestamptz default now()
+);
+
+create index if not exists labor_rate_runs_completed_at_idx
+    on labor_rate_runs (completed_at desc);
+
 -- Sample data (optional — remove if you want a blank slate)
 insert into employees (full_name, role, hourly_rate) values
     ('Alex Rivera', 'Service Advisor', 28.50),

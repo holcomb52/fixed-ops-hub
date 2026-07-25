@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -631,7 +633,7 @@ def render():
     if save_requested and not chosen_name:
         st.warning("Enter a grid name above before saving.")
     elif save_requested:
-        run_id = save_labor_rate_run(
+        run_id, cloud_err = save_labor_rate_run(
             result,
             hour_range=hour_range,
             boost_pct=int(boost_pct),
@@ -649,14 +651,30 @@ def render():
         st.session_state.active_labor_rate_run_id = run_id
         st.session_state.labor_rate_run_label = chosen_name
         st.session_state["_labor_rate_saved_label"] = chosen_name
+        st.session_state["_labor_rate_cloud_err"] = cloud_err
         st.rerun()
 
     saved_flash = st.session_state.pop("_labor_rate_saved_label", None)
+    cloud_err_flash = st.session_state.pop("_labor_rate_cloud_err", None)
     if saved_flash:
-        st.success(
-            f"Labor rate grid **{saved_flash}** saved — find it in "
-            "**Reports → Labor Rate Grids**."
-        )
+        if cloud_err_flash:
+            st.warning(
+                f"Labor rate grid **{saved_flash}** saved on this server only — "
+                f"it may disappear after the next Cloud redeploy.\n\n{cloud_err_flash}"
+            )
+            with st.expander("Fix: create labor_rate_runs table in Supabase (one time)"):
+                st.code(
+                    Path(__file__)
+                    .resolve()
+                    .parent.parent.joinpath("supabase", "labor_rate_runs_table.sql")
+                    .read_text(),
+                    language="sql",
+                )
+        else:
+            st.success(
+                f"Labor rate grid **{saved_flash}** saved to cloud — find it in "
+                "**Reports → Labor Rate Grids**."
+            )
 
     export_stem = "".join(
         ch if ch.isalnum() or ch in ("-", "_") else "_"

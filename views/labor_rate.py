@@ -108,34 +108,6 @@ def render():
             help="Peaks the dollars in the middle of your strong hour band (0–20%).",
         )
 
-    with st.container(border=True):
-        st.markdown("##### Warranty rate request")
-        st.caption(
-            "Enter what you are paid today for warranty labor. We compare it to your "
-            "entire-grid average ELR to project the rate / labor-sale increase."
-        )
-        w1, w2 = st.columns([1.1, 1.1])
-        with w1:
-            current_warranty_rate = st.number_input(
-                "Current warranty labor rate ($/hr)",
-                min_value=0.0,
-                max_value=1000.0,
-                value=0.0,
-                step=1.0,
-                key="labor_current_warranty_rate",
-                help="Your present OEM warranty labor rate per hour.",
-            )
-        with w2:
-            warranty_hours = st.number_input(
-                "Warranty labor hours (optional)",
-                min_value=0.0,
-                max_value=1_000_000.0,
-                value=0.0,
-                step=100.0,
-                key="labor_warranty_hours",
-                help="Annual or period warranty hours sold. Used to project total labor-sale $ increase.",
-            )
-
     try:
         strong_lo, strong_hi = parse_hour_range(hour_range)
         generated = build_labor_grid(
@@ -173,25 +145,14 @@ def render():
         round(float(h), 1): float(a)
         for h, a in (st.session_state.labor_grid_overrides or {}).items()
     }
+    # Preview uses current overrides; editor below may refine and rerun
     result = apply_amount_overrides(generated, overrides)
     manual_count = len(overrides)
+    labor_rate_achieved = float(result.overall_avg_elr)
 
-    proposed_rate = float(result.overall_avg_elr)
-    current_rate = float(current_warranty_rate or 0.0)
-    rate_increase_dollars = proposed_rate - current_rate if current_rate > 0 else None
-    rate_increase_pct = (
-        (rate_increase_dollars / current_rate) * 100.0
-        if rate_increase_dollars is not None and current_rate > 0
-        else None
-    )
-    hours_vol = float(warranty_hours or 0.0)
-    sale_increase_dollars = (
-        rate_increase_dollars * hours_vol
-        if rate_increase_dollars is not None and hours_vol > 0
-        else None
-    )
-
-    def _stat_with_sub(label: str, value: str, accent: str, icon: str, sub: str) -> None:
+    def _stat_with_sub(
+        label: str, value: str, accent: str, icon: str, sub: str
+    ) -> None:
         card = stat_card(label, value, accent, icon)
         card = card.replace(
             "</div>\n        <div class=\"stat-glow\"></div>",
@@ -201,59 +162,125 @@ def render():
         )
         st.markdown(card, unsafe_allow_html=True)
 
-    if current_rate > 0:
-        wi1, wi2, wi3, wi4 = st.columns(4)
-        with wi1:
-            _stat_with_sub(
-                "Current warranty",
-                f"${current_rate:,.2f}",
-                "violet",
-                "W",
-                "Today's warranty $/hr",
+    with st.container(border=True):
+        st.markdown("##### Warranty rate request")
+        st.caption(
+            "Enter what you are paid today for warranty labor. "
+            "Labor rate achieved is your entire-grid average ELR — we use that to "
+            "project the rate / labor-sale increase."
+        )
+        w1, w2, w3 = st.columns([1.1, 1.1, 1.1])
+        with w1:
+            current_warranty_rate = st.number_input(
+                "Current warranty labor rate ($/hr)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=0.0,
+                step=1.0,
+                key="labor_current_warranty_rate",
+                help="Your present OEM warranty labor rate per hour.",
             )
-        with wi2:
-            _stat_with_sub(
-                "Proposed (grid avg)",
-                f"${proposed_rate:,.2f}",
-                "cyan",
-                "→",
-                "Entire-grid average ELR",
+        with w2:
+            # Keep the locked field in sync with the latest grid average
+            st.session_state["labor_rate_achieved_display"] = round(
+                labor_rate_achieved, 2
             )
-        with wi3:
-            if rate_increase_dollars is not None:
+            st.number_input(
+                "Labor rate achieved ($/hr)",
+                min_value=0.0,
+                max_value=1000.0,
+                step=0.01,
+                key="labor_rate_achieved_display",
+                disabled=True,
+                help="Entire-grid average ELR from the customer-pay grid "
+                "(updates when you change the grid or edit cells).",
+            )
+        with w3:
+            warranty_hours = st.number_input(
+                "Warranty labor hours (optional)",
+                min_value=0.0,
+                max_value=1_000_000.0,
+                value=0.0,
+                step=100.0,
+                key="labor_warranty_hours",
+                help="Annual or period warranty hours sold. Used to project total labor-sale $ increase.",
+            )
+
+        proposed_rate = labor_rate_achieved
+        current_rate = float(current_warranty_rate or 0.0)
+        rate_increase_dollars = (
+            proposed_rate - current_rate if current_rate > 0 else None
+        )
+        rate_increase_pct = (
+            (rate_increase_dollars / current_rate) * 100.0
+            if rate_increase_dollars is not None and current_rate > 0
+            else None
+        )
+        hours_vol = float(warranty_hours or 0.0)
+        sale_increase_dollars = (
+            rate_increase_dollars * hours_vol
+            if rate_increase_dollars is not None and hours_vol > 0
+            else None
+        )
+
+        if current_rate > 0:
+            wi1, wi2, wi3, wi4 = st.columns(4)
+            with wi1:
                 _stat_with_sub(
-                    "Rate increase",
-                    f"{'+' if rate_increase_dollars >= 0 else ''}"
-                    f"${rate_increase_dollars:,.2f}",
-                    "green" if rate_increase_dollars >= 0 else "orange",
-                    "↑" if rate_increase_dollars >= 0 else "↓",
-                    "Per warranty labor hour",
+                    "Current warranty",
+                    f"${current_rate:,.2f}",
+                    "violet",
+                    "W",
+                    "Today's warranty $/hr",
                 )
-        with wi4:
-            if rate_increase_pct is not None:
+            with wi2:
                 _stat_with_sub(
-                    "Rate increase %",
-                    f"{'+' if rate_increase_pct >= 0 else ''}{rate_increase_pct:.1f}%",
-                    "green" if rate_increase_pct >= 0 else "orange",
-                    "%",
-                    "vs current warranty rate",
+                    "Labor rate achieved",
+                    f"${proposed_rate:,.2f}",
+                    "cyan",
+                    "◎",
+                    "Entire-grid average ELR",
                 )
-        if sale_increase_dollars is not None:
-            st.markdown(
-                status_banner(
-                    f"Projected warranty labor sale increase: "
-                    f"${sale_increase_dollars:,.0f} "
-                    f"({'+' if (rate_increase_pct or 0) >= 0 else ''}"
-                    f"{rate_increase_pct:.1f}%) on {hours_vol:,.0f} warranty hours "
-                    f"at a ${rate_increase_dollars:,.2f}/hr rate lift "
-                    f"(${current_rate:,.2f} → ${proposed_rate:,.2f}).",
-                    "success" if sale_increase_dollars >= 0 else "warn",
-                ),
-                unsafe_allow_html=True,
-            )
-        elif rate_increase_dollars is not None:
+            with wi3:
+                if rate_increase_dollars is not None:
+                    _stat_with_sub(
+                        "Rate increase",
+                        f"{'+' if rate_increase_dollars >= 0 else ''}"
+                        f"${rate_increase_dollars:,.2f}",
+                        "green" if rate_increase_dollars >= 0 else "orange",
+                        "↑" if rate_increase_dollars >= 0 else "↓",
+                        "Per warranty labor hour",
+                    )
+            with wi4:
+                if rate_increase_pct is not None:
+                    _stat_with_sub(
+                        "Rate increase %",
+                        f"{'+' if rate_increase_pct >= 0 else ''}{rate_increase_pct:.1f}%",
+                        "green" if rate_increase_pct >= 0 else "orange",
+                        "%",
+                        "vs current warranty rate",
+                    )
+            if sale_increase_dollars is not None:
+                st.markdown(
+                    status_banner(
+                        f"Projected warranty labor sale increase: "
+                        f"${sale_increase_dollars:,.0f} "
+                        f"({'+' if (rate_increase_pct or 0) >= 0 else ''}"
+                        f"{rate_increase_pct:.1f}%) on {hours_vol:,.0f} warranty hours "
+                        f"at a ${rate_increase_dollars:,.2f}/hr rate lift "
+                        f"(${current_rate:,.2f} → ${proposed_rate:,.2f}).",
+                        "success" if sale_increase_dollars >= 0 else "warn",
+                    ),
+                    unsafe_allow_html=True,
+                )
+            elif rate_increase_dollars is not None:
+                st.caption(
+                    "Add warranty labor hours above to also project total labor-sale $ increase."
+                )
+        else:
             st.caption(
-                "Add warranty labor hours above to also project total labor-sale $ increase."
+                "Enter your current warranty labor rate to see the $ and % increase "
+                "vs labor rate achieved."
             )
 
     s1, s2, s3, s4 = st.columns(4)

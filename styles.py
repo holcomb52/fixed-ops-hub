@@ -908,11 +908,77 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
 }
 
 .stTextInput input, .stNumberInput input, .stSelectbox > div > div,
-.stDateInput input {
-    background: rgba(12, 18, 32, 0.8) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
+.stDateInput input,
+.stTextInput [data-baseweb="input"] > div,
+.stNumberInput [data-baseweb="input"] > div,
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stTextInput"] [data-baseweb="input"],
+div[data-testid="stNumberInput"] [data-baseweb="input"] {
+    background: #141c2e !important;
+    border: 1.5px solid rgba(0, 212, 255, 0.45) !important;
     border-radius: 10px !important;
+    color: #f1f5f9 !important;
+    box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.08),
+                0 0 0 1px rgba(0, 212, 255, 0.05) !important;
+}
+
+.stTextInput input:focus, .stNumberInput input:focus, .stDateInput input:focus,
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus,
+.stTextInput [data-baseweb="input"]:focus-within,
+.stNumberInput [data-baseweb="input"]:focus-within,
+div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+div[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within {
+    border-color: #00d4ff !important;
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.25),
+                0 0 18px rgba(0, 212, 255, 0.18) !important;
+}
+
+/* Number input stepper buttons — keep them readable on darker fields */
+.stNumberInput button,
+div[data-testid="stNumberInput"] button {
     color: #e2e8f0 !important;
+}
+
+.input-panel {
+    border: 1px solid rgba(0, 212, 255, 0.28);
+    border-radius: 16px;
+    padding: 1rem 1.15rem 1.15rem;
+    margin: 0.35rem 0 1.1rem;
+    background: linear-gradient(
+        160deg,
+        rgba(20, 28, 46, 0.95),
+        rgba(8, 12, 22, 0.88)
+    );
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04),
+                0 8px 28px rgba(0, 0, 0, 0.25);
+}
+
+.input-panel-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #e2e8f0;
+    margin: 0 0 0.25rem;
+}
+
+.input-panel-sub {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    margin: 0 0 0.85rem;
+}
+
+/* Bordered Streamlit containers — make input groups stand out */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1.5px solid rgba(0, 212, 255, 0.35) !important;
+    border-radius: 16px !important;
+    background: rgba(16, 24, 40, 0.72) !important;
+    padding: 0.35rem 0.5rem 0.6rem !important;
+    margin-bottom: 0.85rem !important;
+    box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.06),
+                0 10px 28px rgba(0, 0, 0, 0.22) !important;
 }
 
 div[data-testid="stForm"] {

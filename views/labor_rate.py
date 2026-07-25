@@ -39,98 +39,100 @@ def render():
             "changes update that Reports entry when you save again."
         )
 
-    st.markdown("##### Strong labor range")
-    st.caption(
-        "This is your main customer-pay mix. Enter the hour band and the ELR you want "
-        "that band to deliver — the grid is priced strongest here."
-    )
+    with st.container(border=True):
+        st.markdown("##### Strong labor range")
+        st.caption(
+            "This is your main customer-pay mix. Enter the hour band and the ELR you want "
+            "that band to deliver — the grid is priced strongest here."
+        )
+        r1, r2 = st.columns([1.4, 1.1])
+        with r1:
+            hour_range = st.text_input(
+                "Hour range",
+                value="1.0-3.5",
+                key="labor_hour_range",
+                placeholder="e.g. 1.0-3.5",
+                help="Where most of your customer-pay labor hours fall.",
+            )
+        with r2:
+            range_elr = st.number_input(
+                "ELR for this range ($/hr)",
+                min_value=50.0,
+                max_value=1000.0,
+                value=295.0,
+                step=1.0,
+                key="labor_range_elr",
+                help="Effective labor rate you want this hour range to average.",
+            )
 
-    r1, r2 = st.columns([1.4, 1.1])
-    with r1:
-        hour_range = st.text_input(
-            "Hour range",
-            value="1.0-3.5",
-            key="labor_hour_range",
-            placeholder="e.g. 1.0-3.5",
-            help="Where most of your customer-pay labor hours fall.",
-        )
-    with r2:
-        range_elr = st.number_input(
-            "ELR for this range ($/hr)",
-            min_value=50.0,
-            max_value=1000.0,
-            value=295.0,
-            step=1.0,
-            key="labor_range_elr",
-            help="Effective labor rate you want this hour range to average.",
+    with st.container(border=True):
+        st.markdown("##### Rest of the grid")
+        o1, o2, o3 = st.columns([1.1, 1.1, 1.0])
+        with o1:
+            use_custom_base = st.checkbox(
+                "Set a different ELR outside this range",
+                value=False,
+                key="labor_use_base",
+            )
+        with o2:
+            base_elr_input = st.number_input(
+                "ELR outside strong range ($/hr)",
+                min_value=50.0,
+                max_value=1000.0,
+                value=round(float(range_elr) * 0.92, 2),
+                step=1.0,
+                key="labor_base_elr",
+                disabled=not use_custom_base,
+                help="Hours outside your strong range use this rate. Leave unchecked to auto-set ~8% below.",
+            )
+        with o3:
+            max_hours = st.number_input(
+                "Grid through (hrs)",
+                min_value=4.0,
+                max_value=24.0,
+                value=16.0,
+                step=0.5,
+                key="labor_max_hours",
+            )
+
+        boost_pct = st.slider(
+            "Extra lift at the center of the strong range",
+            min_value=0,
+            max_value=20,
+            value=10,
+            step=1,
+            format="%d%%",
+            key="labor_boost_pct",
+            help="Peaks the dollars in the middle of your strong hour band (0–20%).",
         )
 
-    st.markdown("##### Rest of the grid")
-    o1, o2, o3 = st.columns([1.1, 1.1, 1.0])
-    with o1:
-        use_custom_base = st.checkbox(
-            "Set a different ELR outside this range",
-            value=False,
-            key="labor_use_base",
+    with st.container(border=True):
+        st.markdown("##### Warranty rate request")
+        st.caption(
+            "Enter what you are paid today for warranty labor. We compare it to your "
+            "entire-grid average ELR to project the rate / labor-sale increase."
         )
-    with o2:
-        base_elr_input = st.number_input(
-            "ELR outside strong range ($/hr)",
-            min_value=50.0,
-            max_value=1000.0,
-            value=round(float(range_elr) * 0.92, 2),
-            step=1.0,
-            key="labor_base_elr",
-            disabled=not use_custom_base,
-            help="Hours outside your strong range use this rate. Leave unchecked to auto-set ~8% below.",
-        )
-    with o3:
-        max_hours = st.number_input(
-            "Grid through (hrs)",
-            min_value=4.0,
-            max_value=24.0,
-            value=16.0,
-            step=0.5,
-            key="labor_max_hours",
-        )
-
-    boost_pct = st.slider(
-        "Extra lift at the center of the strong range",
-        min_value=0,
-        max_value=20,
-        value=10,
-        step=1,
-        format="%d%%",
-        key="labor_boost_pct",
-        help="Peaks the dollars in the middle of your strong hour band (0–20%).",
-    )
-
-    st.markdown("##### Warranty rate request")
-    st.caption(
-        "Enter what you are paid today for warranty labor. We compare it to your "
-        "entire-grid average ELR to project the rate / labor-sale increase."
-    )
-    w1, w2 = st.columns([1.1, 1.1])
-    with w1:
-        current_warranty_rate = st.number_input(
-            "Current warranty labor rate ($/hr)",
-            min_value=0.0,
-            max_value=1000.0,
-            value=0.0,
-            step=1.0,
-            key="labor_current_warranty_rate",
-            help="Your present OEM warranty labor rate per hour.",
-        )
-    with w2:
-        warranty_hours = st.number_input(
-            "Warranty labor hours (optional)",
-            min_value=0.0,
-            max_value=1_000_000.0,
-            value=0.0,
-            step=100.0,
-            key="labor_warranty_hours",
-            help="Annual or period warranty hours sold. Used to project total labor-sale $ increase.",
-        )
+        w1, w2 = st.columns([1.1, 1.1])
+        with w1:
+            current_warranty_rate = st.number_input(
+                "Current warranty labor rate ($/hr)",
+                min_value=0.0,
+                max_value=1000.0,
+                value=0.0,
+                step=1.0,
+                key="labor_current_warranty_rate",
+                help="Your present OEM warranty labor rate per hour.",
+            )
+        with w2:
+            warranty_hours = st.number_input(
+                "Warranty labor hours (optional)",
+                min_value=0.0,
+                max_value=1_000_000.0,
+                value=0.0,
+                step=100.0,
+                key="labor_warranty_hours",
+                help="Annual or period warranty hours sold. Used to project total labor-sale $ increase.",
+            )
 
     try:
         strong_lo, strong_hi = parse_hour_range(hour_range)

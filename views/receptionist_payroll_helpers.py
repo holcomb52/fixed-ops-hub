@@ -92,9 +92,6 @@ def _parse_appointment_rate(name: str, row: ReceptionistPayrollRow | None = None
 
 
 def _parse_appointments_value(name: str, row: ReceptionistPayrollRow | None = None) -> float:
-    num_key = rec_key(name, "appointments_set")
-    if num_key in st.session_state:
-        return float(st.session_state.get(num_key, 0) or 0)
     text_key = _appointments_text_key(name)
     if text_key in st.session_state:
         raw = str(st.session_state.get(text_key, "")).strip()
@@ -103,6 +100,12 @@ def _parse_appointments_value(name: str, row: ReceptionistPayrollRow | None = No
                 return max(float(raw), 0.0)
             except ValueError:
                 return 0.0
+        # Empty typed field means the user cleared it — do not fall back to report.
+        if _appointments_widgets_active(name):
+            return 0.0
+    num_key = rec_key(name, "appointments_set")
+    if num_key in st.session_state:
+        return float(st.session_state.get(num_key, 0) or 0)
     store = st.session_state.get("receptionist_value_store", {})
     if name in store and "appointments_set" in store[name]:
         return float(store[name]["appointments_set"] or 0)
@@ -215,6 +218,9 @@ def _commit_receptionist_inputs(name: str):
     rate = _parse_appointment_rate(name, row)
     appointments = _parse_appointments_value(name, row)
     tires = _parse_tires_value(name, row)
+    # Keep numeric mirror in sync for summary/export readers.
+    st.session_state[rec_key(name, "appointments_set")] = appointments
+    st.session_state[rec_key(name, "tires_sold")] = tires
     store = st.session_state.setdefault("receptionist_value_store", {})
     store[name] = {
         **store.get(name, {}),
@@ -377,6 +383,7 @@ def persist_receptionist_changes(name: str | None = None):
     if name:
         st.session_state[section_open_key(name)] = True
         _commit_receptionist_inputs(name)
+        mark_appointments_override(name)
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
@@ -491,8 +498,12 @@ def apply_cashiers_report_to_session(report_rows) -> int:
     by_code = report_by_code(report_rows)
     by_last = report_by_last_name(report_rows)
     matched = 0
+    overrides = set(st.session_state.get("receptionist_appt_overrides") or [])
 
     for row in flatten_roster(st.session_state.receptionist_roster):
+        # Keep manually typed appointment counts when the same report is still open.
+        if row.name in overrides:
+            continue
         appt_count = 0.0
         for code in row.taker_codes:
             report = by_code.get(code.upper())
@@ -510,12 +521,20 @@ def apply_cashiers_report_to_session(report_rows) -> int:
             )
             matched += 1
 
-    st.session_state.receptionist_report_loaded = matched > 0
+    st.session_state.receptionist_report_loaded = matched > 0 or bool(overrides)
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
     return matched
+
+
+def mark_appointments_override(name: str) -> None:
+    """Remember that the user typed an appointments override for this receptionist."""
+    overrides = list(st.session_state.get("receptionist_appt_overrides") or [])
+    if name not in overrides:
+        overrides.append(name)
+    st.session_state.receptionist_appt_overrides = overrides
 
 
 def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:

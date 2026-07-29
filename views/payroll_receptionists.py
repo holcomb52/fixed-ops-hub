@@ -44,6 +44,7 @@ from views.receptionist_payroll_helpers import (
     sync_receptionist,
     toggle_receptionist_section,
     _appointment_rate_text_key,
+    _appointments_text_key,
     _read_appointment_rate,
     _tires_text_key,
 )
@@ -273,15 +274,12 @@ def _render_receptionist_section(row) -> None:
 
     c1, c2 = st.columns(2)
     with c1:
-        st.number_input(
+        st.text_input(
             "Appointments set",
-            min_value=0.0,
-            step=1.0,
-            format="%.0f",
-            key=rec_key(row.name, "appointments_set"),
+            key=_appointments_text_key(row.name),
             on_change=persist_receptionist_changes,
             args=(row.name,),
-            help="Auto-filled from CASHIERS .xlsx by last name / taker code. Change the number to override.",
+            help="Auto-filled from CASHIERS .xlsx. Type a new number to override — RecallPulse tiers recalculate immediately.",
         )
     with c2:
         st.text_input(
@@ -404,14 +402,28 @@ def render():
 
     if report_file:
         try:
-            matched = apply_cashiers_report_to_session(parse_cashiers_report(report_file))
-            st.markdown(
-                status_banner(
-                    f"✓ Loaded CASHIERS report — matched {matched} receptionists",
-                    "success",
-                ),
-                unsafe_allow_html=True,
-            )
+            from io import BytesIO
+
+            report_file.seek(0)
+            report_bytes = report_file.read()
+            report_sig = f"{report_file.name}:{len(report_bytes)}"
+            if st.session_state.get("cashiers_processed_sig") != report_sig:
+                # Fresh upload replaces prior typed overrides with report counts.
+                st.session_state.receptionist_appt_overrides = []
+                matched = apply_cashiers_report_to_session(
+                    parse_cashiers_report(BytesIO(report_bytes))
+                )
+                st.session_state.cashiers_processed_sig = report_sig
+                st.markdown(
+                    status_banner(
+                        f"✓ Loaded CASHIERS report — matched {matched} receptionists. "
+                        "You can type over Appointments set to override.",
+                        "success",
+                    ),
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.session_state.receptionist_report_loaded = True
         except Exception as exc:
             st.markdown(status_banner(f"Report import failed: {exc}", "warn"), unsafe_allow_html=True)
 

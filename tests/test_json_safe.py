@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import unittest
+
 import json
 import math
 
@@ -49,3 +51,11 @@ def test_serialize_payroll_session_rejects_nan():
     tech = snapshot["teams"]["Olan's Team"][0]
     assert tech["closing_pct"] == 0.0
     assert tech["cp_hrs_per_ro"] == 0.0
+
+
+def load_tests(loader, tests, pattern):
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite

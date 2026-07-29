@@ -88,6 +88,16 @@ APP_PASSWORD = "choose-a-strong-password"
 
 No AI runs in this app — it is payroll and warranty spreadsheet math only.
 
+## Payroll (every pay period)
+
+See **[docs/PAYROLL-RUNBOOK.md](docs/PAYROLL-RUNBOOK.md)** for the locked-in upload/save workflow.
+
+Regression guard:
+
+```bash
+python3 -m unittest tests.test_payroll_lockin tests.test_recall_pulse_bonus tests.test_json_safe tests.test_flag_pdf_parser -v
+```
+
 ## Project structure
 
 ```

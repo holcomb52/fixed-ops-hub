@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import unittest
+
 from lib.flag_pdf_parser import (
     _finalize_tech_totals,
     _parse_detail_line,
@@ -104,3 +106,11 @@ def test_finalize_sums_when_group_total_missing():
 def test_normalize_known_pdf_name():
     assert normalize_tech_name("CHARLES H") == "Charles Hinxman"
     assert normalize_tech_name("ARMAND LIEBES") == "Armand Liebes"
+
+
+def load_tests(loader, tests, pattern):
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite

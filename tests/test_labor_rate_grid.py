@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import unittest
+
 from lib.labor_rate_grid import (
     apply_amount_overrides,
     build_labor_grid,
@@ -117,3 +119,11 @@ def test_editor_dataframe_roundtrip_diff():
     assert abs(overrides[2.0] - 777.77) < 0.01
     # No false positives when unchanged
     assert overrides_from_editor_dataframe(base, editor) == {}
+
+
+def load_tests(loader, tests, pattern):
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite

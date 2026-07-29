@@ -50,6 +50,41 @@ def test_jammed_warranty_and_internal_tokens():
     assert internal is not None and internal[1].bill_type == "Internal"
 
 
+def test_jammed_line_missing_actual_column():
+    line = "352007/18/2...Service 580317 26CHZOILC... 0.30 22.... 6.83 3 InternalI"
+    parsed = _parse_detail_line(line)
+    assert parsed is not None
+    tech_number, item = parsed
+    assert tech_number == "3520"
+    assert item.ro_number == "580317"
+    assert item.booked_hours == 0.30
+    assert item.extended == 6.83
+    assert item.bill_type == "Internal"
+
+
+def test_jammed_negative_booked_adjustment():
+    line = "374107/28/2...Service 580462 05CHZZ1 0.00 -0.50 42.... -21.00 1 Warr... I"
+    parsed = _parse_detail_line(line)
+    assert parsed is not None
+    tech_number, item = parsed
+    assert tech_number == "3741"
+    assert item.booked_hours == -0.50
+    assert item.extended == -21.00
+    assert item.bill_type == "Warranty"
+
+
+def test_classic_negative_booked_adjustment():
+    line = (
+        "3741 07/28/2026 Service 580462 05CHZZ1 0.00 -0.50 42.000 -21.00 1 Warranty I"
+    )
+    parsed = _parse_detail_line(line)
+    assert parsed is not None
+    _, item = parsed
+    assert item.booked_hours == -0.50
+    assert item.extended == -21.00
+    assert item.bill_type == "Warranty"
+
+
 def test_finalize_sums_when_group_total_missing():
     from lib.flag_pdf_parser import FlagLineItem
 

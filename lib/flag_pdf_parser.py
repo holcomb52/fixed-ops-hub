@@ -35,10 +35,14 @@ PDF_NAME_MAP = {
 NAME_RE = re.compile(r"Tech Name:\s+(.+?)\s*\(Items:")
 SUMMARY_RE = re.compile(r"Group T[^\d]*([\d.]+)\s+([\d.,]+)\s+([\d.,]+)")
 DATE_RANGE_RE = re.compile(r"Date Range:\s*(\d{2}/\d{2}/\d{2})\s*-\s*(\d{2}/\d{2}/\d{2})")
+# Signed hours / dollars (CDK adjustments can be negative)
+_SIGNED_NUM = r"-?\d+(?:\.\d+)?"
+_SIGNED_MONEY = r"-?[\d,]+(?:\.\d+)?"
+
 # Classic spaced layout (older CDK exports)
 LINE_RE = re.compile(
     r"^(\d+)\s+(\d{2}/\d{2}/\d{4})\s+(\S+)\s+(\d{6})\s+(\S+)\s+"
-    r"([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
+    rf"({_SIGNED_NUM})\s+({_SIGNED_NUM})\s+({_SIGNED_NUM})\s+({_SIGNED_MONEY})"
 )
 # Newer exports jam Tech# + Date + Department and truncate fields:
 # 352007/15/2...Service 579963 01CHZ-TIRE4 0.00 1.10 22.... 25.03 5 Custo...I
@@ -48,10 +52,24 @@ JAMMED_LINE_RE = re.compile(
     r"(Service|PDI|Body|Parts|Lube|[A-Za-z]+)"
     r"\s+(\d{5,8})"
     r"\s+(\S+)"
-    r"\s+([\d.]+)"
-    r"\s+([\d.]+)"
+    rf"\s+({_SIGNED_NUM})"
+    rf"\s+({_SIGNED_NUM})"
     r"\s+(\S+)"
-    r"\s+([\d.,]+)"
+    rf"\s+({_SIGNED_MONEY})"
+    r"\s+(\d+)"
+    r"\s+(\S+)"
+)
+# Same jammed layout when Actual Time is omitted by truncation:
+# 352007/18/2...Service 580317 26CHZOILC... 0.30 22.... 6.83 3 InternalI
+JAMMED_LINE_NO_ACTUAL_RE = re.compile(
+    r"^(\d{3,6})"
+    r"(\d{2}/\d{2}/\d\S*?)"
+    r"(Service|PDI|Body|Parts|Lube|[A-Za-z]+)"
+    r"\s+(\d{5,8})"
+    r"\s+(\S+)"
+    rf"\s+({_SIGNED_NUM})"
+    r"\s+(\S+)"
+    rf"\s+({_SIGNED_MONEY})"
     r"\s+(\d+)"
     r"\s+(\S+)"
 )
@@ -164,33 +182,55 @@ def _parse_detail_line(line: str) -> Optional[tuple]:
                 operation_code=lm.group(5),
                 booked_hours=float(lm.group(7)),
                 st_rate=float(lm.group(8)),
-                extended=float(lm.group(9)),
+                extended=float(lm.group(9).replace(",", "")),
                 bill_type=_bill_type_from_line(line),
             ),
         )
 
     jm = JAMMED_LINE_RE.match(line)
-    if not jm:
+    if jm:
+        rate_raw = jm.group(8)
+        try:
+            st_rate = float(rate_raw)
+        except ValueError:
+            st_rate = 0.0
+
+        return (
+            jm.group(1),
+            FlagLineItem(
+                date=jm.group(2).replace("...", ""),
+                department=jm.group(3),
+                ro_number=jm.group(4),
+                operation_code=jm.group(5),
+                booked_hours=float(jm.group(7)),
+                st_rate=st_rate,
+                extended=float(jm.group(9).replace(",", "")),
+                bill_type=_bill_type_from_token(jm.group(11)),
+            ),
+        )
+
+    # Actual Time column dropped by truncation — remaining hours field is Booked.
+    na = JAMMED_LINE_NO_ACTUAL_RE.match(line)
+    if not na:
         return None
 
-    rate_raw = jm.group(8)
+    rate_raw = na.group(7)
     try:
         st_rate = float(rate_raw)
     except ValueError:
         st_rate = 0.0
 
-    bill_token = jm.group(11)
     return (
-        jm.group(1),
+        na.group(1),
         FlagLineItem(
-            date=jm.group(2).replace("...", ""),
-            department=jm.group(3),
-            ro_number=jm.group(4),
-            operation_code=jm.group(5),
-            booked_hours=float(jm.group(7)),
+            date=na.group(2).replace("...", ""),
+            department=na.group(3),
+            ro_number=na.group(4),
+            operation_code=na.group(5),
+            booked_hours=float(na.group(6)),
             st_rate=st_rate,
-            extended=float(jm.group(9).replace(",", "")),
-            bill_type=_bill_type_from_token(bill_token),
+            extended=float(na.group(8).replace(",", "")),
+            bill_type=_bill_type_from_token(na.group(10)),
         ),
     )
 

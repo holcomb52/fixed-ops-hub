@@ -58,6 +58,17 @@
       "warranty_bonus_amount": 100.0
     },
     {
+      "name": "Megan Schneider",
+      "last_name": "SCHNEIDER",
+      "employee_type": "receptionist",
+      "taker_codes": [
+        "22SCHNEIDERM"
+      ],
+      "appointment_rate": 2.0,
+      "has_warranty_bonus": false,
+      "warranty_bonus_amount": 100.0
+    },
+    {
       "name": "Serenity Skinner",
       "last_name": "SKINNER",
       "employee_type": "receptionist",

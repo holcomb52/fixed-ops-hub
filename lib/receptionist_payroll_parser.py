@@ -42,6 +42,10 @@ def last_name_from_taker_code(code: str) -> str:
         return ""
     if raw in CODE_LAST_NAME:
         return CODE_LAST_NAME[raw]
+    # 22LASTNAMEF  or  22LASTNAME1 (digit suffix variants)
+    match = re.match(r"^22([A-Z]+?)(?:[A-Z]|\d+)$", raw)
+    if match:
+        return match.group(1)
     match = re.match(r"^22([A-Z]+)([A-Z])$", raw)
     if match:
         return match.group(1)

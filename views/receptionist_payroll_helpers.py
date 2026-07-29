@@ -471,13 +471,16 @@ def _clear_legacy_index_keys():
 
 def init_receptionist_payroll_session():
     _clear_legacy_index_keys()
+    from lib.receptionist_roster import ensure_known_receptionists, save_roster
+
     if "receptionist_roster" not in st.session_state:
-        apply_roster_to_session(load_roster())
+        roster = load_roster()
+        if ensure_known_receptionists(roster):
+            save_roster(roster)
+        apply_roster_to_session(roster)
     else:
         st.session_state.receptionist_roster = normalize_roster(st.session_state.receptionist_roster)
-        from lib.receptionist_roster import ensure_recall_pulse_roster, save_roster
-
-        if ensure_recall_pulse_roster(st.session_state.receptionist_roster):
+        if ensure_known_receptionists(st.session_state.receptionist_roster):
             save_roster(st.session_state.receptionist_roster)
     if "receptionist_report_loaded" not in st.session_state:
         st.session_state.receptionist_report_loaded = False
@@ -498,21 +501,26 @@ def apply_cashiers_report_to_session(report_rows) -> int:
     by_code = report_by_code(report_rows)
     by_last = report_by_last_name(report_rows)
     matched = 0
+    matched_codes: set[str] = set()
     overrides = set(st.session_state.get("receptionist_appt_overrides") or [])
 
     for row in flatten_roster(st.session_state.receptionist_roster):
         # Keep manually typed appointment counts when the same report is still open.
         if row.name in overrides:
+            for code in row.taker_codes:
+                matched_codes.add(str(code).strip().upper())
             continue
         appt_count = 0.0
         for code in row.taker_codes:
             report = by_code.get(code.upper())
             if report:
                 appt_count += report.appointments_set
+                matched_codes.add(code.upper())
         if not appt_count and row.last_name:
             report = by_last.get(row.last_name.upper())
             if report:
                 appt_count = report.appointments_set
+                matched_codes.add(report.code.upper())
         if appt_count:
             appt_value = float(appt_count)
             st.session_state[rec_key(row.name, "appointments_set")] = appt_value
@@ -520,6 +528,22 @@ def apply_cashiers_report_to_session(report_rows) -> int:
                 str(int(appt_value)) if appt_value else ""
             )
             matched += 1
+
+    unmatched = [
+        row
+        for row in report_rows
+        if row.code.upper() not in matched_codes
+        and row.appointments_set > 0
+        and row.code.upper() not in {"SVCPTL", "NUMA"}
+    ]
+    st.session_state.cashiers_unmatched = [
+        {
+            "code": row.code,
+            "label": row.display_label,
+            "appointments": row.appointments_set,
+        }
+        for row in unmatched
+    ]
 
     st.session_state.receptionist_report_loaded = matched > 0 or bool(overrides)
     refresh_receptionist_value_store()

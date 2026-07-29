@@ -49,6 +49,12 @@ def default_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
             ReceptionistPayrollRow("Kayla Hoffman", last_name="HOFFMAN", taker_codes=["22HOFFMANK"]),
             ReceptionistPayrollRow("Samantha Rodriguez", last_name="RODRIGUEZ", taker_codes=["22RODRIGUEZS"]),
             ReceptionistPayrollRow(
+                "Megan Schneider",
+                last_name="SCHNEIDER",
+                taker_codes=["22SCHNEIDERM"],
+                appointment_rate=2.0,
+            ),
+            ReceptionistPayrollRow(
                 "Serenity Skinner",
                 last_name="SKINNER",
                 taker_codes=["22SKINNERS"],
@@ -58,6 +64,17 @@ def default_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
             ),
         ],
     }
+
+
+# People who should always be on the roster when their CDK taker code appears.
+KNOWN_RECEPTIONIST_DEFAULTS = (
+    ReceptionistPayrollRow(
+        "Megan Schneider",
+        last_name="SCHNEIDER",
+        taker_codes=["22SCHNEIDERM"],
+        appointment_rate=2.0,
+    ),
+)
 
 
 def flatten_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) -> List[ReceptionistPayrollRow]:
@@ -248,6 +265,54 @@ def ensure_recall_pulse_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) 
         if row.name == "Brandy Sistrunk" and not row.has_recall_pulse_plan:
             row.has_recall_pulse_plan = True
             changed = True
+    return changed
+
+
+def ensure_known_receptionists(roster: Dict[str, List[ReceptionistPayrollRow]]) -> bool:
+    """Add/fix known receptionists (e.g. Megan Schneider) on existing cloud rosters."""
+    changed = ensure_recall_pulse_roster(roster)
+    rows = roster.setdefault(TYPE_RECEPTIONIST, [])
+    existing_codes = {
+        str(code).strip().upper()
+        for row in rows
+        for code in (row.taker_codes or [])
+        if str(code).strip()
+    }
+
+    for known in KNOWN_RECEPTIONIST_DEFAULTS:
+        known_codes = [str(c).strip().upper() for c in known.taker_codes if str(c).strip()]
+        if any(code in existing_codes for code in known_codes):
+            continue
+
+        attached = False
+        for row in rows:
+            name_key = (row.name or "").strip().upper()
+            last_key = (row.last_name or "").strip().upper()
+            if (
+                name_key in {known.name.upper(), known.name.split()[0].upper()}
+                or last_key == known.last_name.upper()
+            ):
+                merged = list(row.taker_codes or [])
+                for code in known_codes:
+                    if code not in {c.upper() for c in merged}:
+                        merged.append(code)
+                row.taker_codes = merged
+                if not row.last_name:
+                    row.last_name = known.last_name
+                if name_key == known.name.split()[0].upper():
+                    row.name = known.name
+                if not row.appointment_rate and known.appointment_rate:
+                    row.appointment_rate = known.appointment_rate
+                existing_codes.update(known_codes)
+                attached = True
+                changed = True
+                break
+
+        if not attached:
+            rows.append(_clone_row(known))
+            existing_codes.update(known_codes)
+            changed = True
+
     return changed
 
 

@@ -422,6 +422,12 @@ def render():
                     ),
                     unsafe_allow_html=True,
                 )
+                for miss in st.session_state.get("cashiers_unmatched", []):
+                    st.warning(
+                        f"CASHIERS code **{miss['code']}** ({miss['label']}) has "
+                        f"**{miss['appointments']:.0f}** appointments but is not on the roster. "
+                        "Add them under Manage team roster with that taker code, then re-upload."
+                    )
             else:
                 st.session_state.receptionist_report_loaded = True
         except Exception as exc:

@@ -10,6 +10,7 @@ from typing import BinaryIO, Dict, List, Union
 import pandas as pd
 
 from lib.flag_pdf_parser import PDF_NAME_MAP, normalize_tech_name
+from lib.json_safe import safe_float
 from lib.tech_roster import normalize_tech_number
 
 
@@ -94,8 +95,7 @@ def parse_upsell_report(
 
         tech_number = normalize_tech_number(row.iloc[idx_number])
         display_name = _match_display_name(raw_name, roster_names)
-        closing_raw = row.iloc[idx_close]
-        closing_pct = float(str(closing_raw).replace("%", "").strip() or 0)
+        closing_pct = safe_float(row.iloc[idx_close])
         # Excel often stores 52% as 0.52
         if 0 < closing_pct <= 1:
             closing_pct *= 100.0
@@ -104,10 +104,10 @@ def parse_upsell_report(
             tech_number=tech_number,
             raw_name=raw_name,
             display_name=display_name,
-            ro_count=int(float(row.iloc[idx_ros] or 0)),
+            ro_count=int(safe_float(row.iloc[idx_ros])),
             closing_pct=closing_pct,
-            hours_sold=float(row.iloc[idx_hours] or 0),
-            items_sold=int(float(row.iloc[idx_sold] or 0)),
+            hours_sold=safe_float(row.iloc[idx_hours]),
+            items_sold=int(safe_float(row.iloc[idx_sold])),
         )
         by_name[display_name] = metrics
         if tech_number:

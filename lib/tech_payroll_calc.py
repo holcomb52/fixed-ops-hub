@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
+from lib.json_safe import safe_float
+
 WEEKLY_HOUR_GUARANTEE_DEFAULT = 40.0
 
 
@@ -383,16 +385,16 @@ def apply_cp_metrics(rows: List[TechPayrollRow], cp_by_name: Dict[str, dict]) ->
         metrics = cp_by_name.get(row.name)
         if not metrics:
             continue
-        row.cp_hours = float(metrics.get("cp_hours", 0) or 0)
-        row.cp_ro_count = int(metrics.get("cp_ro_count", 0) or 0)
-        row.cp_hrs_per_ro = float(metrics.get("cp_hrs_per_ro", 0) or 0)
+        row.cp_hours = safe_float(metrics.get("cp_hours", 0))
+        row.cp_ro_count = int(safe_float(metrics.get("cp_ro_count", 0)))
+        row.cp_hrs_per_ro = safe_float(metrics.get("cp_hrs_per_ro", 0))
 
 
 def apply_closing_metrics(rows: List[TechPayrollRow], closing_by_name: Dict[str, float]) -> None:
     """Apply closing % from the Ignite upsell report."""
     for row in rows:
         if row.name in closing_by_name:
-            row.closing_pct = float(closing_by_name[row.name] or 0)
+            row.closing_pct = safe_float(closing_by_name[row.name])
 
 
 def recalc_supplemental_bonuses(rows: List[TechPayrollRow]) -> None:

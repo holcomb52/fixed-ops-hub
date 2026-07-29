@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from lib.json_safe import safe_float
 from lib.tech_payroll_calc import (
     DEFAULT_TEAMS,
     DEFAULT_TECH_NUMBERS,
@@ -194,11 +195,11 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     name=tech["name"],
                     team=team_name,
                     tech_number=tech_number,
-                    hourly_rate=float(tech.get("rate", tech.get("hourly_rate", 0)) or 0),
-                    flat_rate_hours=float(tech.get("hours", 0) or 0),
-                    dollars_earned=float(tech.get("dollars", 0) or 0),
-                    training_hours=float(tech.get("train", tech.get("training_hours", 0)) or 0),
-                    spiff=float(tech.get("spiff", 0) or 0),
+                    hourly_rate=safe_float(tech.get("rate", tech.get("hourly_rate", 0))),
+                    flat_rate_hours=safe_float(tech.get("hours", 0)),
+                    dollars_earned=safe_float(tech.get("dollars", 0)),
+                    training_hours=safe_float(tech.get("train", tech.get("training_hours", 0))),
+                    spiff=safe_float(tech.get("spiff", 0)),
                     notes=str(tech.get("notes", "") or ""),
                     foreman_rule=tech.get("foreman_rule", "none"),
                     quick_lube_sources=list(tech.get("quick_lube_sources", [])),
@@ -207,12 +208,12 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                         str(tech.get("tech_category", "") or ""),
                     ),
                     pay_plan=str(tech.get("pay_plan", "standard") or "standard"),
-                    weekly_hour_guarantee=float(tech.get("weekly_hour_guarantee", 0) or 0),
-                    cp_hours=float(tech.get("cp_hours", 0) or 0),
-                    cp_ro_count=int(tech.get("cp_ro_count", 0) or 0),
-                    cp_hrs_per_ro=float(tech.get("cp_hrs_per_ro", 0) or 0),
-                    closing_pct=float(tech.get("closing_pct", 0) or 0),
-                    supplemental_bonus=float(tech.get("supplemental_bonus", 0) or 0),
+                    weekly_hour_guarantee=safe_float(tech.get("weekly_hour_guarantee", 0)),
+                    cp_hours=safe_float(tech.get("cp_hours", 0)),
+                    cp_ro_count=int(safe_float(tech.get("cp_ro_count", 0))),
+                    cp_hrs_per_ro=safe_float(tech.get("cp_hrs_per_ro", 0)),
+                    closing_pct=safe_float(tech.get("closing_pct", 0)),
+                    supplemental_bonus=safe_float(tech.get("supplemental_bonus", 0)),
                     supplemental_tier=str(tech.get("supplemental_tier", "") or ""),
                 )
             )

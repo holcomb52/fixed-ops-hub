@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Tuple
 
+from lib.json_safe import json_safe
+
 
 def upsert_payroll_run(client, table: str, row: dict, run_id: str) -> Tuple[bool, str]:
     """Insert or update a payroll run in Supabase. Returns (ok, error_message)."""
     try:
+        safe_row = json_safe(row)
         existing = client.table(table).select("id").eq("id", run_id).execute()
         if existing.data:
-            client.table(table).update(row).eq("id", run_id).execute()
+            client.table(table).update(safe_row).eq("id", run_id).execute()
         else:
-            insert_row = dict(row)
+            insert_row = dict(safe_row)
             if "created_at" not in insert_row:
                 insert_row["created_at"] = insert_row.get("updated_at") or insert_row.get("completed_at")
             client.table(table).insert(insert_row).execute()

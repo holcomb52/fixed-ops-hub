@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
+from lib.json_safe import json_safe, safe_float
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_supabase_sync import delete_remote_run, load_remote_run, merge_run_records, upsert_payroll_run
 from lib.supabase_client import get_supabase, is_configured
@@ -37,27 +38,27 @@ def serialize_payroll_session(synced_teams: Dict[str, List[TechPayrollRow]], pay
                 "index": i,
                 "name": row.name,
                 "tech_number": row.tech_number,
-                "hours": row.flat_rate_hours,
-                "dollars": row.dollars_earned,
-                "rate": row.hourly_rate,
-                "train": row.training_hours,
-                "spiff": row.spiff,
+                "hours": safe_float(row.flat_rate_hours),
+                "dollars": safe_float(row.dollars_earned),
+                "rate": safe_float(row.hourly_rate),
+                "train": safe_float(row.training_hours),
+                "spiff": safe_float(row.spiff),
                 "notes": row.notes,
                 "foreman_rule": row.foreman_rule,
                 "quick_lube_sources": row.quick_lube_sources,
                 "tech_category": row.tech_category,
-                "cp_hours": row.cp_hours,
-                "cp_ro_count": row.cp_ro_count,
-                "cp_hrs_per_ro": row.cp_hrs_per_ro,
-                "closing_pct": row.closing_pct,
-                "supplemental_bonus": row.supplemental_bonus,
+                "cp_hours": safe_float(row.cp_hours),
+                "cp_ro_count": int(safe_float(row.cp_ro_count)),
+                "cp_hrs_per_ro": safe_float(row.cp_hrs_per_ro),
+                "closing_pct": safe_float(row.closing_pct),
+                "supplemental_bonus": safe_float(row.supplemental_bonus),
                 "supplemental_tier": row.supplemental_tier,
                 "pay_plan": row.pay_plan,
-                "weekly_hour_guarantee": row.weekly_hour_guarantee,
+                "weekly_hour_guarantee": safe_float(row.weekly_hour_guarantee),
             })
 
     snapshot = build_payroll_snapshot(synced_teams, pay_period)
-    return {
+    return json_safe({
         "pay_period": pay_period,
         "teams": teams_data,
         "totals": {
@@ -65,7 +66,7 @@ def serialize_payroll_session(synced_teams: Dict[str, List[TechPayrollRow]], pay
             "grand_total": snapshot["grand_total"],
         },
         "saved_at": _now_iso(),
-    }
+    })
 
 
 def snapshot_to_teams(snapshot: dict) -> Dict[str, List[TechPayrollRow]]:
@@ -95,18 +96,18 @@ def apply_snapshot_to_session(
     for team_name, techs in snapshot.get("teams", {}).items():
         for tech in techs:
             values_by_name[tech["name"]] = {
-                "hours": float(tech.get("hours", 0) or 0),
-                "dollars": float(tech.get("dollars", 0) or 0),
-                "rate": float(tech.get("rate", 0) or 0),
-                "train": float(tech.get("train", 0) or 0),
-                "spiff": float(tech.get("spiff", 0) or 0),
+                "hours": safe_float(tech.get("hours", 0)),
+                "dollars": safe_float(tech.get("dollars", 0)),
+                "rate": safe_float(tech.get("rate", 0)),
+                "train": safe_float(tech.get("train", 0)),
+                "spiff": safe_float(tech.get("spiff", 0)),
                 "notes": str(tech.get("notes", "") or ""),
                 "tech_number": str(tech.get("tech_number", "") or ""),
-                "cp_hours": float(tech.get("cp_hours", 0) or 0),
-                "cp_ro_count": int(tech.get("cp_ro_count", 0) or 0),
-                "cp_hrs_per_ro": float(tech.get("cp_hrs_per_ro", 0) or 0),
-                "closing_pct": float(tech.get("closing_pct", 0) or 0),
-                "supplemental_bonus": float(tech.get("supplemental_bonus", 0) or 0),
+                "cp_hours": safe_float(tech.get("cp_hours", 0)),
+                "cp_ro_count": int(safe_float(tech.get("cp_ro_count", 0))),
+                "cp_hrs_per_ro": safe_float(tech.get("cp_hrs_per_ro", 0)),
+                "closing_pct": safe_float(tech.get("closing_pct", 0)),
+                "supplemental_bonus": safe_float(tech.get("supplemental_bonus", 0)),
                 "supplemental_tier": str(tech.get("supplemental_tier", "") or ""),
             }
     apply_teams_to_session(teams, values_by_name)
@@ -116,14 +117,14 @@ def apply_snapshot_to_session(
     for techs in snapshot.get("teams", {}).values():
         for tech in techs:
             name = tech["name"]
-            cp_hrs_per_ro = float(tech.get("cp_hrs_per_ro", 0) or 0)
+            cp_hrs_per_ro = safe_float(tech.get("cp_hrs_per_ro", 0))
             if cp_hrs_per_ro or tech.get("cp_hours"):
                 cp_by_name[name] = {
-                    "cp_hours": float(tech.get("cp_hours", 0) or 0),
-                    "cp_ro_count": int(tech.get("cp_ro_count", 0) or 0),
+                    "cp_hours": safe_float(tech.get("cp_hours", 0)),
+                    "cp_ro_count": int(safe_float(tech.get("cp_ro_count", 0))),
                     "cp_hrs_per_ro": cp_hrs_per_ro,
                 }
-            closing_pct = float(tech.get("closing_pct", 0) or 0)
+            closing_pct = safe_float(tech.get("closing_pct", 0))
             if closing_pct:
                 closing_by_name[name] = closing_pct
     st.session_state.tech_cp_metrics_by_name = cp_by_name
@@ -138,7 +139,7 @@ def _local_path(run_id: str) -> Path:
 def _save_local(run_id: str, record: dict, flag_pdf_bytes: Optional[bytes]):
     path = _local_path(run_id)
     path.mkdir(parents=True, exist_ok=True)
-    (path / "record.json").write_text(json.dumps(record, indent=2))
+    (path / "record.json").write_text(json.dumps(json_safe(record), indent=2, allow_nan=False))
     if flag_pdf_bytes:
         (path / "flag.pdf").write_bytes(flag_pdf_bytes)
 

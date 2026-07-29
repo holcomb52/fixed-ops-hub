@@ -69,10 +69,12 @@ def _match_display_name(raw_name: str, roster_names: List[str]) -> str:
 
 
 def parse_upsell_report(
-    source: Union[str, BinaryIO, BytesIO],
+    source: Union[str, bytes, bytearray, BinaryIO, BytesIO],
     roster_names: List[str],
 ) -> Dict[str, UpsellTechMetrics]:
     """Parse upsell analysis Excel. Returns metrics keyed by roster display name."""
+    if isinstance(source, (bytes, bytearray)):
+        source = BytesIO(source)
     df = pd.read_excel(source, header=None)
     header_row = _find_header_row(df)
     headers = [_normalize_header(v) for v in df.iloc[header_row].tolist()]
@@ -94,6 +96,9 @@ def parse_upsell_report(
         display_name = _match_display_name(raw_name, roster_names)
         closing_raw = row.iloc[idx_close]
         closing_pct = float(str(closing_raw).replace("%", "").strip() or 0)
+        # Excel often stores 52% as 0.52
+        if 0 < closing_pct <= 1:
+            closing_pct *= 100.0
 
         metrics = UpsellTechMetrics(
             tech_number=tech_number,

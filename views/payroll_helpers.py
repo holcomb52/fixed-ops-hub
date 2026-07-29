@@ -188,9 +188,15 @@ def sync_flag_sheet_to_session() -> int:
     cp_by_name = {}
     for team_name, rows in st.session_state.tech_teams.items():
         for i, row in enumerate(rows):
-            if row.flat_rate_hours or row.dollars_earned:
-                st.session_state[field_key(team_name, i, "hours")] = float(row.flat_rate_hours)
-                st.session_state[field_key(team_name, i, "dollars")] = float(row.dollars_earned)
+            # Always mirror flag hours/dollars into session keys. These fields are
+            # not user-edited widgets — training/SPIFF are — so re-applying the PDF
+            # every time keeps payroll populated after reruns / roster sync.
+            st.session_state[field_key(team_name, i, "hours")] = float(
+                row.flat_rate_hours or 0
+            )
+            st.session_state[field_key(team_name, i, "dollars")] = float(
+                row.dollars_earned or 0
+            )
             if row.cp_hrs_per_ro or row.cp_hours:
                 cp_by_name[row.name] = {
                     "cp_hours": row.cp_hours,

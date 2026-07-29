@@ -434,10 +434,15 @@ def render():
             pdf_sig = f"{pdf_file.name}:{len(pdf_bytes)}"
             if st.session_state.get("flag_pdf_processed_sig") != pdf_sig:
                 store_flag_pdf(pdf_file, pdf_bytes)
-                pdf_file.seek(0)
-                parsed = parse_flag_sheet(pdf_file)
+                from io import BytesIO
+
+                parsed = parse_flag_sheet(BytesIO(pdf_bytes))
                 matched = sync_flag_sheet_to_session()
-                number_map = {t.display_name: t.tech_number for t in parsed.technicians if t.tech_number}
+                number_map = {
+                    t.display_name: t.tech_number
+                    for t in parsed.technicians
+                    if t.tech_number
+                }
                 numbers_updated = 0
                 for team_rows in st.session_state.tech_teams.values():
                     numbers_updated += apply_tech_numbers(team_rows, number_map)
@@ -462,7 +467,9 @@ def render():
                     for row in team
                     if row.flat_rate_hours or row.dollars_earned
                 )
-                number_note = f" · {numbers_updated} tech numbers synced" if numbers_updated else ""
+                number_note = (
+                    f" · {numbers_updated} tech numbers synced" if numbers_updated else ""
+                )
 
                 period_note = ""
                 if dates_updated:
@@ -470,23 +477,41 @@ def render():
                 elif st.session_state.pay_period:
                     period_note = f" · {st.session_state.pay_period}"
 
-                st.markdown(
-                    status_banner(
-                        f"✓ {matched} techs loaded{number_note} · {cp_count} CP metrics · "
-                        "Flag sheet saved — view anytime on **Flag Sheet** tab"
-                        + period_note,
-                        "success",
-                    ),
-                    unsafe_allow_html=True,
-                )
+                if matched == 0:
+                    st.markdown(
+                        status_banner(
+                            "Flag sheet uploaded, but no technicians matched the roster. "
+                            "Check names/tech # under Manage team roster, then re-upload.",
+                            "warn",
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        status_banner(
+                            f"✓ {matched} techs loaded{number_note} · {cp_count} CP metrics · "
+                            "Flag sheet saved — view anytime on **Flag Sheet** tab"
+                            + period_note,
+                            "success",
+                        ),
+                        unsafe_allow_html=True,
+                    )
                 if dates_updated:
                     st.rerun()
                 else:
                     from lib.payroll_autosave import autosave_technician_payroll
 
                     autosave_technician_payroll()
+            else:
+                # Same PDF still in the uploader — re-apply hours after any roster/session reset
+                sync_flag_sheet_to_session()
+                st.session_state.pdf_loaded = True
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)
+    elif st.session_state.get("flag_pdf_bytes"):
+        sync_flag_sheet_to_session()
+        st.session_state.pdf_loaded = True
+
 
     for tech in st.session_state.get("flag_unmatched_techs", []):
         number = tech.get("number") or "no #"

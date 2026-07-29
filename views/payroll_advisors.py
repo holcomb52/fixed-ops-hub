@@ -797,13 +797,22 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
+            from lib.advisor_payroll_storage import list_advisor_payroll_runs
+            from lib.payroll_supabase_sync import find_run_id_for_pay_period
+
             save_roster(st.session_state.advisor_roster)
+            run_id = st.session_state.get("active_advisor_run_id") or find_run_id_for_pay_period(
+                list_advisor_payroll_runs(),
+                st.session_state.pay_period,
+                prefer_status="draft",
+            )
             run_id, sync_error = save_advisor_payroll_run(
                 all_advisors_synced(),
                 st.session_state.pay_period,
                 weeks,
-                run_id=st.session_state.get("active_advisor_run_id"),
+                run_id=run_id,
                 status="completed",
+                cloud_sync=True,
             )
             st.session_state.active_advisor_run_id = run_id
             st.session_state.advisor_payroll_completed = True

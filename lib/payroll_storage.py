@@ -223,14 +223,26 @@ def save_payroll_run(
             "completed_at": completed_at,
             "updated_at": completed_at,
         }
-        if flag_pdf_bytes:
-            row["flag_pdf_base64"] = base64.b64encode(flag_pdf_bytes).decode("ascii")
-
+        # Phase 1: mark completed/draft in cloud without the large PDF so Reports
+        # never stays stuck on an old draft if the PDF upload fails.
         ok, err = upsert_payroll_run(client, TABLE, row, run_id)
         if not ok:
             sync_error = err
             record["_sync_error"] = err
             _save_local(run_id, record, flag_pdf_bytes, write_flag_pdf=False)
+        elif flag_pdf_bytes:
+            pdf_row = {
+                "flag_pdf_base64": base64.b64encode(flag_pdf_bytes).decode("ascii"),
+                "flag_pdf_filename": flag_pdf_filename,
+                "updated_at": completed_at,
+                "status": status,
+            }
+            ok_pdf, err_pdf = upsert_payroll_run(client, TABLE, pdf_row, run_id)
+            if not ok_pdf:
+                # Status already saved; warn without rolling status back to draft.
+                sync_error = f"Payroll saved, but flag PDF cloud upload failed: {err_pdf}"
+                record["_sync_error"] = sync_error
+                _save_local(run_id, record, flag_pdf_bytes, write_flag_pdf=False)
 
     return run_id, sync_error
 

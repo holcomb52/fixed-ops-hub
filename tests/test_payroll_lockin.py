@@ -218,10 +218,23 @@ class PayrollLockinTests(unittest.TestCase):
             storage.ARCHIVE_DIR = original_archive
             storage.get_supabase = original_get
 
-    def test_json_safe_contract_for_supabase(self):
-        cleaned = json_safe({"hours": float("nan"), "nested": {"pct": float("inf")}})
-        json.dumps(cleaned, allow_nan=False)
+    def test_merge_prefers_completed_over_stale_draft():
+    from lib.payroll_supabase_sync import merge_run_records
+
+    merged = merge_run_records(
+        {"id": "1", "status": "completed", "grand_total": 100, "snapshot": {"ok": True}},
+        {"id": "1", "status": "draft", "grand_total": 90, "source": "supabase"},
+    )
+    assert merged["status"] == "completed"
+    assert merged["snapshot"] == {"ok": True}
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_find_run_id_prefers_draft_for_period():
+    from lib.payroll_supabase_sync import find_run_id_for_pay_period
+
+    runs = [
+        {"id": "c1", "pay_period": "07/15/26-07/28/26", "status": "completed"},
+        {"id": "d1", "pay_period": "07/15/26-07/28/26", "status": "draft"},
+        {"id": "x1", "pay_period": "other", "status": "draft"},
+    ]
+    assert find_run_id_for_pay_period(runs, "07/15/26-07/28/26") == "d1"

@@ -654,13 +654,21 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
+            from lib.payroll_storage import list_payroll_runs
+            from lib.payroll_supabase_sync import find_run_id_for_pay_period
+
             sync_flag_sheet_to_session(force=True)
+            run_id = st.session_state.get("active_run_id") or find_run_id_for_pay_period(
+                list_payroll_runs(),
+                st.session_state.pay_period,
+                prefer_status="draft",
+            )
             run_id, sync_error = save_payroll_run(
                 all_rows_synced(),
                 st.session_state.pay_period,
                 st.session_state.get("flag_pdf_bytes"),
                 st.session_state.get("flag_pdf_filename", "flag_sheet.pdf"),
-                run_id=st.session_state.get("active_run_id"),
+                run_id=run_id,
                 status="completed",
                 cloud_sync=True,
             )

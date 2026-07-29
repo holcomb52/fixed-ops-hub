@@ -35,10 +35,27 @@ PDF_NAME_MAP = {
 NAME_RE = re.compile(r"Tech Name:\s+(.+?)\s*\(Items:")
 SUMMARY_RE = re.compile(r"Group T[^\d]*([\d.]+)\s+([\d.,]+)\s+([\d.,]+)")
 DATE_RANGE_RE = re.compile(r"Date Range:\s*(\d{2}/\d{2}/\d{2})\s*-\s*(\d{2}/\d{2}/\d{2})")
+# Classic spaced layout (older CDK exports)
 LINE_RE = re.compile(
     r"^(\d+)\s+(\d{2}/\d{2}/\d{4})\s+(\S+)\s+(\d{6})\s+(\S+)\s+"
     r"([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
 )
+# Newer exports jam Tech# + Date + Department and truncate fields:
+# 352007/15/2...Service 579963 01CHZ-TIRE4 0.00 1.10 22.... 25.03 5 Custo...I
+JAMMED_LINE_RE = re.compile(
+    r"^(\d{3,6})"
+    r"(\d{2}/\d{2}/\d\S*?)"
+    r"(Service|PDI|Body|Parts|Lube|[A-Za-z]+)"
+    r"\s+(\d{5,8})"
+    r"\s+(\S+)"
+    r"\s+([\d.]+)"
+    r"\s+([\d.]+)"
+    r"\s+(\S+)"
+    r"\s+([\d.,]+)"
+    r"\s+(\d+)"
+    r"\s+(\S+)"
+)
+REPORT_STAMP_RE = re.compile(r"\b(\d{2}/\d{2}/\d{2})\s+\d{2}:\d{2}:\d{2}\b")
 
 
 @dataclass
@@ -108,11 +125,74 @@ def compute_cp_metrics(line_items: List[FlagLineItem]) -> tuple[float, int]:
     return cp_hours, len(cp_ros)
 
 
+def _bill_type_from_token(token: str) -> str:
+    text = (token or "").strip().lower()
+    if text.startswith("custo") or text == "customer":
+        return "Customer"
+    if text.startswith("warr") or text == "warranty":
+        return "Warranty"
+    if text.startswith("intern") or text == "internal":
+        return "Internal"
+    return token
+
+
 def _bill_type_from_line(line: str) -> str:
     parts = line.split()
-    if len(parts) >= 12:
-        return parts[-2]
+    if len(parts) >= 2:
+        # Prefer second-to-last token when Pay flag is last ("Customer I")
+        candidate = parts[-2] if len(parts) >= 2 else parts[-1]
+        normalized = _bill_type_from_token(candidate)
+        if normalized in {"Customer", "Warranty", "Internal"}:
+            return normalized
+        return _bill_type_from_token(parts[-1])
     return ""
+
+
+def _parse_detail_line(line: str) -> Optional[tuple]:
+    """
+    Return (tech_number, FlagLineItem) for a detail row, or None.
+    Supports classic spaced CDK lines and newer jammed/truncated exports.
+    """
+    lm = LINE_RE.match(line)
+    if lm:
+        return (
+            lm.group(1),
+            FlagLineItem(
+                date=lm.group(2),
+                department=lm.group(3),
+                ro_number=lm.group(4),
+                operation_code=lm.group(5),
+                booked_hours=float(lm.group(7)),
+                st_rate=float(lm.group(8)),
+                extended=float(lm.group(9)),
+                bill_type=_bill_type_from_line(line),
+            ),
+        )
+
+    jm = JAMMED_LINE_RE.match(line)
+    if not jm:
+        return None
+
+    rate_raw = jm.group(8)
+    try:
+        st_rate = float(rate_raw)
+    except ValueError:
+        st_rate = 0.0
+
+    bill_token = jm.group(11)
+    return (
+        jm.group(1),
+        FlagLineItem(
+            date=jm.group(2).replace("...", ""),
+            department=jm.group(3),
+            ro_number=jm.group(4),
+            operation_code=jm.group(5),
+            booked_hours=float(jm.group(7)),
+            st_rate=st_rate,
+            extended=float(jm.group(9).replace(",", "")),
+            bill_type=_bill_type_from_token(bill_token),
+        ),
+    )
 
 
 def _finalize_tech_totals(data: dict) -> None:
@@ -133,6 +213,7 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
     current_pdf_name: Optional[str] = None
     current_items: List[FlagLineItem] = []
     tech_buffer: dict = {}
+    report_stamp: Optional[str] = None
 
     with pdfplumber.open(source) as pdf:
         full_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
@@ -147,6 +228,11 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
             if dr:
                 result.pay_period_start = dr.group(1)
                 result.pay_period_end = dr.group(2)
+
+        if report_stamp is None:
+            stamp = REPORT_STAMP_RE.search(line)
+            if stamp:
+                report_stamp = stamp.group(1)
 
         nm = NAME_RE.search(line)
         if nm:
@@ -169,25 +255,19 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
             current_items = []
             continue
 
-        lm = LINE_RE.match(line)
-        if lm and current_pdf_name:
+        parsed_line = _parse_detail_line(line)
+        if parsed_line and current_pdf_name:
+            tech_number, item = parsed_line
             if not tech_buffer[current_pdf_name]["tech_number"]:
-                tech_buffer[current_pdf_name]["tech_number"] = lm.group(1)
-            current_items.append(
-                FlagLineItem(
-                    date=lm.group(2),
-                    department=lm.group(3),
-                    ro_number=lm.group(4),
-                    operation_code=lm.group(5),
-                    booked_hours=float(lm.group(7)),
-                    st_rate=float(lm.group(8)),
-                    extended=float(lm.group(9)),
-                    bill_type=_bill_type_from_line(line),
-                )
-            )
+                tech_buffer[current_pdf_name]["tech_number"] = tech_number
+            current_items.append(item)
 
     if current_pdf_name and current_pdf_name in tech_buffer:
         tech_buffer[current_pdf_name]["lines"] = current_items
+
+    # Newer exports omit Date Range; use report run stamp as a fallback end date.
+    if result.pay_period_end is None and report_stamp:
+        result.pay_period_end = report_stamp
 
     for pdf_name, data in tech_buffer.items():
         _finalize_tech_totals(data)
@@ -200,8 +280,8 @@ def parse_flag_sheet(source: Union[str, Path, BinaryIO]) -> FlagSheetParseResult
                 pdf_name=pdf_name,
                 display_name=normalize_tech_name(pdf_name),
                 tech_number=data.get("tech_number", ""),
-                flat_rate_hours=data["hours"],
-                dollars_earned=data["dollars"],
+                flat_rate_hours=round(float(data["hours"]), 2),
+                dollars_earned=round(float(data["dollars"]), 2),
                 line_items=lines,
                 cp_hours=cp_hours,
                 cp_ro_count=cp_ro_count,

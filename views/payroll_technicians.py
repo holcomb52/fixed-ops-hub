@@ -478,12 +478,19 @@ def render():
                     period_note = f" · {st.session_state.pay_period}"
 
                 if matched == 0:
+                    parsed_count = len(parsed.technicians)
+                    if parsed_count == 0:
+                        warn_msg = (
+                            "Flag sheet uploaded, but no technician hours were found in the PDF. "
+                            "Re-export the CDK Technician Timecard for Payroll report and try again."
+                        )
+                    else:
+                        warn_msg = (
+                            f"Flag sheet parsed {parsed_count} technicians, but none matched the roster. "
+                            "Check names/tech # under Manage team roster, then re-upload."
+                        )
                     st.markdown(
-                        status_banner(
-                            "Flag sheet uploaded, but no technicians matched the roster. "
-                            "Check names/tech # under Manage team roster, then re-upload.",
-                            "warn",
-                        ),
+                        status_banner(warn_msg, "warn"),
                         unsafe_allow_html=True,
                     )
                 else:

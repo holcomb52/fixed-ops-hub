@@ -59,10 +59,9 @@ def autosave_technician_payroll() -> None:
         return
 
     from lib.payroll_storage import save_payroll_run
-    from views.payroll_helpers import all_rows_synced, sync_flag_sheet_to_session
+    from views.payroll_helpers import all_rows_synced
 
-    sync_flag_sheet_to_session()
-
+    # Draft edits stay local/fast. Cloud sync (with the large flag PDF) only on Complete.
     status = "completed" if st.session_state.get("payroll_completed") else "draft"
     run_id, sync_error = save_payroll_run(
         all_rows_synced(),
@@ -71,6 +70,7 @@ def autosave_technician_payroll() -> None:
         st.session_state.get("flag_pdf_filename", "flag_sheet.pdf"),
         run_id=st.session_state.get("active_run_id"),
         status=status,
+        cloud_sync=status == "completed",
     )
     st.session_state.active_run_id = run_id
     if sync_error:

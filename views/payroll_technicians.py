@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 
 from components.ui import stat_card, status_banner, team_section_divider, team_section_header
-from lib.flag_pdf_parser import parse_flag_sheet
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_pdf_export import generate_payroll_pdf
 from lib.tech_payroll_calc import (
@@ -31,6 +30,7 @@ from lib.tech_roster import (
 from views.payroll_helpers import (
     all_rows_synced,
     apply_teams_to_session,
+    cached_flag_parse,
     capture_tech_values,
     ensure_all_row_fields,
     field_key,
@@ -357,8 +357,6 @@ def _render_team(team_name: str, rows: list, global_hours: dict, weeks: float):
             st.text_area(
                 "Notes for payroll clerk",
                 key=field_key(team_name, i, "notes"),
-                on_change=persist_technician_changes,
-                args=(team_name, i),
                 placeholder="Optional — prints on the payroll PDF for accounting",
                 height=68,
             )
@@ -401,7 +399,7 @@ def render():
     st.markdown(
         '<span class="legend-chip chip-manual">You enter: training hrs, SPIFF & notes</span> '
         '<span class="legend-chip chip-calc">Flag sheet + upsell report auto-calc supplemental bonus</span> '
-        '<span class="legend-chip chip-live">Changes save automatically</span>',
+        '<span class="legend-chip chip-live">Edits save locally · cloud backup on Complete</span>',
         unsafe_allow_html=True,
     )
     if st.session_state.get("active_run_id"):
@@ -434,13 +432,11 @@ def render():
             pdf_sig = f"{pdf_file.name}:{len(pdf_bytes)}"
             if st.session_state.get("flag_pdf_processed_sig") != pdf_sig:
                 store_flag_pdf(pdf_file, pdf_bytes)
-                from io import BytesIO
-
-                parsed = parse_flag_sheet(BytesIO(pdf_bytes))
-                matched = sync_flag_sheet_to_session()
+                parsed = cached_flag_parse()
+                matched = sync_flag_sheet_to_session(force=True)
                 number_map = {
                     t.display_name: t.tech_number
-                    for t in parsed.technicians
+                    for t in (parsed.technicians if parsed else [])
                     if t.tech_number
                 }
                 numbers_updated = 0
@@ -453,7 +449,7 @@ def render():
                 st.session_state.flag_pdf_processed_sig = pdf_sig
 
                 dates_updated = False
-                if parsed.pay_period_start and parsed.pay_period_end:
+                if parsed and parsed.pay_period_start and parsed.pay_period_end:
                     pdf_start = parse_period_token(parsed.pay_period_start)
                     pdf_end = parse_period_token(parsed.pay_period_end)
                     if pdf_start and pdf_end:
@@ -478,7 +474,7 @@ def render():
                     period_note = f" · {st.session_state.pay_period}"
 
                 if matched == 0:
-                    parsed_count = len(parsed.technicians)
+                    parsed_count = len(parsed.technicians) if parsed else 0
                     if parsed_count == 0:
                         warn_msg = (
                             "Flag sheet uploaded, but no technician hours were found in the PDF. "
@@ -510,12 +506,12 @@ def render():
 
                     autosave_technician_payroll()
             else:
-                # Same PDF still in the uploader — re-apply hours after any roster/session reset
-                sync_flag_sheet_to_session()
+                # Same PDF still in the uploader — hours already applied via cache.
                 st.session_state.pdf_loaded = True
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)
     elif st.session_state.get("flag_pdf_bytes"):
+        # Cached apply is a no-op when PDF+roster already synced.
         sync_flag_sheet_to_session()
         st.session_state.pdf_loaded = True
 
@@ -658,7 +654,7 @@ def render():
             disabled=not confirm,
             use_container_width=True,
         ):
-            sync_flag_sheet_to_session()
+            sync_flag_sheet_to_session(force=True)
             run_id, sync_error = save_payroll_run(
                 all_rows_synced(),
                 st.session_state.pay_period,
@@ -666,6 +662,7 @@ def render():
                 st.session_state.get("flag_pdf_filename", "flag_sheet.pdf"),
                 run_id=st.session_state.get("active_run_id"),
                 status="completed",
+                cloud_sync=True,
             )
             st.session_state.active_run_id = run_id
             st.session_state.payroll_completed = True

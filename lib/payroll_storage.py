@@ -136,12 +136,21 @@ def _local_path(run_id: str) -> Path:
     return ARCHIVE_DIR / run_id
 
 
-def _save_local(run_id: str, record: dict, flag_pdf_bytes: Optional[bytes]):
+def _save_local(
+    run_id: str,
+    record: dict,
+    flag_pdf_bytes: Optional[bytes],
+    *,
+    write_flag_pdf: bool = True,
+):
     path = _local_path(run_id)
     path.mkdir(parents=True, exist_ok=True)
     (path / "record.json").write_text(json.dumps(json_safe(record), indent=2, allow_nan=False))
-    if flag_pdf_bytes:
-        (path / "flag.pdf").write_bytes(flag_pdf_bytes)
+    if write_flag_pdf and flag_pdf_bytes:
+        flag_path = path / "flag.pdf"
+        # Avoid rewriting a large PDF on every draft keystroke when unchanged.
+        if not flag_path.exists() or flag_path.stat().st_size != len(flag_pdf_bytes):
+            flag_path.write_bytes(flag_pdf_bytes)
 
 
 def _load_local(run_id: str) -> Optional[dict]:
@@ -173,8 +182,9 @@ def save_payroll_run(
     flag_pdf_filename: str,
     run_id: Optional[str] = None,
     status: str = "completed",
+    cloud_sync: bool = True,
 ) -> Tuple[str, str]:
-    """Save or update a payroll run. Returns run id."""
+    """Save or update a payroll run. Returns (run id, sync error)."""
     snapshot = serialize_payroll_session(synced_teams, pay_period)
     run_id = run_id or str(uuid.uuid4())
     completed_at = _now_iso()
@@ -191,9 +201,15 @@ def save_payroll_run(
         "updated_at": completed_at,
     }
 
-    _save_local(run_id, record, flag_pdf_bytes)
+    # Draft autosaves keep the JSON snapshot current; only rewrite the flag PDF
+    # when completing (or the first time the draft folder is created).
+    write_flag_pdf = status == "completed" or not (_local_path(run_id) / "flag.pdf").exists()
+    _save_local(run_id, record, flag_pdf_bytes, write_flag_pdf=write_flag_pdf)
 
     sync_error = ""
+    if not cloud_sync:
+        return run_id, sync_error
+
     client = get_supabase()
     if client:
         row = {
@@ -214,7 +230,7 @@ def save_payroll_run(
         if not ok:
             sync_error = err
             record["_sync_error"] = err
-            _save_local(run_id, record, flag_pdf_bytes)
+            _save_local(run_id, record, flag_pdf_bytes, write_flag_pdf=False)
 
     return run_id, sync_error
 

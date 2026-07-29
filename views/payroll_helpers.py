@@ -156,25 +156,88 @@ def apply_teams_to_session(teams: dict, values_by_name: Optional[Dict] = None):
             if overrides and "tech_number" in overrides:
                 row.tech_number = overrides["tech_number"]
             init_row_fields(team_name, i, row, overrides=overrides)
-    sync_flag_sheet_to_session()
+    # Roster changed — force re-apply of cached flag hours.
+    st.session_state.pop("_flag_applied_sig", None)
+    sync_flag_sheet_to_session(force=True)
 
 
-def sync_flag_sheet_to_session() -> int:
-    """Re-apply stored flag sheet PDF to the current roster and session widget keys."""
+def flag_pdf_cache_key(pdf_bytes: bytes | None = None) -> str:
+    """Cheap stable fingerprint for uploaded flag PDF bytes."""
+    import hashlib
+
+    data = pdf_bytes if pdf_bytes is not None else st.session_state.get("flag_pdf_bytes")
+    if not data:
+        return ""
+    return f"{len(data)}:{hashlib.md5(data).hexdigest()}"
+
+
+def cached_flag_parse():
+    """Return parsed flag sheet, parsing the PDF only when bytes change."""
+    pdf_bytes = st.session_state.get("flag_pdf_bytes")
+    if not pdf_bytes:
+        return None
+
+    from lib.tech_flag_sync import parse_flag_pdf_bytes
+
+    cache_key = flag_pdf_cache_key(pdf_bytes)
+    if (
+        st.session_state.get("_flag_parse_cache_key") == cache_key
+        and st.session_state.get("_flag_parse_result") is not None
+    ):
+        return st.session_state["_flag_parse_result"]
+
+    parsed = parse_flag_pdf_bytes(pdf_bytes)
+    st.session_state["_flag_parse_cache_key"] = cache_key
+    st.session_state["_flag_parse_result"] = parsed
+    # New parse invalidates prior apply — roster must be re-hydrated from it.
+    st.session_state.pop("_flag_applied_sig", None)
+    return parsed
+
+
+def invalidate_flag_parse_cache() -> None:
+    st.session_state.pop("_flag_parse_cache_key", None)
+    st.session_state.pop("_flag_parse_result", None)
+    st.session_state.pop("_flag_applied_sig", None)
+    st.session_state.pop("_flag_matched_count", None)
+
+
+def _flag_apply_signature(teams: dict) -> str:
+    roster_bits = []
+    for team_name, rows in teams.items():
+        for row in rows:
+            roster_bits.append(f"{team_name}:{row.name}:{row.tech_number}")
+    roster_bits.sort()
+    return f"{st.session_state.get('_flag_parse_cache_key', '')}|{'|'.join(roster_bits)}"
+
+
+def sync_flag_sheet_to_session(*, force: bool = False) -> int:
+    """Re-apply stored flag sheet data to the current roster and session widget keys.
+
+    Parses the PDF at most once per unique upload (cached in session). Skips
+    re-applying when the same PDF is already applied to the current roster,
+    so routine edits/reruns stay fast.
+    """
     pdf_bytes = st.session_state.get("flag_pdf_bytes")
     if not pdf_bytes:
         return 0
 
     from lib.tech_flag_sync import (
         apply_flag_to_teams,
-        parse_flag_pdf_bytes,
         unmatched_flag_technicians,
     )
     from lib.tech_payroll_calc import recalc_supplemental_bonuses
 
-    parsed = parse_flag_pdf_bytes(pdf_bytes)
-    matched = apply_flag_to_teams(st.session_state.tech_teams, parsed)
-    unmatched = unmatched_flag_technicians(st.session_state.tech_teams, parsed)
+    parsed = cached_flag_parse()
+    if parsed is None:
+        return 0
+
+    teams = st.session_state.tech_teams
+    apply_sig = _flag_apply_signature(teams)
+    if not force and st.session_state.get("_flag_applied_sig") == apply_sig:
+        return int(st.session_state.get("_flag_matched_count", 0) or 0)
+
+    matched = apply_flag_to_teams(teams, parsed)
+    unmatched = unmatched_flag_technicians(teams, parsed)
     st.session_state.flag_unmatched_techs = [
         {
             "name": tech.display_name,
@@ -186,7 +249,7 @@ def sync_flag_sheet_to_session() -> int:
     ]
 
     cp_by_name = {}
-    for team_name, rows in st.session_state.tech_teams.items():
+    for team_name, rows in teams.items():
         for i, row in enumerate(rows):
             # Always mirror flag hours/dollars into session keys. These fields are
             # not user-edited widgets — training/SPIFF are — so re-applying the PDF
@@ -211,8 +274,10 @@ def sync_flag_sheet_to_session() -> int:
         }
 
     recalc_supplemental_bonuses(
-        [row for rows in st.session_state.tech_teams.values() for row in rows]
+        [row for rows in teams.values() for row in rows]
     )
+    st.session_state["_flag_applied_sig"] = apply_sig
+    st.session_state["_flag_matched_count"] = matched
     return matched
 
 
@@ -347,8 +412,11 @@ def store_flag_pdf(uploaded_file, pdf_bytes: bytes | None = None):
     if pdf_bytes is None:
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
+    prev = st.session_state.get("flag_pdf_bytes")
     st.session_state.flag_pdf_bytes = pdf_bytes
     st.session_state.flag_pdf_filename = uploaded_file.name
+    if prev != pdf_bytes:
+        invalidate_flag_parse_cache()
 
 
 def render_payroll_sync_error(session_key: str, table: str = "") -> None:

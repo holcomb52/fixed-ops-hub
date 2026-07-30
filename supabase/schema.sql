@@ -114,6 +114,24 @@ create table if not exists labor_rate_runs (
 create index if not exists labor_rate_runs_completed_at_idx
     on labor_rate_runs (completed_at desc);
 
+-- Warranty Administrator monthly bonus (Reports → Warranty Admin Bonus)
+create table if not exists warranty_admin_bonus_runs (
+    id uuid primary key default gen_random_uuid(),
+    pay_period text not null,
+    status text not null default 'completed' check (status in ('draft', 'completed')),
+    snapshot jsonb not null,
+    grand_total numeric(12, 2),
+    employee_name text,
+    completed_at timestamptz,
+    updated_at timestamptz default now(),
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_warranty_admin_bonus_runs_period
+    on warranty_admin_bonus_runs (pay_period desc);
+create index if not exists idx_warranty_admin_bonus_runs_completed
+    on warranty_admin_bonus_runs (completed_at desc);
+
 -- Sample data (optional — remove if you want a blank slate)
 insert into employees (full_name, role, hourly_rate) values
     ('Alex Rivera', 'Service Advisor', 28.50),

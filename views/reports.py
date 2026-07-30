@@ -64,12 +64,20 @@ from lib.labor_rate_storage import (
     rename_labor_rate_run,
 )
 from lib.labor_rate_pdf_export import build_labor_rate_grid_pdf
+from lib.warranty_admin_bonus_pdf_export import generate_warranty_admin_bonus_pdf
+from lib.warranty_admin_bonus_storage import (
+    apply_warranty_admin_bonus_snapshot_to_session,
+    delete_warranty_admin_bonus_run,
+    list_warranty_admin_bonus_runs,
+    load_warranty_admin_bonus_run,
+)
 from views.payroll_helpers import init_payroll_session
 
 ACCENT_TECH = "orange"
 ACCENT_ADVISOR = "cyan"
 ACCENT_RECEPTIONIST = "violet"
 ACCENT_WARRANTY = "amber"
+ACCENT_WARRANTY_ADMIN = "green"
 ACCENT_LABOR = "cyan"
 
 
@@ -393,6 +401,96 @@ def _render_warranty_runs():
             run_label=run_label,
             delete_fn=delete_warranty_labor_run,
             active_session_key="active_warranty_run_id",
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
+def _render_warranty_admin_bonus_runs():
+    runs = list_warranty_admin_bonus_runs()
+
+    st.markdown(team_section_divider(ACCENT_WARRANTY_ADMIN), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "Warranty Admin Bonus",
+            "Saved monthly Warranty Administrator performance bonuses",
+            accent=ACCENT_WARRANTY_ADMIN,
+            icon="🏅",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved Warranty Admin bonuses yet. Finish on **Warranty Admin Bonus** "
+                "and click **Complete & Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        pay_period = run.get("pay_period", "—")
+        completed = _fmt_date(run.get("completed_at", ""))
+        grand = _money(run.get("grand_total"))
+        loaded = load_warranty_admin_bonus_run(run_id)
+        employee = run.get("employee_name") or (loaded or {}).get("snapshot", {}).get("employee_name") or "Warranty Admin"
+        meta = (
+            f"{employee} · Completed"
+            if run.get("status") != "draft"
+            else f"{employee} · In progress"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                pay_period,
+                ACCENT_WARRANTY_ADMIN,
+                caption=_run_status_caption(run, completed),
+                amount=grand,
+                meta=meta,
+                badge_html=_run_status_badge(run),
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"wab_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_warranty_admin_bonus_snapshot_to_session(
+                        loaded.get("snapshot") or {},
+                        run_id,
+                        status=loaded.get("status", "completed"),
+                    )
+                    st.session_state.pending_nav = "Warranty Admin Bonus"
+                    st.rerun()
+        with a2:
+            if loaded and loaded.get("snapshot"):
+                month_stub = str(pay_period).replace(" ", "_")
+                st.download_button(
+                    "📄 Export PDF",
+                    data=generate_warranty_admin_bonus_pdf(loaded["snapshot"]),
+                    file_name=f"WARRANTY_ADMIN_BONUS_{month_stub}.pdf",
+                    mime="application/pdf",
+                    key=f"wab_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("wab", run_id)
+        _render_delete_report_controls(
+            prefix="wab",
+            run_id=run_id,
+            run_label=pay_period,
+            delete_fn=delete_warranty_admin_bonus_run,
+            active_session_key="active_warranty_admin_bonus_run_id",
+            extra_clear_keys=["warranty_admin_bonus_completed"],
         )
         st.caption(f"ID: {run_id[:8]}…")
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
@@ -864,4 +962,5 @@ def render():
             st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     _render_warranty_runs()
+    _render_warranty_admin_bonus_runs()
     _render_labor_rate_runs()

@@ -4,7 +4,7 @@ from components.ui import coming_soon_panel
 from lib.app_auth import require_login
 from lib.supabase_client import is_configured
 from styles import CUSTOM_CSS
-from views import flag_sheet, home, labor_rate, payroll, reports, warranty
+from views import flag_sheet, home, labor_rate, payroll, reports, warranty, warranty_admin_bonus
 
 st.set_page_config(
     page_title="Fixed Ops Hub",
@@ -23,6 +23,7 @@ PAGES = {
     "Payroll": payroll.render,
     "Flag Sheet": flag_sheet.render,
     "Warranty": warranty.render,
+    "Warranty Admin Bonus": warranty_admin_bonus.render,
     "Labor Rate": labor_rate.render,
     "Inventory": None,
     "Reports": reports.render,
@@ -60,6 +61,7 @@ with st.sidebar:
             "Payroll": "💰  Payroll",
             "Flag Sheet": "📋  Flag Sheet",
             "Warranty": "🛡️  Warranty",
+            "Warranty Admin Bonus": "🏅  Warranty Admin Bonus",
             "Labor Rate": "📈  Labor Rate",
             "Inventory": "📦  Inventory",
             "Reports": "📊  Reports",

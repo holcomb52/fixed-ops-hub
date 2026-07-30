@@ -1,0 +1,19 @@
+-- Warranty Administrator monthly bonus runs (Reports → Warranty Admin Bonus)
+-- Run once in Supabase SQL Editor if cloud backup fails for this tab.
+
+create table if not exists warranty_admin_bonus_runs (
+    id uuid primary key default gen_random_uuid(),
+    pay_period text not null,
+    status text not null default 'completed' check (status in ('draft', 'completed')),
+    snapshot jsonb not null,
+    grand_total numeric(12, 2),
+    employee_name text,
+    completed_at timestamptz,
+    updated_at timestamptz default now(),
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_warranty_admin_bonus_runs_period
+    on warranty_admin_bonus_runs (pay_period desc);
+create index if not exists idx_warranty_admin_bonus_runs_completed
+    on warranty_admin_bonus_runs (completed_at desc);

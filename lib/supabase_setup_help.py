@@ -9,6 +9,7 @@ _MIGRATION_FILES = [
     Path(__file__).resolve().parent.parent / "supabase" / "advisor_receptionist_payroll_tables.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "payroll_rosters_table.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "warranty_admin_bonus_runs_table.sql",
+    Path(__file__).resolve().parent.parent / "supabase" / "eom_report_runs_table.sql",
 ]
 
 _TABLE_FIXES = {
@@ -16,6 +17,7 @@ _TABLE_FIXES = {
     "receptionist_payroll_runs": "advisor",
     "payroll_rosters": "roster",
     "warranty_admin_bonus_runs": "warranty_admin",
+    "eom_report_runs": "eom",
 }
 
 

@@ -64,6 +64,13 @@ from lib.labor_rate_storage import (
     rename_labor_rate_run,
 )
 from lib.labor_rate_pdf_export import build_labor_rate_grid_pdf
+from lib.eom_report_pdf_export import generate_eom_report_pdf
+from lib.eom_report_storage import (
+    apply_eom_report_snapshot_to_session,
+    delete_eom_report_run,
+    list_eom_report_runs,
+    load_eom_report_run,
+)
 from lib.warranty_admin_bonus_pdf_export import generate_warranty_admin_bonus_pdf
 from lib.warranty_admin_bonus_storage import (
     apply_warranty_admin_bonus_snapshot_to_session,
@@ -78,6 +85,7 @@ ACCENT_ADVISOR = "cyan"
 ACCENT_RECEPTIONIST = "violet"
 ACCENT_WARRANTY = "amber"
 ACCENT_WARRANTY_ADMIN = "green"
+ACCENT_EOM = "orange"
 ACCENT_LABOR = "cyan"
 
 
@@ -491,6 +499,98 @@ def _render_warranty_admin_bonus_runs():
             delete_fn=delete_warranty_admin_bonus_run,
             active_session_key="active_warranty_admin_bonus_run_id",
             extra_clear_keys=["warranty_admin_bonus_completed"],
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
+def _render_eom_report_runs():
+    runs = list_eom_report_runs()
+
+    st.markdown(team_section_divider(ACCENT_EOM), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "EOM Report",
+            "Saved monthly Fixed Ops controller reports",
+            accent=ACCENT_EOM,
+            icon="📅",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved EOM reports yet. Finish on **EOM Report** "
+                "and click **Complete & Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        pay_period = run.get("pay_period", "—")
+        completed = _fmt_date(run.get("completed_at", ""))
+        efficiency = float(run.get("grand_total", 0) or 0)
+        loaded = load_eom_report_run(run_id)
+        tech_count = run.get("tech_count")
+        if tech_count is None and loaded:
+            tech_count = (loaded.get("snapshot") or {}).get("tech_count", 0)
+        meta = (
+            f"{float(tech_count or 0):.0f} techs · {efficiency:.2f}% efficiency · Completed"
+            if run.get("status") != "draft"
+            else f"{float(tech_count or 0):.0f} techs · {efficiency:.2f}% efficiency · In progress"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                pay_period,
+                ACCENT_EOM,
+                caption=_run_status_caption(run, completed),
+                amount=f"{efficiency:.2f}%",
+                meta=meta,
+                badge_html=_run_status_badge(run),
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"eom_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_eom_report_snapshot_to_session(
+                        loaded.get("snapshot") or {},
+                        run_id,
+                        status=loaded.get("status", "completed"),
+                    )
+                    st.session_state.pending_nav = "EOM Report"
+                    st.rerun()
+        with a2:
+            if loaded and loaded.get("snapshot"):
+                month_stub = str(pay_period).replace(" ", "_")
+                st.download_button(
+                    "📄 Export PDF",
+                    data=generate_eom_report_pdf(loaded["snapshot"]),
+                    file_name=f"EOM_REPORT_{month_stub}.pdf",
+                    mime="application/pdf",
+                    key=f"eom_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("eom", run_id)
+        _render_delete_report_controls(
+            prefix="eom",
+            run_id=run_id,
+            run_label=pay_period,
+            delete_fn=delete_eom_report_run,
+            active_session_key="active_eom_report_run_id",
+            extra_clear_keys=["eom_report_completed"],
         )
         st.caption(f"ID: {run_id[:8]}…")
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
@@ -963,4 +1063,5 @@ def render():
 
     _render_warranty_runs()
     _render_warranty_admin_bonus_runs()
+    _render_eom_report_runs()
     _render_labor_rate_runs()

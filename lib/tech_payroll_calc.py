@@ -14,6 +14,26 @@ FLAT_RATE_LUBE_RATE = 21.75
 PERIOD_DOLLAR_GUARANTEE_1175 = 1175.0
 PERIOD_DOLLAR_GUARANTEE_590 = 590.0
 PERIOD_DOLLAR_GUARANTEE_295 = 295.0
+# Gregory Phillips — tiered $/hr on all flag hours (retro to period start).
+TIERED_FLAG_RATE_BASE = 45.0
+# (max_hours inclusive upper bound for the band, $/hr). Last band has no upper bound.
+TIERED_FLAG_RATE_BANDS = (
+    (62.5, 45.0),
+    (79.9, 50.0),
+    (89.9, 53.0),
+    (99.9, 54.0),
+    (149.9, 55.0),
+    (None, 65.0),
+)
+
+
+def tiered_flag_rate_for_hours(hours: float) -> float:
+    """$/hr for all flag hours based on period total (Gregory Phillips plan)."""
+    h = max(float(hours or 0.0), 0.0)
+    for upper, rate in TIERED_FLAG_RATE_BANDS:
+        if upper is None or h <= upper + 1e-9:
+            return float(rate)
+    return float(TIERED_FLAG_RATE_BANDS[-1][1])
 
 
 @dataclass
@@ -36,7 +56,7 @@ class TechPayrollRow:
     closing_pct: float = 0.0
     supplemental_bonus: float = 0.0
     supplemental_tier: str = ""
-    # standard | weekly_hour_guarantee | period_dollar_guarantee
+    # standard | weekly_hour_guarantee | period_dollar_guarantee | tiered_flag_rate
     pay_plan: str = "standard"
     weekly_hour_guarantee: float = 0.0
     # Bi-weekly $ floor for period_dollar_guarantee (0 = flat rate only).
@@ -46,15 +66,23 @@ class TechPayrollRow:
     def effective_flag_rate(self) -> float:
         if self.pay_plan == "period_dollar_guarantee":
             return self.hourly_rate
+        if self.pay_plan == "tiered_flag_rate":
+            return tiered_flag_rate_for_hours(self.flat_rate_hours)
         if self.flat_rate_hours > 0:
             return self.dollars_earned / self.flat_rate_hours
         return self.hourly_rate
 
     def flat_rate_earnings(self) -> float:
-        """Hours × plan rate for Flat Rate Lube; otherwise flag-sheet dollars."""
-        if self.pay_plan == "period_dollar_guarantee":
+        """Base flat dollars (plan rate × hours) before guarantee / tier top-off."""
+        if self.pay_plan in ("period_dollar_guarantee", "tiered_flag_rate"):
             return self.flat_rate_hours * self.hourly_rate
         return self.dollars_earned
+
+    def display_flag_dollars(self, pay_period_weeks: float = 2.0) -> float:
+        """Dollars column: base flat for tiered rate; otherwise payable flag dollars."""
+        if self.pay_plan == "tiered_flag_rate":
+            return self.flat_rate_earnings()
+        return self.flag_base_pay(pay_period_weeks)
 
     def guaranteed_hours_floor(self, pay_period_weeks: float) -> float:
         if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
@@ -65,7 +93,9 @@ class TechPayrollRow:
         return max(self.flat_rate_hours, self.guaranteed_hours_floor(pay_period_weeks))
 
     def flag_base_pay(self, pay_period_weeks: float = 2.0) -> float:
-        """Flag dollars with hour or period-dollar guarantee applied when configured."""
+        """Flag dollars with hour, period-dollar, or tiered rate applied when configured."""
+        if self.pay_plan == "tiered_flag_rate":
+            return self.flat_rate_hours * tiered_flag_rate_for_hours(self.flat_rate_hours)
         if self.pay_plan == "period_dollar_guarantee":
             flat = self.flat_rate_earnings()
             if self.period_dollar_guarantee > 0:
@@ -76,13 +106,27 @@ class TechPayrollRow:
         return self.payable_flag_hours(pay_period_weeks) * self.effective_flag_rate
 
     def guarantee_top_up(self, pay_period_weeks: float = 2.0) -> float:
-        if self.pay_plan == "period_dollar_guarantee":
+        if self.pay_plan in ("period_dollar_guarantee", "tiered_flag_rate"):
             return max(self.flag_base_pay(pay_period_weeks) - self.flat_rate_earnings(), 0.0)
         if self.pay_plan != "weekly_hour_guarantee":
             return 0.0
         return max(self.flag_base_pay(pay_period_weeks) - self.dollars_earned, 0.0)
 
     def guarantee_label(self, pay_period_weeks: float = 2.0) -> str:
+        if self.pay_plan == "tiered_flag_rate":
+            base = self.flat_rate_earnings()
+            rate = tiered_flag_rate_for_hours(self.flat_rate_hours)
+            paid = self.flag_base_pay(pay_period_weeks)
+            top = self.guarantee_top_up(pay_period_weeks)
+            if top <= 0:
+                return (
+                    f"Tiered flag ${rate:.0f}/hr · {self.flat_rate_hours:.2f} hrs "
+                    f"× ${self.hourly_rate:.0f} base = ${base:,.2f}"
+                )
+            return (
+                f"Tiered flag ${rate:.0f}/hr on {self.flat_rate_hours:.2f} hrs · "
+                f"base ${base:,.2f} + top-off ${top:,.2f} = ${paid:,.2f}"
+            )
         if self.pay_plan == "period_dollar_guarantee":
             flat = self.flat_rate_earnings()
             rate = self.hourly_rate
@@ -111,6 +155,8 @@ class TechPayrollRow:
     @property
     def prod_tier(self) -> Optional[tuple]:
         """Highest production bonus tier this tech qualifies for, or None."""
+        if self.pay_plan == "tiered_flag_rate":
+            return None  # productivity is baked into the tiered $/hr
         return qualifying_prod_tier(self.flat_rate_hours)
 
     @property
@@ -265,6 +311,7 @@ DEFAULT_TECH_NUMBERS = {
     "Christopher Ingram": "3824",
     "Gary Freeze": "3849",
     "Michael Holland": "3820",
+    "Gregory Phillips": "",
     "Olan Halcomb": "46251",
     "George Webb": "3741",
     "Marvin Granick": "3694",
@@ -324,6 +371,13 @@ DEFAULT_TEAMS = {
         _default_row("Kenneth Peterson", "Derrick's Team", 35),
         _default_row("Damian Blair", "Derrick's Team", 30),
         _default_row("John Richardson", "Derrick's Team", 25),
+        _default_row(
+            "Gregory Phillips",
+            "Derrick's Team",
+            TIERED_FLAG_RATE_BASE,
+            pay_plan="tiered_flag_rate",
+            tech_category="shop",
+        ),
         _default_row("Charles Hinxman", "Derrick's Team", 22.75, tech_category="quick_lube"),
         _default_row(
             "Christopher Ingram",

@@ -41,6 +41,17 @@
       "tech_category": "shop"
     },
     {
+      "name": "Gregory Phillips",
+      "tech_number": "",
+      "hourly_rate": 45.0,
+      "foreman_rule": "none",
+      "quick_lube_sources": [],
+      "tech_category": "shop",
+      "pay_plan": "tiered_flag_rate",
+      "weekly_hour_guarantee": 0.0,
+      "period_dollar_guarantee": 0.0
+    },
+    {
       "name": "Charles Hinxman",
       "tech_number": "3520",
       "hourly_rate": 22.75,

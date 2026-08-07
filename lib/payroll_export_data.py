@@ -48,7 +48,7 @@ def build_payroll_snapshot(
                 "name": row.name,
                 "tech_number": row.tech_number,
                 "hours": row.flat_rate_hours,
-                "dollars": row.flag_base_pay(weeks),
+                "dollars": row.display_flag_dollars(weeks),
                 "flag_dollars": row.dollars_earned,
                 "guarantee_top_up": row.guarantee_top_up(weeks),
                 "payable_hours": row.payable_flag_hours(weeks),

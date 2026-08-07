@@ -16,6 +16,7 @@ from lib.tech_payroll_calc import (
     PERIOD_DOLLAR_GUARANTEE_295,
     PERIOD_DOLLAR_GUARANTEE_590,
     QUICK_LUBE_TECHS,
+    TIERED_FLAG_RATE_BASE,
     WEEKLY_HOUR_GUARANTEE_DEFAULT,
     TechPayrollRow,
     ensure_tech_row_fields,
@@ -35,11 +36,21 @@ ENSURE_ROSTER_TECHS: Dict[str, dict] = {
         "weekly_hour_guarantee": WEEKLY_HOUR_GUARANTEE_DEFAULT,
         "tech_category": "shop",
     },
+    "Gregory Phillips": {
+        "team": "Derrick's Team",
+        "tech_number": "",
+        "hourly_rate": TIERED_FLAG_RATE_BASE,
+        "pay_plan": "tiered_flag_rate",
+        "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
+        "tech_category": "shop",
+    },
 }
 
 # Flat Rate Lube transition plan (Gary Freeze / Christopher Ingram pay agreement).
 # Migrates once from older rates; does not reset guarantee stage after they're on the plan.
 LUBE_TRANSITION_TECHS = frozenset({"Gary Freeze", "Christopher Ingram"})
+TIERED_FLAG_RATE_TECHS = frozenset({"Gregory Phillips"})
 
 
 def _apply_lube_transition_defaults(row: TechPayrollRow) -> bool:
@@ -57,6 +68,22 @@ def _apply_lube_transition_defaults(row: TechPayrollRow) -> bool:
         changed = True
     if row.tech_category != "quick_lube":
         row.tech_category = "quick_lube"
+        changed = True
+    return changed
+
+
+def _apply_tiered_flag_rate_defaults(row: TechPayrollRow) -> bool:
+    """Put Gregory (etc.) on the tiered flag-rate plan. Returns True if anything changed."""
+    changed = False
+    if row.pay_plan != "tiered_flag_rate":
+        row.pay_plan = "tiered_flag_rate"
+        row.period_dollar_guarantee = 0.0
+        row.weekly_hour_guarantee = 0.0
+        row.tech_category = "shop"
+        row.hourly_rate = TIERED_FLAG_RATE_BASE
+        return True
+    if abs(row.hourly_rate - TIERED_FLAG_RATE_BASE) > 0.001:
+        row.hourly_rate = TIERED_FLAG_RATE_BASE
         changed = True
     return changed
 
@@ -88,6 +115,8 @@ def ensure_roster_defaults(teams: Dict[str, List[TechPayrollRow]]) -> bool:
     for rows in teams.values():
         for row in rows:
             if row.name in LUBE_TRANSITION_TECHS and _apply_lube_transition_defaults(row):
+                changed = True
+            if row.name in TIERED_FLAG_RATE_TECHS and _apply_tiered_flag_rate_defaults(row):
                 changed = True
     if changed:
         normalize_teams(teams)
@@ -132,6 +161,15 @@ ROLE_OPTIONS = {
         "pay_plan": "weekly_hour_guarantee",
         "weekly_hour_guarantee": WEEKLY_HOUR_GUARANTEE_DEFAULT,
         "period_dollar_guarantee": 0.0,
+    },
+    "Shop Tech — Tiered flag rate ($45+)": {
+        "tech_category": "shop",
+        "foreman_rule": "none",
+        "quick_lube_sources": [],
+        "pay_plan": "tiered_flag_rate",
+        "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
+        "hourly_rate": TIERED_FLAG_RATE_BASE,
     },
     "Flat Rate Lube — Guar $1,175 (periods 1–2)": _flat_rate_lube_role(
         PERIOD_DOLLAR_GUARANTEE_1175
@@ -195,6 +233,8 @@ def role_label(row: TechPayrollRow) -> str:
         if g >= PERIOD_DOLLAR_GUARANTEE_295 - 0.01:
             return "Flat Rate Lube — $295 guarantee"
         return "Flat Rate Lube — $21.75"
+    if row.pay_plan == "tiered_flag_rate":
+        return "Shop Tech — Tiered flag rate ($45+)"
     if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
         return f"Shop Tech — {row.weekly_hour_guarantee:.0f} hr/wk guarantee"
     if row.tech_category == "apprentice":
@@ -221,6 +261,8 @@ def role_option_key(row: TechPayrollRow) -> str:
         if g >= PERIOD_DOLLAR_GUARANTEE_295 - 0.01:
             return "Flat Rate Lube — Guar $295 (periods 5–6)"
         return "Flat Rate Lube — $21.75 (no guarantee)"
+    if row.pay_plan == "tiered_flag_rate":
+        return "Shop Tech — Tiered flag rate ($45+)"
     if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
         return "Shop Tech — 40 hr/wk guarantee"
     if row.tech_category == "apprentice":

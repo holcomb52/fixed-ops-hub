@@ -59,9 +59,10 @@ def generate_payroll_pdf(snapshot: dict) -> bytes:
                 suppl_cell = f"{tier}\n${t['supplemental_bonus']:,.0f}"
             dollars_cell = f"${t['dollars']:,.2f}"
             if t.get("guarantee_top_up"):
+                label = "Top-off" if t.get("pay_plan") == "tiered_flag_rate" else "Guar"
                 dollars_cell = (
                     f"${t['dollars']:,.2f}\n"
-                    f"Guar +${t['guarantee_top_up']:,.2f}"
+                    f"{label} +${t['guarantee_top_up']:,.2f}"
                 )
             table_data.append([
                 t.get("tech_number") or "—",

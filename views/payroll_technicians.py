@@ -274,7 +274,7 @@ def _team_summary_rows(team_name: str, rows: list, global_hours: dict, weeks: fl
             "Tech #": row.tech_number or "—",
             "Technician": row.name,
             "Hours": row.flat_rate_hours,
-            "Dollars": row.flag_base_pay(weeks),
+            "Dollars": row.display_flag_dollars(weeks),
             "Guar Top-up": row.guarantee_top_up(weeks) or None,
             "Prod Bonus": row.production_bonus,
             "CP hrs/RO": row.cp_hrs_per_ro if row.cp_hrs_per_ro else None,
@@ -332,7 +332,11 @@ def _render_team(team_name: str, rows: list, global_hours: dict, weeks: float):
                     st.caption("Supplemental bonus — Shop Techs only.")
                 elif st.session_state.get("upsell_loaded") or st.session_state.get("tech_cp_metrics_by_name"):
                     st.caption("Upload flag sheet + upsell report to calculate supplemental bonus.")
-                if row.pay_plan in ("weekly_hour_guarantee", "period_dollar_guarantee"):
+                if row.pay_plan in (
+                    "weekly_hour_guarantee",
+                    "period_dollar_guarantee",
+                    "tiered_flag_rate",
+                ):
                     label = row.guarantee_label(weeks)
                     if label:
                         st.caption(label)

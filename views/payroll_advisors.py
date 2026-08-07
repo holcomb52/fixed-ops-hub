@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 
-from components.ui import (
+from hub_ui.ui import (
     ACCENT_COLORS,
     advisor_accent_for_index,
     advisor_pay_card_header,

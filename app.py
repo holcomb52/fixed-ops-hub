@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.ui import coming_soon_panel
+from hub_ui.ui import coming_soon_panel
 from lib.app_auth import require_login
 from lib.supabase_client import is_configured
 from styles import CUSTOM_CSS

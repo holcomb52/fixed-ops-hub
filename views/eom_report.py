@@ -7,7 +7,7 @@ from datetime import date
 
 import streamlit as st
 
-from components.ui import page_hero, stat_card, status_banner
+from hub_ui.ui import page_hero, stat_card, status_banner
 from lib.eom_report_calc import calculate_eom_report
 from lib.eom_report_pdf_export import generate_eom_report_pdf
 from lib.eom_report_storage import save_eom_report_run, serialize_eom_report_session

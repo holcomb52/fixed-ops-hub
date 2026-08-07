@@ -7,7 +7,7 @@ from datetime import date
 
 import streamlit as st
 
-from components.ui import page_hero, stat_card, status_banner
+from hub_ui.ui import page_hero, stat_card, status_banner
 from lib.warranty_admin_bonus_calc import (
     MAX_MONTHLY_BONUS,
     STRETCH_BONUS,

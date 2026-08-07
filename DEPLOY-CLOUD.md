@@ -63,7 +63,7 @@ If your GitHub username is different, replace `holcomb52` in the URL.
 2. Click **Create app**.
 3. Choose your `fixed-ops-hub` repo, branch `main`, main file `app.py`.
 4. Click **Advanced settings**:
-   - **Python version:** `3.11` (do not use 3.14)
+   - **Python version:** `3.12` or `3.11` — **required**. Do **not** leave the default if it is 3.13/3.14 (those break this app).
    - **Secrets:** paste (see `streamlit-cloud-secrets.example.toml`):
 
 ```toml
@@ -106,6 +106,9 @@ Sign in with the `APP_PASSWORD` you set in secrets.
 - Confirm `requirements.txt` is in the repo root.
 - Confirm Supabase URL and key are correct in Secrets.
 - Run the new `warranty_labor_runs` SQL in Supabase if warranty save fails.
+- **`KeyError: 'components.ui'` / dataclasses errors / Python 3.14 in the logs:**  
+  Open **Manage app → Settings → General** (or redeploy with **Advanced settings**) and set **Python version to 3.12**.  
+  Then **reboot** the app. Streamlit Cloud defaults to the newest Python; 3.14 currently breaks this app.
 
 ---
 

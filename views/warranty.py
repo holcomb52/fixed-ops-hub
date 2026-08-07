@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 
-from components.ui import page_hero, stat_card, status_banner
+from hub_ui.ui import page_hero, stat_card, status_banner
 from lib.warranty_custom_exclusions import (
     add_custom_exclusion,
     load_custom_exclusions,

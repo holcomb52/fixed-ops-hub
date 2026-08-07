@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.ui import page_hero
+from hub_ui.ui import page_hero
 from views.payroll_advisors import render as render_advisors
 from views.payroll_helpers import init_payroll_session, render_pay_period_selector
 from views.payroll_receptionists import render as render_receptionists

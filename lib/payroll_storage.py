@@ -55,6 +55,7 @@ def serialize_payroll_session(synced_teams: Dict[str, List[TechPayrollRow]], pay
                 "supplemental_tier": row.supplemental_tier,
                 "pay_plan": row.pay_plan,
                 "weekly_hour_guarantee": safe_float(row.weekly_hour_guarantee),
+                "period_dollar_guarantee": safe_float(row.period_dollar_guarantee),
             })
 
     snapshot = build_payroll_snapshot(synced_teams, pay_period)

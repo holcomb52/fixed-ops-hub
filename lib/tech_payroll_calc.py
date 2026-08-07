@@ -9,6 +9,11 @@ from typing import Dict, List, Optional
 from lib.json_safe import safe_float
 
 WEEKLY_HOUR_GUARANTEE_DEFAULT = 40.0
+FLAT_RATE_LUBE_RATE = 21.75
+# Declining bi-weekly dollar guarantees (Flat Rate Lube transition, periods 1–6).
+PERIOD_DOLLAR_GUARANTEE_1175 = 1175.0
+PERIOD_DOLLAR_GUARANTEE_590 = 590.0
+PERIOD_DOLLAR_GUARANTEE_295 = 295.0
 
 
 @dataclass
@@ -31,14 +36,25 @@ class TechPayrollRow:
     closing_pct: float = 0.0
     supplemental_bonus: float = 0.0
     supplemental_tier: str = ""
-    pay_plan: str = "standard"  # standard | weekly_hour_guarantee
+    # standard | weekly_hour_guarantee | period_dollar_guarantee
+    pay_plan: str = "standard"
     weekly_hour_guarantee: float = 0.0
+    # Bi-weekly $ floor for period_dollar_guarantee (0 = flat rate only).
+    period_dollar_guarantee: float = 0.0
 
     @property
     def effective_flag_rate(self) -> float:
+        if self.pay_plan == "period_dollar_guarantee":
+            return self.hourly_rate
         if self.flat_rate_hours > 0:
             return self.dollars_earned / self.flat_rate_hours
         return self.hourly_rate
+
+    def flat_rate_earnings(self) -> float:
+        """Hours × plan rate for Flat Rate Lube; otherwise flag-sheet dollars."""
+        if self.pay_plan == "period_dollar_guarantee":
+            return self.flat_rate_hours * self.hourly_rate
+        return self.dollars_earned
 
     def guaranteed_hours_floor(self, pay_period_weeks: float) -> float:
         if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
@@ -49,20 +65,41 @@ class TechPayrollRow:
         return max(self.flat_rate_hours, self.guaranteed_hours_floor(pay_period_weeks))
 
     def flag_base_pay(self, pay_period_weeks: float = 2.0) -> float:
-        """Flag dollars with weekly hour guarantee applied when configured."""
+        """Flag dollars with hour or period-dollar guarantee applied when configured."""
+        if self.pay_plan == "period_dollar_guarantee":
+            flat = self.flat_rate_earnings()
+            if self.period_dollar_guarantee > 0:
+                return max(flat, self.period_dollar_guarantee)
+            return flat
         if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
             return self.dollars_earned
         return self.payable_flag_hours(pay_period_weeks) * self.effective_flag_rate
 
     def guarantee_top_up(self, pay_period_weeks: float = 2.0) -> float:
+        if self.pay_plan == "period_dollar_guarantee":
+            return max(self.flag_base_pay(pay_period_weeks) - self.flat_rate_earnings(), 0.0)
         if self.pay_plan != "weekly_hour_guarantee":
             return 0.0
         return max(self.flag_base_pay(pay_period_weeks) - self.dollars_earned, 0.0)
 
     def guarantee_label(self, pay_period_weeks: float = 2.0) -> str:
+        if self.pay_plan == "period_dollar_guarantee":
+            flat = self.flat_rate_earnings()
+            rate = self.hourly_rate
+            if self.period_dollar_guarantee <= 0:
+                return f"Flat rate lube ${rate:.2f}/hr · {self.flat_rate_hours:.2f} hrs = ${flat:,.2f}"
+            paid = self.flag_base_pay(pay_period_weeks)
+            if paid > flat:
+                return (
+                    f"${self.period_dollar_guarantee:,.0f} period guarantee · "
+                    f"{self.flat_rate_hours:.2f} hrs × ${rate:.2f} = ${flat:,.2f} → paid ${paid:,.2f}"
+                )
+            return (
+                f"${self.period_dollar_guarantee:,.0f} period guarantee met by "
+                f"{self.flat_rate_hours:.2f} hrs × ${rate:.2f}"
+            )
         if self.pay_plan != "weekly_hour_guarantee" or self.weekly_hour_guarantee <= 0:
             return ""
-        floor_hrs = self.guaranteed_hours_floor(pay_period_weeks)
         payable_hrs = self.payable_flag_hours(pay_period_weeks)
         if payable_hrs <= self.flat_rate_hours:
             return f"{self.weekly_hour_guarantee:.0f} hr/wk guarantee met by flag hours"
@@ -184,6 +221,8 @@ def ensure_tech_row_fields(row: TechPayrollRow) -> TechPayrollRow:
         row.pay_plan = "standard"
     if not hasattr(row, "weekly_hour_guarantee"):
         row.weekly_hour_guarantee = 0.0
+    if not hasattr(row, "period_dollar_guarantee"):
+        row.period_dollar_guarantee = 0.0
     if not hasattr(row, "cp_hours"):
         row.cp_hours = 0.0
     if not hasattr(row, "cp_ro_count"):
@@ -197,6 +236,15 @@ def ensure_tech_row_fields(row: TechPayrollRow) -> TechPayrollRow:
     if not hasattr(row, "supplemental_tier"):
         row.supplemental_tier = ""
     return row
+
+
+def _lube_transition_row_kwargs() -> dict:
+    return {
+        "tech_category": "quick_lube",
+        "pay_plan": "period_dollar_guarantee",
+        "period_dollar_guarantee": PERIOD_DOLLAR_GUARANTEE_1175,
+        "weekly_hour_guarantee": 0.0,
+    }
 
 
 def normalize_teams(teams: Dict[str, List[TechPayrollRow]]) -> Dict[str, List[TechPayrollRow]]:
@@ -277,8 +325,18 @@ DEFAULT_TEAMS = {
         _default_row("Damian Blair", "Derrick's Team", 30),
         _default_row("John Richardson", "Derrick's Team", 25),
         _default_row("Charles Hinxman", "Derrick's Team", 22.75, tech_category="quick_lube"),
-        _default_row("Christopher Ingram", "Derrick's Team", 15, tech_category="quick_lube"),
-        _default_row("Gary Freeze", "Derrick's Team", 17.5, tech_category="quick_lube"),
+        _default_row(
+            "Christopher Ingram",
+            "Derrick's Team",
+            FLAT_RATE_LUBE_RATE,
+            **_lube_transition_row_kwargs(),
+        ),
+        _default_row(
+            "Gary Freeze",
+            "Derrick's Team",
+            FLAT_RATE_LUBE_RATE,
+            **_lube_transition_row_kwargs(),
+        ),
         _default_row("Michael Holland", "Derrick's Team", 15),
     ],
     "Olan's Team": [

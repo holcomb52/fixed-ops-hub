@@ -11,6 +11,10 @@ from lib.json_safe import safe_float
 from lib.tech_payroll_calc import (
     DEFAULT_TEAMS,
     DEFAULT_TECH_NUMBERS,
+    FLAT_RATE_LUBE_RATE,
+    PERIOD_DOLLAR_GUARANTEE_1175,
+    PERIOD_DOLLAR_GUARANTEE_295,
+    PERIOD_DOLLAR_GUARANTEE_590,
     QUICK_LUBE_TECHS,
     WEEKLY_HOUR_GUARANTEE_DEFAULT,
     TechPayrollRow,
@@ -33,6 +37,29 @@ ENSURE_ROSTER_TECHS: Dict[str, dict] = {
     },
 }
 
+# Flat Rate Lube transition plan (Gary Freeze / Christopher Ingram pay agreement).
+# Migrates once from older rates; does not reset guarantee stage after they're on the plan.
+LUBE_TRANSITION_TECHS = frozenset({"Gary Freeze", "Christopher Ingram"})
+
+
+def _apply_lube_transition_defaults(row: TechPayrollRow) -> bool:
+    """Put a tech on Flat Rate Lube periods 1–2. Returns True if anything changed."""
+    changed = False
+    if row.pay_plan != "period_dollar_guarantee":
+        row.pay_plan = "period_dollar_guarantee"
+        row.period_dollar_guarantee = PERIOD_DOLLAR_GUARANTEE_1175
+        row.weekly_hour_guarantee = 0.0
+        row.tech_category = "quick_lube"
+        row.hourly_rate = FLAT_RATE_LUBE_RATE
+        return True
+    if abs(row.hourly_rate - FLAT_RATE_LUBE_RATE) > 0.001:
+        row.hourly_rate = FLAT_RATE_LUBE_RATE
+        changed = True
+    if row.tech_category != "quick_lube":
+        row.tech_category = "quick_lube"
+        changed = True
+    return changed
+
 
 def ensure_roster_defaults(teams: Dict[str, List[TechPayrollRow]]) -> bool:
     """Add known techs missing from a saved roster. Returns True if the roster changed."""
@@ -53,13 +80,33 @@ def ensure_roster_defaults(teams: Dict[str, List[TechPayrollRow]]) -> bool:
             tech_category=str(spec.get("tech_category", infer_tech_category(name, "")) or "shop"),
             pay_plan=str(spec.get("pay_plan", "standard") or "standard"),
             weekly_hour_guarantee=float(spec.get("weekly_hour_guarantee", 0) or 0),
+            period_dollar_guarantee=float(spec.get("period_dollar_guarantee", 0) or 0),
         )
         ensure_tech_row_fields(row)
         teams[team_name].append(row)
         changed = True
+    for rows in teams.values():
+        for row in rows:
+            if row.name in LUBE_TRANSITION_TECHS and _apply_lube_transition_defaults(row):
+                changed = True
     if changed:
         normalize_teams(teams)
     return changed
+
+
+def _flat_rate_lube_role(
+    period_guarantee: float,
+) -> dict:
+    return {
+        "tech_category": "quick_lube",
+        "foreman_rule": "none",
+        "quick_lube_sources": [],
+        "pay_plan": "period_dollar_guarantee",
+        "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": period_guarantee,
+        "hourly_rate": FLAT_RATE_LUBE_RATE,
+    }
+
 
 ROLE_OPTIONS = {
     "Shop Apprentice": {
@@ -68,6 +115,7 @@ ROLE_OPTIONS = {
         "quick_lube_sources": [],
         "pay_plan": "standard",
         "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
     },
     "Shop Tech": {
         "tech_category": "shop",
@@ -75,6 +123,7 @@ ROLE_OPTIONS = {
         "quick_lube_sources": [],
         "pay_plan": "standard",
         "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
     },
     "Shop Tech — 40 hr/wk guarantee": {
         "tech_category": "shop",
@@ -82,13 +131,25 @@ ROLE_OPTIONS = {
         "quick_lube_sources": [],
         "pay_plan": "weekly_hour_guarantee",
         "weekly_hour_guarantee": WEEKLY_HOUR_GUARANTEE_DEFAULT,
+        "period_dollar_guarantee": 0.0,
     },
+    "Flat Rate Lube — Guar $1,175 (periods 1–2)": _flat_rate_lube_role(
+        PERIOD_DOLLAR_GUARANTEE_1175
+    ),
+    "Flat Rate Lube — Guar $590 (periods 3–4)": _flat_rate_lube_role(
+        PERIOD_DOLLAR_GUARANTEE_590
+    ),
+    "Flat Rate Lube — Guar $295 (periods 5–6)": _flat_rate_lube_role(
+        PERIOD_DOLLAR_GUARANTEE_295
+    ),
+    "Flat Rate Lube — $21.75 (no guarantee)": _flat_rate_lube_role(0.0),
     "Quick Lube Tech": {
         "tech_category": "quick_lube",
         "foreman_rule": "none",
         "quick_lube_sources": [],
         "pay_plan": "standard",
         "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
     },
     "Foreman ($2/hr team bonus)": {
         "tech_category": "shop",
@@ -96,6 +157,7 @@ ROLE_OPTIONS = {
         "quick_lube_sources": [],
         "pay_plan": "standard",
         "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
     },
     "Foreman ($1/hr team bonus)": {
         "tech_category": "shop",
@@ -103,6 +165,7 @@ ROLE_OPTIONS = {
         "quick_lube_sources": [],
         "pay_plan": "standard",
         "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
     },
     "Quick lube bonus recipient": {
         "tech_category": "shop",
@@ -110,6 +173,7 @@ ROLE_OPTIONS = {
         "quick_lube_sources": list(QUICK_LUBE_TECHS),
         "pay_plan": "standard",
         "weekly_hour_guarantee": 0.0,
+        "period_dollar_guarantee": 0.0,
     },
 }
 
@@ -122,6 +186,15 @@ def role_label(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr)"
     if row.quick_lube_sources:
         return "Quick lube bonus"
+    if row.pay_plan == "period_dollar_guarantee":
+        g = row.period_dollar_guarantee
+        if g >= PERIOD_DOLLAR_GUARANTEE_1175 - 0.01:
+            return "Flat Rate Lube — $1,175 guarantee"
+        if g >= PERIOD_DOLLAR_GUARANTEE_590 - 0.01:
+            return "Flat Rate Lube — $590 guarantee"
+        if g >= PERIOD_DOLLAR_GUARANTEE_295 - 0.01:
+            return "Flat Rate Lube — $295 guarantee"
+        return "Flat Rate Lube — $21.75"
     if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
         return f"Shop Tech — {row.weekly_hour_guarantee:.0f} hr/wk guarantee"
     if row.tech_category == "apprentice":
@@ -139,6 +212,15 @@ def role_option_key(row: TechPayrollRow) -> str:
         return "Foreman ($1/hr team bonus)"
     if row.quick_lube_sources:
         return "Quick lube bonus recipient"
+    if row.pay_plan == "period_dollar_guarantee":
+        g = row.period_dollar_guarantee
+        if g >= PERIOD_DOLLAR_GUARANTEE_1175 - 0.01:
+            return "Flat Rate Lube — Guar $1,175 (periods 1–2)"
+        if g >= PERIOD_DOLLAR_GUARANTEE_590 - 0.01:
+            return "Flat Rate Lube — Guar $590 (periods 3–4)"
+        if g >= PERIOD_DOLLAR_GUARANTEE_295 - 0.01:
+            return "Flat Rate Lube — Guar $295 (periods 5–6)"
+        return "Flat Rate Lube — $21.75 (no guarantee)"
     if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
         return "Shop Tech — 40 hr/wk guarantee"
     if row.tech_category == "apprentice":
@@ -170,6 +252,7 @@ def _serialize_row(row: TechPayrollRow) -> dict:
         "tech_category": row.tech_category,
         "pay_plan": row.pay_plan,
         "weekly_hour_guarantee": row.weekly_hour_guarantee,
+        "period_dollar_guarantee": row.period_dollar_guarantee,
     }
 
 
@@ -209,6 +292,7 @@ def teams_from_saved_data(teams_data: dict) -> Dict[str, List[TechPayrollRow]]:
                     ),
                     pay_plan=str(tech.get("pay_plan", "standard") or "standard"),
                     weekly_hour_guarantee=safe_float(tech.get("weekly_hour_guarantee", 0)),
+                    period_dollar_guarantee=safe_float(tech.get("period_dollar_guarantee", 0)),
                     cp_hours=safe_float(tech.get("cp_hours", 0)),
                     cp_ro_count=int(safe_float(tech.get("cp_ro_count", 0))),
                     cp_hrs_per_ro=safe_float(tech.get("cp_hrs_per_ro", 0)),
@@ -289,6 +373,9 @@ def _apply_role(row: TechPayrollRow, role_label_key: str, team_rows: List[TechPa
     row.tech_category = role["tech_category"]
     row.pay_plan = role["pay_plan"]
     row.weekly_hour_guarantee = float(role["weekly_hour_guarantee"] or 0)
+    row.period_dollar_guarantee = float(role.get("period_dollar_guarantee", 0) or 0)
+    if "hourly_rate" in role:
+        row.hourly_rate = float(role["hourly_rate"])
     foreman_rule = role["foreman_rule"]
     quick_lube_sources = role["quick_lube_sources"]
     if foreman_rule != "none":

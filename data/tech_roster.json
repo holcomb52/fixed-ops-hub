@@ -51,18 +51,24 @@
     {
       "name": "Christopher Ingram",
       "tech_number": "3824",
-      "hourly_rate": 15.0,
+      "hourly_rate": 21.75,
       "foreman_rule": "none",
       "quick_lube_sources": [],
-      "tech_category": "apprentice"
+      "tech_category": "quick_lube",
+      "pay_plan": "period_dollar_guarantee",
+      "period_dollar_guarantee": 1175.0,
+      "weekly_hour_guarantee": 0.0
     },
     {
       "name": "Gary Freeze",
       "tech_number": "3849",
-      "hourly_rate": 17.5,
+      "hourly_rate": 21.75,
       "foreman_rule": "none",
       "quick_lube_sources": [],
-      "tech_category": "quick_lube"
+      "tech_category": "quick_lube",
+      "pay_plan": "period_dollar_guarantee",
+      "period_dollar_guarantee": 1175.0,
+      "weekly_hour_guarantee": 0.0
     }
   ],
   "Olan's Team": [

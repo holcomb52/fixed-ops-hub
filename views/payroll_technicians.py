@@ -332,8 +332,10 @@ def _render_team(team_name: str, rows: list, global_hours: dict, weeks: float):
                     st.caption("Supplemental bonus — Shop Techs only.")
                 elif st.session_state.get("upsell_loaded") or st.session_state.get("tech_cp_metrics_by_name"):
                     st.caption("Upload flag sheet + upsell report to calculate supplemental bonus.")
-                if row.pay_plan == "weekly_hour_guarantee" and row.weekly_hour_guarantee > 0:
-                    st.caption(row.guarantee_label(weeks))
+                if row.pay_plan in ("weekly_hour_guarantee", "period_dollar_guarantee"):
+                    label = row.guarantee_label(weeks)
+                    if label:
+                        st.caption(label)
             with c3:
                 st.number_input(
                     "Training hrs",

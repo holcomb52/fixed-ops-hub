@@ -58,6 +58,7 @@ def build_payroll_snapshot(
                 "supplemental_tier": row.supplemental_tier,
                 "pay_plan": row.pay_plan,
                 "weekly_hour_guarantee": row.weekly_hour_guarantee,
+                "period_dollar_guarantee": row.period_dollar_guarantee,
                 "cp_hrs_per_ro": row.cp_hrs_per_ro,
                 "closing_pct": row.closing_pct,
                 "bonus_label": bonus_label,

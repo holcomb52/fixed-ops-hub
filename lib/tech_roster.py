@@ -38,7 +38,7 @@ ENSURE_ROSTER_TECHS: Dict[str, dict] = {
     },
     "Gregory Phillips": {
         "team": "Derrick's Team",
-        "tech_number": "",
+        "tech_number": "3864",
         "hourly_rate": TIERED_FLAG_RATE_BASE,
         "pay_plan": "tiered_flag_rate",
         "weekly_hour_guarantee": 0.0,
@@ -81,9 +81,13 @@ def _apply_tiered_flag_rate_defaults(row: TechPayrollRow) -> bool:
         row.weekly_hour_guarantee = 0.0
         row.tech_category = "shop"
         row.hourly_rate = TIERED_FLAG_RATE_BASE
-        return True
+        changed = True
     if abs(row.hourly_rate - TIERED_FLAG_RATE_BASE) > 0.001:
         row.hourly_rate = TIERED_FLAG_RATE_BASE
+        changed = True
+    default_number = str(DEFAULT_TECH_NUMBERS.get(row.name, "") or "")
+    if default_number and not str(row.tech_number or "").strip():
+        row.tech_number = default_number
         changed = True
     return changed
 

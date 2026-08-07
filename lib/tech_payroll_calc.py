@@ -311,7 +311,7 @@ DEFAULT_TECH_NUMBERS = {
     "Christopher Ingram": "3824",
     "Gary Freeze": "3849",
     "Michael Holland": "3820",
-    "Gregory Phillips": "",
+    "Gregory Phillips": "3864",
     "Olan Halcomb": "46251",
     "George Webb": "3741",
     "Marvin Granick": "3694",

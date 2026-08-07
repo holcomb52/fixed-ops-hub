@@ -110,14 +110,29 @@ def _apply_roster_change(mutator):
     if not ok:
         st.warning(message)
         return
+    # Mutator owns identity fields (tech #, rate). Do not restore the pre-edit snapshot.
+    for rows in teams.values():
+        for row in rows:
+            prior = values.get(row.name)
+            if not prior:
+                continue
+            prior["tech_number"] = row.tech_number
+            prior["rate"] = row.hourly_rate
     save_roster(teams)
+    # Drop edit-widget keys so inputs re-seed from the saved roster row.
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("roster_edit_"):
+            del st.session_state[key]
     apply_teams_to_session(teams, values)
-    st.success(message)
+    st.session_state["_tech_roster_flash"] = message
     st.rerun()
 
 
 def _render_roster_manager():
     with st.expander("👥 Manage team roster", expanded=False):
+        flash = st.session_state.pop("_tech_roster_flash", None)
+        if flash:
+            st.success(flash)
         render_roster_sync_error("_tech_roster_sync_error")
         st.caption(
             "Add new hires, remove terminations, or move technicians between teams. "
@@ -209,37 +224,33 @@ def _render_roster_manager():
             pick = st.selectbox("Select technician", labels, key="roster_edit_pick")
             pick_idx = labels.index(pick)
             team_name, row_idx, row = tech_choices[pick_idx]
-            edit_scope = f"{team_name}_{row_idx}"
-            e1, e2, e3, e4 = st.columns([1, 1, 1, 1])
-            with e1:
-                edit_number = st.text_input(
-                    "Tech #",
-                    value=row.tech_number,
-                    key=f"roster_edit_number_{edit_scope}",
-                )
-            with e2:
-                edit_rate = st.number_input(
-                    "Hourly rate",
-                    min_value=0.0,
-                    step=0.25,
-                    value=float(row.hourly_rate),
-                    key=f"roster_edit_rate_{edit_scope}",
-                )
-            with e3:
-                role_keys = list(ROLE_OPTIONS.keys())
-                default_role = role_option_key(row)
-                if default_role not in ROLE_OPTIONS:
-                    default_role = "Shop Tech"
-                edit_role = st.selectbox(
-                    "Role",
-                    role_keys,
-                    index=role_keys.index(default_role),
-                    key=f"roster_edit_role_{edit_scope}",
-                )
-            with e4:
-                st.write("")
-                st.write("")
-                if st.button("Save changes", key=f"roster_edit_save_{edit_scope}", use_container_width=True):
+            role_keys = list(ROLE_OPTIONS.keys())
+            default_role = role_option_key(row)
+            if default_role not in ROLE_OPTIONS:
+                default_role = "Shop Tech"
+
+            with st.form("roster_edit_form", clear_on_submit=False):
+                e1, e2, e3, e4 = st.columns([1, 1, 1, 1])
+                with e1:
+                    edit_number = st.text_input("Tech #", value=row.tech_number or "")
+                with e2:
+                    edit_rate = st.number_input(
+                        "Hourly rate",
+                        min_value=0.0,
+                        step=0.25,
+                        value=float(row.hourly_rate),
+                    )
+                with e3:
+                    edit_role = st.selectbox(
+                        "Role",
+                        role_keys,
+                        index=role_keys.index(default_role),
+                    )
+                with e4:
+                    st.write("")
+                    st.write("")
+                    saved = st.form_submit_button("Save changes", use_container_width=True)
+                if saved:
                     _apply_roster_change(
                         lambda teams, tn=team_name, idx=row_idx, num=edit_number, rt=edit_rate, rl=edit_role: update_technician(
                             teams, tn, idx, rt, num, rl

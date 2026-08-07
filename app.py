@@ -30,6 +30,18 @@ PAGES = {
     "Reports": reports.render,
 }
 
+NAV_LABELS = {
+    "Home": "🏠  Home",
+    "Payroll": "💰  Payroll",
+    "Flag Sheet": "📋  Flag Sheet",
+    "Warranty": "🛡️  Warranty",
+    "Warranty Admin Bonus": "🏅  Warranty Admin Bonus",
+    "EOM Report": "📅  EOM Report",
+    "Labor Rate": "📈  Labor Rate",
+    "Inventory": "📦  Inventory",
+    "Reports": "📊  Reports",
+}
+
 with st.sidebar:
     st.markdown(
         """
@@ -57,17 +69,7 @@ with st.sidebar:
         else 0,
         label_visibility="collapsed",
         key="nav_page",
-        format_func=lambda x: {
-            "Home": "🏠  Home",
-            "Payroll": "💰  Payroll",
-            "Flag Sheet": "📋  Flag Sheet",
-            "Warranty": "🛡️  Warranty",
-            "Warranty Admin Bonus": "🏅  Warranty Admin Bonus",
-            "EOM Report": "📅  EOM Report",
-            "Labor Rate": "📈  Labor Rate",
-            "Inventory": "📦  Inventory",
-            "Reports": "📊  Reports",
-        }[x],
+        format_func=lambda x: NAV_LABELS.get(x, x),
     )
 
     st.markdown("---")
@@ -83,11 +85,10 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-if PAGES[page] is None:
-    labels = {"Inventory": "Inventory"}
+if PAGES.get(page) is None:
     st.markdown(
         coming_soon_panel(
-            labels[page] + " — Coming Soon",
+            f"{page} — Coming Soon",
             "This module is on the roadmap. Payroll is live and ready to build on.",
         ),
         unsafe_allow_html=True,

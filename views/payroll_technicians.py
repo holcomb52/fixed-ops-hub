@@ -228,6 +228,8 @@ def _render_roster_manager():
             with e3:
                 role_keys = list(ROLE_OPTIONS.keys())
                 default_role = role_option_key(row)
+                if default_role not in ROLE_OPTIONS:
+                    default_role = "Shop Tech"
                 edit_role = st.selectbox(
                     "Role",
                     role_keys,

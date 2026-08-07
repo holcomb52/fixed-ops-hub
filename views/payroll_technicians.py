@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from hub_ui.ui import stat_card, status_banner, team_section_divider, team_section_header
+from lib.page_ui import stat_card, status_banner, team_section_divider, team_section_header
 from lib.payroll_export_data import build_payroll_snapshot
 from lib.payroll_pdf_export import generate_payroll_pdf
 from lib.tech_payroll_calc import (

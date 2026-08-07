@@ -106,9 +106,10 @@ Sign in with the `APP_PASSWORD` you set in secrets.
 - Confirm `requirements.txt` is in the repo root.
 - Confirm Supabase URL and key are correct in Secrets.
 - Run the new `warranty_labor_runs` SQL in Supabase if warranty save fails.
-- **`KeyError: 'components.ui'` / dataclasses errors / Python 3.14 in the logs:**  
-  Open **Manage app → Settings → General** (or redeploy with **Advanced settings**) and set **Python version to 3.12**.  
-  Then **reboot** the app. Streamlit Cloud defaults to the newest Python; 3.14 currently breaks this app.
+- **`KeyError` / redacted crash / Python 3.14 in the logs:**  
+  The app will show a clear on-screen message if Cloud is on Python 3.14.  
+  Open **Manage app → Settings**, set **Python version to 3.12**, then **Reboot**.  
+  If the version can’t be changed, delete and recreate the app with **Python 3.12** in Advanced settings.
 
 ---
 

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from hub_ui.ui import stat_card, status_banner
+from lib.page_ui import stat_card, status_banner
 from lib.receptionist_payroll_calc import (
     CSI_TIER_KEYS,
     CSI_TIER_NONE,

@@ -1,7 +1,30 @@
+import sys
+
 import streamlit as st
 
-from hub_ui.ui import coming_soon_panel
+# Streamlit Community Cloud currently defaults to Python 3.14, which breaks this app
+# (redacted KeyError / dataclass failures during import). Require 3.12 or 3.11.
+if sys.version_info >= (3, 14):
+    st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
+    st.error(
+        f"Fixed Ops Hub cannot run on Python {sys.version_info.major}.{sys.version_info.minor}."
+    )
+    st.markdown(
+        """
+### Fix in Streamlit Cloud (about 1 minute)
+
+1. Open **Manage app** (bottom right) → **Settings**
+2. Set **Python version** to **3.12** (or **3.11**)
+3. Click **Save**, then **Reboot app**
+
+If Python version is locked, **delete the app** and **Create app** again — choose
+**Python 3.12** under **Advanced settings**, then paste your secrets.
+"""
+    )
+    st.stop()
+
 from lib.app_auth import require_login
+from lib.page_ui import coming_soon_panel
 from lib.supabase_client import is_configured
 from styles import CUSTOM_CSS
 from views import flag_sheet, home, labor_rate, payroll, reports, warranty, warranty_admin_bonus, eom_report

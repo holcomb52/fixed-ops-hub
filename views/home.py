@@ -1,6 +1,6 @@
 import streamlit as st
 
-from hub_ui.ui import module_card, page_hero, stat_card, status_banner
+from lib.page_ui import module_card, page_hero, stat_card, status_banner
 from lib.supabase_client import is_configured
 
 

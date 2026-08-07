@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from hub_ui.ui import page_hero, stat_card, status_banner
+from lib.page_ui import page_hero, stat_card, status_banner
 from lib.labor_rate_grid import (
     apply_amount_overrides,
     build_labor_grid,

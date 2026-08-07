@@ -5,7 +5,7 @@ from typing import Callable, Optional
 import pandas as pd
 import streamlit as st
 
-from hub_ui.ui import (
+from lib.page_ui import (
     page_hero,
     report_run_summary_card,
     report_section_header,

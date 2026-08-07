@@ -1,9 +1,8 @@
 import os
-from typing import Optional
 
 import streamlit as st
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import create_client
 
 
 def _secret_get(name: str) -> str:
@@ -18,7 +17,8 @@ def _secret_get(name: str) -> str:
 
 
 @st.cache_resource
-def get_supabase() -> Optional[Client]:
+def get_supabase():
+    """Return a Supabase client, or None when credentials are not configured."""
     load_dotenv()
 
     url = (os.getenv("SUPABASE_URL") or "").strip() or _secret_get("SUPABASE_URL")

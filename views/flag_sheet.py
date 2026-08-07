@@ -1,7 +1,7 @@
 import base64
 import streamlit as st
 
-from hub_ui.ui import page_hero, status_banner
+from lib.page_ui import page_hero, status_banner
 
 
 def _pdf_viewer(pdf_bytes: bytes, height: int = 820):

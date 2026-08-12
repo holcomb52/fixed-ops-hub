@@ -115,8 +115,9 @@ def advisor_guarantee_pdf_note(row: "AdvisorPayrollRow") -> str:
     if not plan_has_weekly_guarantee(row.plan_type):
         return ""
     return (
-        f"Employee is guaranteed ${row.weekly_guarantee:,.0f} per week or their commission sales. "
-        "Whichever one is higher is what they get paid."
+        f"Employee is guaranteed ${row.weekly_guarantee:,.0f} per week or their commission sales "
+        "(labor + parts), whichever is higher. CSI, alignment, and SPIFF are paid in addition "
+        "to that amount."
     )
 
 
@@ -211,6 +212,7 @@ class AdvisorPayrollResult:
     alignment_qualified: bool
     menu_pay: float
     spiff_pay: float
+    bonus_pay: float
     total_pay: float
     payroll_pct: float
     commission_total: float
@@ -348,12 +350,14 @@ def calculate_advisor_payroll(
     variable_pay = row.variable_amount if alignment_qualified else 0.0
     menu_pay = row.menu_presentation
     spiff_pay = row.spiff
-    commission_total = hourly_pay + csi_pay + parts_pay + variable_pay + menu_pay + spiff_pay
+    # Labor + parts compete with the weekly guarantee. CSI / alignment / SPIFF stack on top.
+    commission_total = hourly_pay + parts_pay + menu_pay
+    bonus_pay = csi_pay + variable_pay + spiff_pay
     guarantee_amount = 0.0
     guarantee_top_up = 0.0
     guarantee_active = False
     guarantee_eligible = False
-    total = commission_total
+    total = commission_total + bonus_pay
 
     if plan_has_weekly_guarantee(row.plan_type) and guarantee_applies_for_period(
         row.guarantee_expires,
@@ -363,7 +367,7 @@ def calculate_advisor_payroll(
         guarantee_amount = row.weekly_guarantee * max(pay_period_weeks, 0.0)
         guarantee_active = guarantee_amount > commission_total
         guarantee_top_up = max(0.0, guarantee_amount - commission_total)
-        total = max(commission_total, guarantee_amount)
+        total = max(commission_total, guarantee_amount) + bonus_pay
 
     payroll_pct = (total / row.parts_labor_sales) if row.parts_labor_sales else 0.0
 
@@ -382,6 +386,7 @@ def calculate_advisor_payroll(
         alignment_qualified=alignment_qualified,
         menu_pay=menu_pay,
         spiff_pay=spiff_pay,
+        bonus_pay=bonus_pay,
         total_pay=total,
         payroll_pct=payroll_pct,
         commission_total=commission_total,

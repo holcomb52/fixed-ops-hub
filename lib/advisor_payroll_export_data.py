@@ -41,6 +41,7 @@ def build_advisor_payroll_snapshot(
             "guarantee_top_up": result.guarantee_top_up,
             "guarantee_active": result.guarantee_active,
             "guarantee_eligible": result.guarantee_eligible,
+            "bonus_pay": result.bonus_pay,
             "total_pay": result.total_pay,
             "notes": advisor_pdf_notes(advisor, result),
             "clerk_notes": advisor.notes,

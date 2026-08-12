@@ -90,8 +90,8 @@ PLAN_SECTION_STYLE = {
         "icon": "🛡️",
         "badge": "Guarantee",
         "subtitle": (
-            f"New Advisors commission or ${ADVISOR_WEEKLY_GUARANTEE:,.0f}/week guarantee — "
-            "whichever is higher."
+            f"New Advisors labor/parts commission or ${ADVISOR_WEEKLY_GUARANTEE:,.0f}/week "
+            "guarantee — whichever is higher. CSI, alignment, and SPIFF pay on top."
         ),
     },
 }
@@ -481,6 +481,8 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
         )
 
     st.markdown("##### Bonuses you enter")
+    if plan_has_weekly_guarantee(row.plan_type):
+        st.caption("Alignment, CSI, and SPIFF are paid **in addition** to the weekly guarantee.")
     c1, c2 = st.columns(2)
     with c1:
         st.toggle(
@@ -488,7 +490,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             key=advisor_field_key(name, "alignment_bonus"),
             on_change=persist_advisor_changes,
             args=(advisor_idx, name),
-            help="Turn on when the advisor earned the alignment bonus this pay period.",
+            help="Turn on when the advisor earned the alignment bonus this pay period. Paid in addition to the weekly guarantee.",
         )
     with c2:
         st.number_input(
@@ -535,11 +537,15 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             expires = parse_guarantee_expires(synced.guarantee_expires)
             exp_text = f" Expires **{expires.strftime('%m/%d/%y')}**." if expires else ""
             paid_on = "commission sales" if result.commission_total >= result.guarantee_amount else "weekly guarantee"
+            extras = ""
+            if result.bonus_pay:
+                extras = f" plus bonuses {_money(result.bonus_pay)}"
             st.caption(
-                f"**New Advisors commission:** {_money(result.commission_total)} · "
+                f"**Labor + parts commission:** {_money(result.commission_total)} · "
                 f"**Weekly guarantee:** ${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks = "
                 f"**{_money(result.guarantee_amount)}** · "
-                f"**Paid on {paid_on}** ({_money(result.total_pay)}).{exp_text}"
+                f"**Paid on {paid_on}** ({_money(max(result.commission_total, result.guarantee_amount))})"
+                f"{extras} · **Total {_money(result.total_pay)}**.{exp_text}"
             )
     elif row.plan_type == PLAN_SEASONED:
         if result.cp_bump_active:
@@ -589,7 +595,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
             {
                 "Pay": "Commission sales (New Advisors plan)",
                 "Amount": result.commission_total,
-                "Detail": "Labor + parts + CSI + alignment + SPIFF",
+                "Detail": "Labor + parts (compared to guarantee)",
             }
         )
         if result.guarantee_active:
@@ -598,7 +604,7 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
                     "Pay": "Weekly guarantee top-up",
                     "Amount": result.guarantee_top_up,
                     "Detail": (
-                        f"Guarantee {_money(result.guarantee_amount)} exceeds commission — "
+                        f"Guarantee {_money(result.guarantee_amount)} exceeds labor + parts — "
                         f"${synced.weekly_guarantee:,.0f}/wk × {weeks:.1f} wks"
                     ),
                 }
@@ -608,7 +614,15 @@ def _render_advisor_section(advisor_idx: int, row) -> None:
                 {
                     "Pay": "Weekly guarantee",
                     "Amount": result.guarantee_amount,
-                    "Detail": "Commission sales exceeded guarantee — not added",
+                    "Detail": "Labor + parts exceeded guarantee — not added",
+                }
+            )
+        if result.bonus_pay:
+            pay_rows.append(
+                {
+                    "Pay": "Bonuses on top of guarantee",
+                    "Amount": result.bonus_pay,
+                    "Detail": "CSI + alignment + SPIFF paid in addition",
                 }
             )
     pay_rows.append({"Pay": "TOTAL", "Amount": result.total_pay, "Detail": ""})

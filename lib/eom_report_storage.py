@@ -109,23 +109,46 @@ def save_eom_report_run(
         return run_id, sync_error
 
     client = get_supabase()
-    if client:
-        row = {
-            "id": run_id,
-            "pay_period": record["pay_period"],
-            "status": status,
-            "snapshot": snapshot,
-            "grand_total": record["grand_total"],
-            "tech_count": record["tech_count"],
-            "completed_at": now,
-            "updated_at": now,
-        }
-        ok, err = upsert_payroll_run(client, TABLE, row, run_id)
-        if not ok:
-            sync_error = err
-            record["_sync_error"] = err
-            _save_local(run_id, record)
+    if not client:
+        sync_error = (
+            "Supabase is not connected. EOM reports only save on this server and "
+            "are wiped when Streamlit Cloud redeploys."
+        )
+        record["_sync_error"] = sync_error
+        _save_local(run_id, record)
+        return run_id, sync_error
+
+    row = {
+        "id": run_id,
+        "pay_period": record["pay_period"],
+        "status": status,
+        "snapshot": snapshot,
+        "grand_total": record["grand_total"],
+        "tech_count": record["tech_count"],
+        "completed_at": now,
+        "updated_at": now,
+    }
+    ok, err = upsert_payroll_run(client, TABLE, row, run_id)
+    if not ok:
+        sync_error = err
+        record["_sync_error"] = err
+        _save_local(run_id, record)
     return run_id, sync_error
+
+
+def eom_report_cloud_status() -> Tuple[bool, str]:
+    """Return (ok, message) for whether EOM reports can persist in Supabase."""
+    client = get_supabase()
+    if not client:
+        return False, (
+            "Supabase is not connected. EOM reports only save on this server and "
+            "are wiped when Streamlit Cloud redeploys."
+        )
+    try:
+        client.table(TABLE).select("id").limit(1).execute()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
 
 
 def list_eom_report_runs() -> List[dict]:

@@ -60,8 +60,7 @@ def generate_parts_return_pdf(snapshot: dict) -> bytes:
         Paragraph(DEALERSHIP_TITLE, title_style),
         Paragraph(f"Parts Return Plan · {label}", sub_style),
         Paragraph(
-            "One return allowance covers both MNS (months no sale) and "
-            "MNR (months no receipt). Ranked by age × shelf value; "
+            "Return allowance plan from MNS (months no sale). Ranked by age × shelf value; "
             "multipack and misc hardware excluded when those filters were on.",
             body,
         ),
@@ -74,13 +73,18 @@ def generate_parts_return_pdf(snapshot: dict) -> bytes:
         ["Return dollars", f"${float(snapshot.get('selected_value', 0) or 0):,.2f}"],
         ["Allowance remaining", f"${float(snapshot.get('remaining_allowance', 0) or 0):,.2f}"],
         ["MNS file", escape(str(snapshot.get("mns_name") or "—"))],
-        ["MNR file", escape(str(snapshot.get("mnr_name") or "—"))],
-        [
-            "Candidates / skipped",
-            f"{int(snapshot.get('candidate_count', 0) or 0)} / "
-            f"{int(snapshot.get('skipped_count', 0) or 0)}",
-        ],
     ]
+    if snapshot.get("mnr_name"):
+        summary.append(["MNR file", escape(str(snapshot.get("mnr_name") or "—"))])
+    summary.extend(
+        [
+            [
+                "Candidates / skipped",
+                f"{int(snapshot.get('candidate_count', 0) or 0)} / "
+                f"{int(snapshot.get('skipped_count', 0) or 0)}",
+            ],
+        ]
+    )
     summary_table = Table(summary, colWidths=[2.6 * inch, 4.6 * inch])
     summary_table.setStyle(
         TableStyle(

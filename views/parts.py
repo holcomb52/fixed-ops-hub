@@ -1,4 +1,4 @@
-"""Parts return allowance planner — shared MNS + MNR dollars."""
+"""Parts return allowance planner — MNS return allowance."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from lib.parts_return_calc import (
     ranked_replacement_candidates,
 )
 from lib.parts_return_parser import (
-    SOURCE_MNR,
     SOURCE_MNS,
     merge_parts_reports,
     parse_parts_workbook,
@@ -108,17 +107,15 @@ def _load_uploaded(report_type: str, uploaded, bytes_key: str, name_key: str, si
 
 def _combined_lines():
     mns = st.session_state.get("parts_mns_lines") or []
-    mnr = st.session_state.get("parts_mnr_lines") or []
-    if not mns and not mnr:
+    if not mns:
         return []
-    return merge_parts_reports(mns, mnr)
+    return merge_parts_reports(mns, [])
 
 
 def _selection_seed(lines) -> str:
     return "|".join(
         [
             st.session_state.get("parts_mns_sig") or "",
-            st.session_state.get("parts_mnr_sig") or "",
             str(float(st.session_state.get("parts_allowance") or 0)),
             str(bool(st.session_state.get("parts_exclude_multipack"))),
             str(bool(st.session_state.get("parts_exclude_hardware"))),
@@ -521,7 +518,7 @@ def render():
     st.markdown(
         page_hero(
             "Parts",
-            "One return allowance for MNS (months no sale) and MNR (months no receipt). "
+            "Return allowance planner for MNS (months no sale). "
             "Rank by age × value, then export PDF and save to Reports.",
             tag="Returns",
             tag_style="live",
@@ -543,8 +540,7 @@ def render():
 
     st.markdown(
         '<span class="legend-chip chip-manual">MNS = months no sale</span> '
-        '<span class="legend-chip chip-calc">MNR = months no receipt</span> '
-        '<span class="legend-chip chip-live">Same $ allowance covers both lists</span>',
+        '<span class="legend-chip chip-live">Age × value ranking · partial qty supported</span>',
         unsafe_allow_html=True,
     )
 
@@ -560,56 +556,34 @@ def render():
         help="How this run appears under Reports → Parts Returns.",
     )
 
-    c1, c2 = st.columns(2)
-    with c1:
-        mns_file = st.file_uploader(
-            "Upload MNS (.xlsx) — months no sale",
-            type=["xlsx", "xls"],
-            key="parts_mns_uploader",
-            help="Months No Sale export from the parts system.",
+    mns_file = st.file_uploader(
+        "Upload MNS (.xlsx) — months no sale",
+        type=["xlsx", "xls"],
+        key="parts_mns_uploader",
+        help="Months No Sale export from the parts system.",
+    )
+    _load_uploaded(
+        SOURCE_MNS,
+        mns_file,
+        "parts_mns_bytes",
+        "parts_mns_name",
+        "parts_mns_sig",
+    )
+    if st.session_state.get("parts_mns_name"):
+        st.caption(
+            f"Loaded: {st.session_state.parts_mns_name} · "
+            f"{len(st.session_state.get('parts_mns_lines') or [])} lines"
         )
-        _load_uploaded(
-            SOURCE_MNS,
-            mns_file,
-            "parts_mns_bytes",
-            "parts_mns_name",
-            "parts_mns_sig",
-        )
-        if st.session_state.get("parts_mns_name"):
-            st.caption(
-                f"Loaded: {st.session_state.parts_mns_name} · "
-                f"{len(st.session_state.get('parts_mns_lines') or [])} lines"
-            )
-    with c2:
-        mnr_file = st.file_uploader(
-            "Upload MNR (.xlsx) — months no receipt",
-            type=["xlsx", "xls"],
-            key="parts_mnr_uploader",
-            help="Months No Receipt export from the parts system.",
-        )
-        _load_uploaded(
-            SOURCE_MNR,
-            mnr_file,
-            "parts_mnr_bytes",
-            "parts_mnr_name",
-            "parts_mnr_sig",
-        )
-        if st.session_state.get("parts_mnr_name"):
-            st.caption(
-                f"Loaded: {st.session_state.parts_mnr_name} · "
-                f"{len(st.session_state.get('parts_mnr_lines') or [])} lines"
-            )
 
     lines = _combined_lines()
     if not lines:
-        st.info("Upload an MNS and/or MNR spreadsheet to build a return list.")
+        st.info("Upload an MNS spreadsheet to build a return list.")
         return
 
     st.markdown("---")
-    st.markdown("##### Shared return allowance")
+    st.markdown("##### Return allowance")
     st.caption(
-        "Both MNS and MNR feed one combined candidate list. "
-        "The dollar amount below is the single return allowance for this plan."
+        "The dollar amount below is the return allowance for this plan."
     )
     a1, a2, a3, a4 = st.columns([1.2, 1, 1, 1])
     with a1:
@@ -619,7 +593,7 @@ def render():
             step=100.0,
             format="%.2f",
             key="parts_allowance",
-            help="One allowance applied across MNS + MNR together.",
+            help="Return allowance for this MNS plan.",
         )
     with a2:
         st.checkbox("Exclude multipack", key="parts_exclude_multipack")
@@ -949,7 +923,7 @@ def render():
             disabled=plan.selected_count == 0,
         )
     with e2:
-        st.caption("PDF lists selected parts, allowance used, and MNS/MNR file names.")
+        st.caption("PDF lists selected parts, allowance used, and the MNS file name.")
 
     st.markdown("##### ✅ Save to Reports")
     confirm = st.checkbox(

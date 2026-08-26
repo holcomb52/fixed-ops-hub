@@ -68,6 +68,7 @@ from lib.eom_report_pdf_export import generate_eom_report_pdf
 from lib.eom_report_storage import (
     apply_eom_report_snapshot_to_session,
     delete_eom_report_run,
+    eom_report_cloud_status,
     list_eom_report_runs,
     load_eom_report_run,
 )
@@ -528,14 +529,29 @@ def _render_eom_report_runs():
     )
 
     if not runs:
-        st.markdown(
-            status_banner(
-                "No saved EOM reports yet. Finish on **EOM Report** "
-                "and click **Complete & Save to Reports**.",
-                "warn",
-            ),
-            unsafe_allow_html=True,
-        )
+        cloud_ok, cloud_err = eom_report_cloud_status()
+        if not cloud_ok:
+            from lib.supabase_setup_help import missing_payroll_tables_sql, payroll_sync_error_message
+
+            st.error(payroll_sync_error_message(cloud_err, table="eom_report_runs"))
+            sql = missing_payroll_tables_sql()
+            if sql:
+                with st.expander("SQL to run in Supabase (creates missing tables)"):
+                    st.code(sql, language="sql")
+                    st.caption("Supabase dashboard → SQL Editor → New query → paste → Run")
+            st.caption(
+                "After the table exists, open **EOM Report** and click "
+                "**Complete & Save to Reports** again."
+            )
+        else:
+            st.markdown(
+                status_banner(
+                    "No saved EOM reports yet. Finish on **EOM Report** "
+                    "and click **Complete & Save to Reports**.",
+                    "warn",
+                ),
+                unsafe_allow_html=True,
+            )
         return
 
     for run in runs:
@@ -611,7 +627,7 @@ def _render_parts_return_runs():
     st.markdown(
         report_section_header(
             "Parts Returns",
-            "Saved MNS + MNR return allowance plans",
+            "Saved MNS return allowance plans",
             accent=ACCENT_PARTS,
             icon="🔩",
             run_count=len(runs) if runs else None,

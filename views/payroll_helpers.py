@@ -428,7 +428,16 @@ def render_payroll_sync_error(session_key: str, table: str = "") -> None:
     from lib.supabase_setup_help import missing_payroll_tables_sql, payroll_sync_error_message
 
     st.error(payroll_sync_error_message(sync_err, table=table))
-    if table and table in str(sync_err):
+    err_text = str(sync_err)
+    show_sql = bool(
+        table
+        and (
+            table in err_text
+            or "Could not find the table" in err_text
+            or "PGRST205" in err_text
+        )
+    )
+    if show_sql:
         sql = missing_payroll_tables_sql()
         if sql:
             with st.expander("SQL to run in Supabase (creates missing tables)"):

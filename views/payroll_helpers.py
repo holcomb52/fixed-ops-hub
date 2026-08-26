@@ -162,13 +162,15 @@ def apply_teams_to_session(teams: dict, values_by_name: Optional[Dict] = None):
 
 
 def flag_pdf_cache_key(pdf_bytes: bytes | None = None) -> str:
-    """Cheap stable fingerprint for uploaded flag PDF bytes."""
+    """Cheap stable fingerprint for uploaded flag PDF bytes + parser version."""
     import hashlib
+
+    from lib.flag_pdf_parser import FLAG_PARSER_VERSION
 
     data = pdf_bytes if pdf_bytes is not None else st.session_state.get("flag_pdf_bytes")
     if not data:
         return ""
-    return f"{len(data)}:{hashlib.md5(data).hexdigest()}"
+    return f"{FLAG_PARSER_VERSION}:{len(data)}:{hashlib.md5(data).hexdigest()}"
 
 
 def cached_flag_parse():

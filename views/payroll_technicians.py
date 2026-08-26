@@ -446,13 +446,16 @@ def render():
 
     if pdf_file:
         try:
+            from lib.flag_pdf_parser import FLAG_PARSER_VERSION
+
             pdf_file.seek(0)
             pdf_bytes = pdf_file.read()
-            pdf_sig = f"{pdf_file.name}:{len(pdf_bytes)}"
+            # Include parser version so a redeploy re-applies the same PDF after regex fixes.
+            pdf_sig = f"{FLAG_PARSER_VERSION}:{pdf_file.name}:{len(pdf_bytes)}"
             if st.session_state.get("flag_pdf_processed_sig") != pdf_sig:
                 store_flag_pdf(pdf_file, pdf_bytes)
                 parsed = cached_flag_parse()
-                matched = sync_flag_sheet_to_session(force=True)
+                sync_flag_sheet_to_session(force=True)
                 number_map = {
                     t.display_name: t.tech_number
                     for t in (parsed.technicians if parsed else [])
@@ -481,6 +484,11 @@ def render():
                     for team in st.session_state.tech_teams.values()
                     for row in team
                     if row.flat_rate_hours or row.dollars_earned
+                )
+                total_hours = sum(
+                    float(row.flat_rate_hours or 0)
+                    for team in st.session_state.tech_teams.values()
+                    for row in team
                 )
                 number_note = (
                     f" · {numbers_updated} tech numbers synced" if numbers_updated else ""
@@ -511,7 +519,8 @@ def render():
                 else:
                     st.markdown(
                         status_banner(
-                            f"✓ {matched} techs loaded{number_note} · {cp_count} CP metrics · "
+                            f"✓ {matched} techs loaded · {total_hours:.1f} hrs{number_note} · "
+                            f"{cp_count} CP metrics · "
                             "Flag sheet saved — view anytime on **Flag Sheet** tab"
                             + period_note,
                             "success",
@@ -525,7 +534,8 @@ def render():
 
                     autosave_technician_payroll()
             else:
-                # Same PDF still in the uploader — hours already applied via cache.
+                # Same PDF still in the uploader — keep hours applied via cache.
+                sync_flag_sheet_to_session()
                 st.session_state.pdf_loaded = True
         except Exception as exc:
             st.markdown(status_banner(f"PDF parse failed: {exc}", "warn"), unsafe_allow_html=True)

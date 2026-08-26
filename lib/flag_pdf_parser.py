@@ -9,6 +9,9 @@ from typing import BinaryIO, List, Optional, Union
 
 import pdfplumber
 
+# Bump when line regexes change so Streamlit session caches re-parse old PDFs.
+FLAG_PARSER_VERSION = "date-first-v1"
+
 PDF_NAME_MAP = {
     "CHARLES H": "Charles Hinxman",
     "DERRICK OPP": "Derrick Opp",

@@ -207,6 +207,36 @@ class PartsReturnTests(unittest.TestCase):
         self.assertIn("BIG", pns)
         self.assertGreater(pns.index("BIG"), pns.index("NEXT"))
 
+    def test_partial_qty_oil_filters_recalculates_dollars(self):
+        from lib.parts_return_calc import plan_from_selected_parts
+
+        lines = [
+            _line(
+                part_number="1BP00176-AA",
+                description="FILTER ENGINE OIL",
+                age=37,
+                qoh=14,
+                cost=11.4,
+                value=159.6,
+                source="MNR",
+            )
+        ]
+        full = plan_from_selected_parts(
+            lines, allowance=5000, selected_part_numbers=["1BP00176-AA"]
+        )
+        self.assertEqual(full.selected[0].return_qty, 14)
+        self.assertEqual(full.selected[0].return_value, 159.6)
+
+        partial = plan_from_selected_parts(
+            lines,
+            allowance=5000,
+            selected_part_numbers=["1BP00176-AA"],
+            qty_by_part={"1BP00176-AA": 5},
+        )
+        self.assertEqual(partial.selected[0].return_qty, 5)
+        self.assertEqual(partial.selected[0].return_value, 57.0)
+        self.assertEqual(partial.remaining_allowance, 4943.0)
+
 
 if __name__ == "__main__":
     unittest.main()

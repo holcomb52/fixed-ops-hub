@@ -270,6 +270,9 @@ def _selected_editor_df(plan) -> pd.DataFrame:
     rows = []
     for item in plan.selected:
         line = item.line
+        unit = line.cost if line.cost > 0 else (
+            line.value / line.qoh if line.qoh else 0
+        )
         rows.append(
             {
                 "Include": True,
@@ -278,7 +281,9 @@ def _selected_editor_df(plan) -> pd.DataFrame:
                 "Source": line.source,
                 "Age (mo)": line.age,
                 "Bin": line.bin_location or "—",
+                "On hand": line.qoh,
                 "Return qty": item.return_qty,
+                "Unit $": round(float(unit or 0), 2),
                 "Return $": item.return_value,
             }
         )
@@ -342,43 +347,63 @@ def _available_editor_df(plan) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _as_qty(value, fallback: float = 0.0) -> float:
+    if value is None or value == "":
+        return float(fallback or 0)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(fallback or 0)
+
+
+def _qty_maps_equal(left: dict, right: dict) -> bool:
+    if set(left.keys()) != set(right.keys()):
+        return False
+    for key in left:
+        if abs(float(left[key] or 0) - float(right[key] or 0)) > 0.001:
+            return False
+    return True
+
+
 def _sync_selection_from_editors(
     edited_sel: pd.DataFrame,
     edited_removed: pd.DataFrame,
     edited_avail: pd.DataFrame,
+    lines=None,
 ) -> tuple[bool, list[str]]:
     """Update suggested + removed trays. Returns (changed, newly_unchecked_pns)."""
     prev_selected = list(st.session_state.get("parts_selected_pns") or [])
     prev_qty = dict(st.session_state.get("parts_selected_qty") or {})
     prev_removed = list(st.session_state.get("parts_removed_pns") or [])
     prev_removed_qty = dict(st.session_state.get("parts_removed_qty") or {})
+    by_pn = _line_lookup(lines or [])
 
     selected: list[str] = []
     qty_map = dict(prev_qty)
     removed: list[str] = []
     removed_qty = dict(prev_removed_qty)
 
-    # Still-checked suggested rows stay selected.
+    # Still-checked suggested rows stay selected (qty may be partial).
     unchecked_from_suggested: list[str] = []
     if edited_sel is not None and not edited_sel.empty:
         for _, row in edited_sel.iterrows():
             pn = str(row.get("Part Number") or "").strip()
             if not pn:
                 continue
+            line = by_pn.get(pn.upper())
+            max_qoh = float(line.qoh) if line else None
             if bool(row.get("Include")):
                 selected.append(pn)
-                try:
-                    qty_map[pn] = float(row.get("Return qty") or qty_map.get(pn) or 0)
-                except (TypeError, ValueError):
-                    pass
+                qty = _as_qty(row.get("Return qty"), qty_map.get(pn, max_qoh or 0))
+                if max_qoh is not None:
+                    qty = max(0.0, min(qty, max_qoh))
+                qty_map[pn] = qty
             else:
                 unchecked_from_suggested.append(pn)
-                try:
-                    removed_qty[pn] = float(
-                        row.get("Return qty") or prev_qty.get(pn) or removed_qty.get(pn) or 0
-                    )
-                except (TypeError, ValueError):
-                    removed_qty[pn] = prev_qty.get(pn, removed_qty.get(pn))
+                removed_qty[pn] = _as_qty(
+                    row.get("Return qty"),
+                    prev_qty.get(pn, removed_qty.get(pn, max_qoh or 0)),
+                )
                 qty_map.pop(pn, None)
 
     # Removed tray: keep unless Include is checked (add back).
@@ -388,26 +413,27 @@ def _sync_selection_from_editors(
             pn = str(row.get("Part Number") or "").strip()
             if not pn:
                 continue
+            line = by_pn.get(pn.upper())
+            max_qoh = float(line.qoh) if line else None
             if bool(row.get("Include")):
                 restored_from_removed.append(pn)
                 if pn not in selected:
                     selected.append(pn)
-                try:
-                    qty_map[pn] = float(
-                        row.get("Return qty") or removed_qty.get(pn) or qty_map.get(pn) or 0
-                    )
-                except (TypeError, ValueError):
-                    pass
+                qty = _as_qty(
+                    row.get("Return qty"),
+                    removed_qty.get(pn, qty_map.get(pn, max_qoh or 0)),
+                )
+                if max_qoh is not None:
+                    qty = max(0.0, min(qty, max_qoh))
+                qty_map[pn] = qty
                 removed_qty.pop(pn, None)
             else:
                 if pn not in removed:
                     removed.append(pn)
-                try:
-                    removed_qty[pn] = float(
-                        row.get("Return qty") or removed_qty.get(pn) or 0
-                    )
-                except (TypeError, ValueError):
-                    pass
+                removed_qty[pn] = _as_qty(
+                    row.get("Return qty"),
+                    removed_qty.get(pn, max_qoh or 0),
+                )
 
     # Preserve prior removed order for anything not shown in the editor this pass.
     for pn in prev_removed:
@@ -432,21 +458,29 @@ def _sync_selection_from_editors(
             if bool(row.get("Include")):
                 if pn not in selected:
                     selected.append(pn)
-                qty_map.setdefault(pn, None)
+                line = by_pn.get(pn.upper())
+                if pn not in qty_map:
+                    qty_map[pn] = float(line.qoh) if line else None
                 if pn in removed:
                     removed = [p for p in removed if p != pn]
                 removed_qty.pop(pn, None)
 
-    clean_qty = {k: v for k, v in qty_map.items() if v is not None and k in selected}
+    clean_qty = {
+        k: float(v)
+        for k, v in qty_map.items()
+        if v is not None and k in selected and float(v) > 0
+    }
+    # Drop zero-qty lines from suggested (partial send of nothing = not returning).
+    selected = [pn for pn in selected if pn in clean_qty]
     clean_removed_qty = {
-        k: v for k, v in removed_qty.items() if v is not None and k in removed
+        k: float(v) for k, v in removed_qty.items() if v is not None and k in removed
     }
 
     if (
         selected == prev_selected
-        and clean_qty == prev_qty
+        and _qty_maps_equal(clean_qty, prev_qty)
         and removed == prev_removed
-        and clean_removed_qty == prev_removed_qty
+        and _qty_maps_equal(clean_removed_qty, prev_removed_qty)
     ):
         return False, []
 
@@ -681,8 +715,9 @@ def render():
 
     st.markdown("##### Suggested returns")
     st.caption(
-        "Auto-filled by age × value. Uncheck a part to park it in Removed and get the "
-        "next best suggestion. Return $ always comes from this box."
+        "Auto-filled by age × value. **Double-click Return qty** to send back only part of a "
+        "line (example: change 14 oil filters to 5) — Return $ and allowance update from unit cost. "
+        "Uncheck Include to park the whole part in Removed."
     )
     sel_df = _selected_editor_df(plan)
     if sel_df.empty:
@@ -698,11 +733,35 @@ def render():
             key=f"parts_suggested_editor_{editor_token}",
             column_config={
                 "Include": st.column_config.CheckboxColumn("Include", default=True),
-                "Return $": st.column_config.NumberColumn(format="$%.2f"),
-                "Return qty": st.column_config.NumberColumn(format="%.0f", min_value=0),
+                "On hand": st.column_config.NumberColumn(
+                    "On hand",
+                    format="%.0f",
+                    help="Quantity on the shelf (cannot return more than this).",
+                ),
+                "Return qty": st.column_config.NumberColumn(
+                    "Return qty",
+                    format="%.0f",
+                    min_value=0,
+                    step=1,
+                    help="Edit this to return a partial quantity. Return $ = qty × unit cost.",
+                ),
+                "Unit $": st.column_config.NumberColumn(format="$%.2f"),
+                "Return $": st.column_config.NumberColumn(
+                    format="$%.2f",
+                    help="Recalculated from Return qty × Unit $.",
+                ),
                 "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
             },
-            disabled=["Part Number", "Description", "Source", "Age (mo)", "Bin", "Return $"],
+            disabled=[
+                "Part Number",
+                "Description",
+                "Source",
+                "Age (mo)",
+                "Bin",
+                "On hand",
+                "Unit $",
+                "Return $",
+            ],
         )
 
     offer = _current_offer_candidate(lines)
@@ -830,20 +889,23 @@ def render():
         )
 
     changed, unchecked = _sync_selection_from_editors(
-        edited_sel, edited_removed, edited_avail
+        edited_sel, edited_removed, edited_avail, lines=lines
     )
     if changed:
-        if unchecked:
-            after = plan_from_selected_parts(
-                lines,
-                float(st.session_state.parts_allowance or 0),
-                st.session_state.get("parts_selected_pns") or [],
-                qty_by_part=st.session_state.get("parts_selected_qty") or {},
-                exclude_multipack=bool(st.session_state.parts_exclude_multipack),
-                exclude_hardware=bool(st.session_state.parts_exclude_hardware),
-                min_age=float(st.session_state.parts_min_age or 0),
-                min_value=float(st.session_state.parts_min_value or 0),
-            )
+        after = plan_from_selected_parts(
+            lines,
+            float(st.session_state.parts_allowance or 0),
+            st.session_state.get("parts_selected_pns") or [],
+            qty_by_part=st.session_state.get("parts_selected_qty") or {},
+            exclude_multipack=bool(st.session_state.parts_exclude_multipack),
+            exclude_hardware=bool(st.session_state.parts_exclude_hardware),
+            min_age=float(st.session_state.parts_min_age or 0),
+            min_value=float(st.session_state.parts_min_value or 0),
+        )
+        # Uncheck whole line, or free dollars by lowering Return qty → offer next fill.
+        prev_used = float(plan.selected_value or 0)
+        freed = prev_used - float(after.selected_value or 0)
+        if unchecked or freed > 0.5:
             _start_replacement_offer(lines, max(float(after.remaining_allowance or 0), 0.0))
         st.rerun()
 

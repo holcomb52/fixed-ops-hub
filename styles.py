@@ -286,6 +286,83 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     pointer-events: none;
 }
 
+/* Clickable stocking stat cards (Parts → Stocking) */
+.stock-stat-card-marker {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.stock-stat-card-marker.is-active .stat-card {
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px);
+}
+
+.stock-stat-card-marker.is-active.accent-orange .stat-card {
+    box-shadow: 0 12px 40px rgba(255, 107, 53, 0.22);
+}
+
+.stock-stat-card-marker.is-active.accent-purple .stat-card {
+    box-shadow: 0 12px 40px rgba(167, 139, 250, 0.22);
+}
+
+.stock-stat-card-marker.is-active.accent-green .stat-card {
+    box-shadow: 0 12px 40px rgba(52, 211, 153, 0.22);
+}
+
+.stock-stat-card-marker.is-active.accent-cyan .stat-card {
+    box-shadow: 0 12px 40px rgba(0, 212, 255, 0.22);
+}
+
+.stock-stat-grid [data-testid="column"] {
+    position: relative;
+}
+
+.stock-stat-grid .stock-stat-card-marker + [data-testid="stButton"] {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    margin: 0;
+}
+
+.stock-stat-grid .stock-stat-card-marker + [data-testid="stButton"] > button {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 6.5rem !important;
+    opacity: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+}
+
+.stock-stat-grid .stock-stat-card-marker + [data-testid="stButton"] > button:hover {
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.stock-stat-grid .stock-stat-card-marker + [data-testid="stButton"] > button p {
+    display: none !important;
+}
+
+.stock-stat-filter-row [data-testid="stButton"] > button {
+    min-height: auto !important;
+    padding: 0.35rem 0.85rem !important;
+    font-size: 0.82rem !important;
+}
+
+.stock-stat-filter-row .is-active-filter [data-testid="stButton"] > button {
+    border-color: rgba(0, 212, 255, 0.65) !important;
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.18) !important;
+}
+
+.accent-purple::before { background: linear-gradient(90deg, #a78bfa, transparent); }
+.accent-purple:hover { box-shadow: 0 12px 40px rgba(167, 139, 250, 0.15); }
+.accent-purple .stat-value { color: #c4b5fd; }
+
 /* ── Module cards ── */
 .module-card {
     position: relative;

@@ -74,6 +74,56 @@ def _filter_lines(plan: StockingPlan, view: str):
     return plan.lines
 
 
+def _filter_title(view: str) -> str:
+    titles = {
+        "Order": "Need to order",
+        "OK": "Adequate stock",
+        "Overstock": "Overstock",
+        "No sales": "No sales",
+        "All": "All parts",
+    }
+    return titles.get(view, view)
+
+
+def _render_clickable_stat(
+    col,
+    *,
+    filter_key: str,
+    label: str,
+    value: str,
+    accent: str,
+    icon: str,
+    button_key: str,
+):
+    active = st.session_state.get("parts_stock_filter") == filter_key
+    active_cls = " is-active" if active else ""
+    card = stat_card(label, value, accent=accent, icon=icon)
+    with col:
+        st.markdown(
+            f'<div class="stock-stat-card-marker accent-{accent}{active_cls}">{card}</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            label,
+            key=button_key,
+            use_container_width=True,
+            help=f"Show {label.lower()}",
+        ):
+            st.session_state.parts_stock_filter = filter_key
+            st.rerun()
+
+
+def _render_quick_filter(label: str, filter_key: str, *, active: bool):
+    if st.button(
+        label,
+        key=f"parts_stock_quick_{filter_key}",
+        use_container_width=True,
+        type="primary" if active else "secondary",
+    ):
+        st.session_state.parts_stock_filter = filter_key
+        st.rerun()
+
+
 def _plan_to_df(lines) -> pd.DataFrame:
     rows = []
     for line in lines:
@@ -173,49 +223,76 @@ def render():
         overstock_factor=float(st.session_state.parts_stock_overstock_factor or 2.0),
     )
 
+    ok_count = sum(1 for line in plan.lines if line.status == "ok")
+    no_sales_count = sum(1 for line in plan.lines if line.status == "no_sales")
+
+    st.markdown('<div class="stock-stat-grid">', unsafe_allow_html=True)
     s1, s2, s3, s4 = st.columns(4)
-    with s1:
-        st.markdown(
-            stat_card("Need to order", f"{plan.order_count}", accent="orange", icon="📦"),
-            unsafe_allow_html=True,
-        )
-    with s2:
-        st.markdown(
-            stat_card(
-                "Order $",
-                f"${plan.order_total_cost:,.2f}",
-                accent="purple",
-                icon="$",
-            ),
-            unsafe_allow_html=True,
-        )
-    with s3:
-        ok_count = sum(1 for line in plan.lines if line.status == "ok")
-        st.markdown(
-            stat_card("Adequate stock", f"{ok_count}", accent="green", icon="✓"),
-            unsafe_allow_html=True,
-        )
-    with s4:
-        st.markdown(
-            stat_card("Overstock", f"{plan.overstock_count}", accent="cyan", icon="▲"),
-            unsafe_allow_html=True,
-        )
+    _render_clickable_stat(
+        s1,
+        filter_key="Order",
+        label="Need to order",
+        value=f"{plan.order_count}",
+        accent="orange",
+        icon="📦",
+        button_key="parts_stock_stat_order",
+    )
+    _render_clickable_stat(
+        s2,
+        filter_key="Order",
+        label="Order $",
+        value=f"${plan.order_total_cost:,.2f}",
+        accent="purple",
+        icon="$",
+        button_key="parts_stock_stat_order_dollars",
+    )
+    _render_clickable_stat(
+        s3,
+        filter_key="OK",
+        label="Adequate stock",
+        value=f"{ok_count}",
+        accent="green",
+        icon="✓",
+        button_key="parts_stock_stat_ok",
+    )
+    _render_clickable_stat(
+        s4,
+        filter_key="Overstock",
+        label="Overstock",
+        value=f"{plan.overstock_count}",
+        accent="cyan",
+        icon="▲",
+        button_key="parts_stock_stat_overstock",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
         f"Based on **{st.session_state.parts_stock_target_months:.1f} month(s)** of supply "
-        f"from 6-month average sales."
+        f"from 6-month average sales. Click a summary box to load that list."
     )
 
-    view = st.selectbox(
-        "Show",
-        ["Order", "All", "OK", "Overstock", "No sales"],
-        key="parts_stock_filter",
-    )
+    st.markdown('<div class="stock-stat-filter-row">', unsafe_allow_html=True)
+    q1, q2, q3 = st.columns([1, 1, 4])
+    active_filter = st.session_state.get("parts_stock_filter") or "Order"
+    with q1:
+        _render_quick_filter("All parts", "All", active=active_filter == "All")
+    with q2:
+        _render_quick_filter(
+            f"No sales ({no_sales_count})",
+            "No sales",
+            active=active_filter == "No sales",
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    view = active_filter
     filtered = _filter_lines(plan, view)
     table_df = _plan_to_df(filtered)
+    list_title = _filter_title(view)
+
+    st.markdown(f"##### {list_title} · {len(filtered)} parts")
 
     if table_df.empty:
-        st.info(f"No parts in the **{view}** view with the current settings.")
+        st.info(f"No parts in **{list_title}** with the current settings.")
         return
 
     st.dataframe(

@@ -71,6 +71,13 @@ from lib.eom_report_storage import (
     list_eom_report_runs,
     load_eom_report_run,
 )
+from lib.parts_return_pdf_export import generate_parts_return_pdf
+from lib.parts_return_snapshot import apply_parts_return_snapshot_to_session
+from lib.parts_return_storage import (
+    delete_parts_return_run,
+    list_parts_return_runs,
+    load_parts_return_run,
+)
 from lib.warranty_admin_bonus_pdf_export import generate_warranty_admin_bonus_pdf
 from lib.warranty_admin_bonus_storage import (
     apply_warranty_admin_bonus_snapshot_to_session,
@@ -87,6 +94,7 @@ ACCENT_WARRANTY = "amber"
 ACCENT_WARRANTY_ADMIN = "green"
 ACCENT_EOM = "orange"
 ACCENT_LABOR = "cyan"
+ACCENT_PARTS = "violet"
 
 
 def _fmt_date(iso: str) -> str:
@@ -596,6 +604,98 @@ def _render_eom_report_runs():
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
+def _render_parts_return_runs():
+    runs = list_parts_return_runs()
+
+    st.markdown(team_section_divider(ACCENT_PARTS), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "Parts Returns",
+            "Saved MNS + MNR return allowance plans",
+            accent=ACCENT_PARTS,
+            icon="🔩",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved parts returns yet. Finish on **Parts** "
+                "and click **Complete & Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        pay_period = run.get("pay_period", "—")
+        completed = _fmt_date(run.get("completed_at", ""))
+        total = float(run.get("grand_total", 0) or 0)
+        loaded = load_parts_return_run(run_id)
+        part_count = run.get("tech_count")
+        if part_count is None and loaded:
+            part_count = (loaded.get("snapshot") or {}).get("selected_count", 0)
+        meta = (
+            f"{float(part_count or 0):.0f} parts · ${total:,.2f} return · Completed"
+            if run.get("status") != "draft"
+            else f"{float(part_count or 0):.0f} parts · ${total:,.2f} return · In progress"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                pay_period,
+                ACCENT_PARTS,
+                caption=_run_status_caption(run, completed),
+                amount=f"${total:,.2f}",
+                meta=meta,
+                badge_html=_run_status_badge(run),
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"parts_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_parts_return_snapshot_to_session(
+                        loaded.get("snapshot") or {},
+                        run_id,
+                        status=loaded.get("status", "completed"),
+                    )
+                    st.session_state.pending_nav = "Parts"
+                    st.rerun()
+        with a2:
+            if loaded and loaded.get("snapshot"):
+                stub = str(pay_period).replace(" ", "_")
+                st.download_button(
+                    "📄 Export PDF",
+                    data=generate_parts_return_pdf(loaded["snapshot"]),
+                    file_name=f"PARTS_RETURN_{stub}.pdf",
+                    mime="application/pdf",
+                    key=f"parts_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("parts", run_id)
+        _render_delete_report_controls(
+            prefix="parts",
+            run_id=run_id,
+            run_label=pay_period,
+            delete_fn=delete_parts_return_run,
+            active_session_key="active_parts_return_run_id",
+            extra_clear_keys=["parts_return_completed"],
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
 def _render_labor_rate_runs():
     labor_runs = list_labor_rate_runs()
 
@@ -1064,4 +1164,5 @@ def render():
     _render_warranty_runs()
     _render_warranty_admin_bonus_runs()
     _render_eom_report_runs()
+    _render_parts_return_runs()
     _render_labor_rate_runs()

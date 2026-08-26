@@ -27,7 +27,7 @@ from lib.app_auth import require_login
 from lib.page_ui import coming_soon_panel
 from lib.supabase_client import is_configured
 from styles import CUSTOM_CSS
-from views import flag_sheet, home, labor_rate, payroll, reports, warranty, warranty_admin_bonus, eom_report
+from views import flag_sheet, home, labor_rate, payroll, parts, reports, warranty, warranty_admin_bonus, eom_report
 
 st.set_page_config(
     page_title="Fixed Ops Hub",
@@ -49,7 +49,7 @@ PAGES = {
     "Warranty Admin Bonus": warranty_admin_bonus.render,
     "EOM Report": eom_report.render,
     "Labor Rate": labor_rate.render,
-    "Inventory": None,
+    "Parts": parts.render,
     "Reports": reports.render,
 }
 
@@ -61,7 +61,7 @@ NAV_LABELS = {
     "Warranty Admin Bonus": "🏅  Warranty Admin Bonus",
     "EOM Report": "📅  EOM Report",
     "Labor Rate": "📈  Labor Rate",
-    "Inventory": "📦  Inventory",
+    "Parts": "🔩  Parts",
     "Reports": "📊  Reports",
 }
 

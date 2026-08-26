@@ -168,6 +168,24 @@ create index if not exists idx_parts_return_runs_period
 create index if not exists idx_parts_return_runs_completed
     on parts_return_runs (completed_at desc);
 
+-- Parts stocking plans from 6MS reports (Reports → Parts Stocking)
+create table if not exists parts_stocking_runs (
+    id uuid primary key default gen_random_uuid(),
+    pay_period text not null,
+    status text not null default 'completed' check (status in ('draft', 'completed')),
+    snapshot jsonb not null,
+    grand_total numeric(12, 2),
+    tech_count numeric(10, 2),
+    completed_at timestamptz,
+    updated_at timestamptz default now(),
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_parts_stocking_runs_period
+    on parts_stocking_runs (pay_period desc);
+create index if not exists idx_parts_stocking_runs_completed
+    on parts_stocking_runs (completed_at desc);
+
 -- Sample data (optional — remove if you want a blank slate)
 insert into employees (full_name, role, hourly_rate) values
     ('Alex Rivera', 'Service Advisor', 28.50),

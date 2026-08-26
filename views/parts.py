@@ -514,10 +514,19 @@ def _current_snapshot(plan, lines):
 
 
 def render():
-    tab_returns, tab_stocking = st.tabs(["Returns", "Stocking"])
-    with tab_returns:
+    if "parts_active_tab" not in st.session_state:
+        st.session_state.parts_active_tab = "Returns"
+
+    tab = st.radio(
+        "Parts section",
+        ["Returns", "Stocking"],
+        horizontal=True,
+        key="parts_active_tab",
+        label_visibility="collapsed",
+    )
+    if tab == "Returns":
         _render_returns()
-    with tab_stocking:
+    else:
         parts_stocking.render()
 
 

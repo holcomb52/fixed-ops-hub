@@ -10,6 +10,10 @@ import streamlit as st
 from lib.page_ui import page_hero, stat_card, status_banner
 from lib.parts_stocking_calc import STATUS_LABELS, StockingPlan, build_stocking_plan
 from lib.parts_stocking_parser import parse_six_month_sales_workbook
+from lib.parts_stocking_pdf_export import generate_parts_stocking_pdf
+from lib.parts_stocking_snapshot import default_stocking_label, serialize_stocking_plan
+from lib.parts_stocking_storage import save_parts_stocking_run
+from views.payroll_helpers import render_payroll_sync_error
 
 
 def _init_state():
@@ -22,10 +26,16 @@ def _init_state():
         "parts_stock_min_sold": 1.0,
         "parts_stock_overstock_factor": 2.0,
         "parts_stock_filter": "Order",
+        "parts_stock_label": "",
+        "parts_stock_notes": "",
+        "active_parts_stocking_run_id": None,
+        "parts_stocking_completed": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    if not st.session_state.get("parts_stock_label"):
+        st.session_state.parts_stock_label = default_stocking_label()
 
 
 def _file_sig(name: str, data: bytes) -> str:
@@ -147,6 +157,18 @@ def _plan_to_df(lines) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _current_snapshot(plan: StockingPlan) -> dict:
+    label = (st.session_state.get("parts_stock_label") or "").strip()
+    if not label:
+        label = default_stocking_label()
+    return serialize_stocking_plan(
+        plan,
+        label=label,
+        source_file=st.session_state.get("parts_stock_name") or "",
+        notes=str(st.session_state.get("parts_stock_notes") or ""),
+    )
+
+
 def render():
     _init_state()
 
@@ -166,6 +188,24 @@ def render():
         '<span class="legend-chip chip-calc">Target on hand = monthly avg × months of supply</span> '
         '<span class="legend-chip chip-live">Order qty = target − QOH (when below target)</span>',
         unsafe_allow_html=True,
+    )
+
+    if st.session_state.get("parts_stocking_completed"):
+        st.markdown(
+            status_banner(
+                f"Editing saved stocking plan · {st.session_state.get('parts_stock_label') or 'Stocking'} · "
+                "Export PDF or Complete & Save again after changes.",
+                "success",
+            ),
+            unsafe_allow_html=True,
+        )
+
+    render_payroll_sync_error("_parts_stocking_sync_error", table="parts_stocking_runs")
+
+    st.text_input(
+        "Plan name (Reports label)",
+        key="parts_stock_label",
+        help="How this run appears under Reports → Parts Stocking.",
     )
 
     uploaded = st.file_uploader(
@@ -222,6 +262,7 @@ def render():
         min_sold_6mo=float(st.session_state.parts_stock_min_sold or 0),
         overstock_factor=float(st.session_state.parts_stock_overstock_factor or 2.0),
     )
+    snapshot = _current_snapshot(plan)
 
     ok_count = sum(1 for line in plan.lines if line.status == "ok")
     no_sales_count = sum(1 for line in plan.lines if line.status == "no_sales")
@@ -293,18 +334,17 @@ def render():
 
     if table_df.empty:
         st.info(f"No parts in **{list_title}** with the current settings.")
-        return
-
-    st.dataframe(
-        table_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Monthly avg": st.column_config.NumberColumn(format="%.1f"),
-            "Order $": st.column_config.NumberColumn(format="$%.2f"),
-            "Cost": st.column_config.NumberColumn(format="$%.2f"),
-        },
-    )
+    else:
+        st.dataframe(
+            table_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Monthly avg": st.column_config.NumberColumn(format="%.1f"),
+                "Order $": st.column_config.NumberColumn(format="$%.2f"),
+                "Cost": st.column_config.NumberColumn(format="$%.2f"),
+            },
+        )
 
     if plan.order_count:
         order_df = _plan_to_df(plan.order_lines)
@@ -316,3 +356,60 @@ def render():
             mime="text/csv",
             use_container_width=True,
         )
+
+    st.text_area("Notes (optional — included on PDF)", key="parts_stock_notes", height=80)
+
+    st.markdown("---")
+    st.markdown("##### Export & save")
+    pdf_bytes = generate_parts_stocking_pdf(snapshot)
+    file_stub = str(snapshot.get("label") or "parts_stocking").replace(" ", "_")
+    e1, e2 = st.columns(2)
+    with e1:
+        st.download_button(
+            "📄 Export stocking plan PDF",
+            data=pdf_bytes,
+            file_name=f"PARTS_STOCKING_{file_stub}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary",
+        )
+    with e2:
+        st.caption("PDF lists parts to order, target on-hand levels, and plan settings.")
+
+    st.markdown("##### ✅ Save to Reports")
+    confirm = st.checkbox(
+        "This stocking plan is complete and ready to save",
+        key="parts_stock_complete_confirm",
+    )
+    if st.button(
+        "Complete & Save to Reports",
+        type="primary",
+        disabled=not confirm,
+        use_container_width=True,
+    ):
+        run_id, sync_error = save_parts_stocking_run(
+            snapshot,
+            run_id=st.session_state.get("active_parts_stocking_run_id"),
+            status="completed",
+            cloud_sync=True,
+        )
+        st.session_state.active_parts_stocking_run_id = run_id
+        st.session_state.parts_stocking_completed = True
+        st.session_state.parts_saved_stock_snapshot = snapshot
+        if sync_error:
+            st.session_state["_parts_stocking_sync_error"] = sync_error
+        else:
+            st.session_state.pop("_parts_stocking_sync_error", None)
+        st.session_state["_parts_stock_saved_label"] = snapshot.get("label")
+        del st.session_state["parts_stock_complete_confirm"]
+        st.rerun()
+
+    if saved := st.session_state.pop("_parts_stock_saved_label", None):
+        if st.session_state.get("_parts_stocking_sync_error"):
+            st.error(
+                f"Stocking plan for {saved} was saved on this session only — cloud backup failed. "
+                "Open Reports after fixing the connection, or save again."
+            )
+        else:
+            st.success(f"Saved — find it in Reports under Parts Stocking · {saved}")
+            st.balloons()

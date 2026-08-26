@@ -106,6 +106,28 @@ class PartsStockingTests(unittest.TestCase):
         self.assertEqual(plan.lines[0].status, "no_sales")
         self.assertEqual(plan.lines[0].order_qty, 0)
 
+    def test_snapshot_and_pdf(self):
+        from lib.parts_stocking_pdf_export import generate_parts_stocking_pdf
+        from lib.parts_stocking_snapshot import serialize_stocking_plan
+
+        plan = build_stocking_plan(
+            [
+                SixMonthSalesLine(
+                    part_number="P1",
+                    description="FILTER",
+                    qoh=10,
+                    sold_6mo=120,
+                    cost=8.0,
+                )
+            ],
+            target_months=1.0,
+        )
+        snap = serialize_stocking_plan(plan, label="Test Stocking", source_file="6ms.xlsx")
+        self.assertEqual(snap["label"], "Test Stocking")
+        self.assertEqual(snap["order_count"], plan.order_count)
+        pdf = generate_parts_stocking_pdf(snap)
+        self.assertTrue(len(pdf) > 500)
+
 
 if __name__ == "__main__":
     unittest.main()

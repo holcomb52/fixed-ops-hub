@@ -182,6 +182,31 @@ class PartsReturnTests(unittest.TestCase):
         self.assertEqual(plan.remaining_allowance, 80.0)
         self.assertTrue(any(c.line.part_number == "AUTO" for c in plan.skipped))
 
+    def test_ranked_replacement_candidates_prefer_fit(self):
+        from lib.parts_return_calc import ranked_replacement_candidates
+
+        lines = [
+            _line(part_number="KEEP", description="MODULE", age=12, value=100, cost=100, qoh=1),
+            _line(part_number="BEST", description="BATTERY", age=20, value=50, cost=50, qoh=1),
+            _line(part_number="NEXT", description="SENSOR", age=18, value=40, cost=40, qoh=1),
+            _line(part_number="BIG", description="COMPRESSOR", age=22, value=500, cost=500, qoh=1),
+            _line(part_number="BOLT", description="BOLT HEX", age=30, value=10, cost=10, qoh=1),
+        ]
+        ranked = ranked_replacement_candidates(
+            lines,
+            selected_part_numbers=["KEEP"],
+            remaining_allowance=60,
+            exclude_hardware=True,
+        )
+        pns = [c.line.part_number for c in ranked]
+        self.assertEqual(pns[0], "BEST")
+        self.assertIn("NEXT", pns)
+        self.assertNotIn("BOLT", pns)
+        self.assertNotIn("KEEP", pns)
+        # Over-budget still appears after fitting ones.
+        self.assertIn("BIG", pns)
+        self.assertGreater(pns.index("BIG"), pns.index("NEXT"))
+
 
 if __name__ == "__main__":
     unittest.main()

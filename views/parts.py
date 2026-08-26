@@ -10,7 +10,11 @@ import pandas as pd
 import streamlit as st
 
 from lib.page_ui import page_hero, stat_card, status_banner
-from lib.parts_return_calc import build_return_plan, plan_from_selected_parts
+from lib.parts_return_calc import (
+    build_return_plan,
+    plan_from_selected_parts,
+    ranked_replacement_candidates,
+)
 from lib.parts_return_parser import (
     SOURCE_MNR,
     SOURCE_MNS,
@@ -49,6 +53,10 @@ def _init_state():
         "parts_removed_pns": [],
         "parts_removed_qty": {},
         "parts_sel_seed": "",
+        "parts_offer_active": False,
+        "parts_offer_queue": [],
+        "parts_offer_index": 0,
+        "parts_manual_mode": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -85,6 +93,10 @@ def _load_uploaded(report_type: str, uploaded, bytes_key: str, name_key: str, si
     st.session_state.parts_sel_seed = ""
     st.session_state.parts_removed_pns = []
     st.session_state.parts_removed_qty = {}
+    st.session_state.parts_offer_active = False
+    st.session_state.parts_offer_queue = []
+    st.session_state.parts_offer_index = 0
+    st.session_state.parts_manual_mode = False
     st.markdown(
         status_banner(
             f"✓ Loaded {report_type}: {len(lines)} parts from {uploaded.name}",
@@ -143,7 +155,111 @@ def _seed_selection_from_auto(lines) -> None:
     }
     st.session_state.parts_removed_pns = []
     st.session_state.parts_removed_qty = {}
+    st.session_state.parts_offer_active = False
+    st.session_state.parts_offer_queue = []
+    st.session_state.parts_offer_index = 0
+    st.session_state.parts_manual_mode = False
     st.session_state.parts_sel_seed = seed
+
+
+def _start_replacement_offer(lines, remaining_allowance: float) -> None:
+    """Open the next-suggestion window after a part is removed from Suggested."""
+    if st.session_state.get("parts_manual_mode"):
+        return
+    candidates = ranked_replacement_candidates(
+        lines,
+        selected_part_numbers=st.session_state.get("parts_selected_pns") or [],
+        skip_part_numbers=st.session_state.get("parts_removed_pns") or [],
+        remaining_allowance=remaining_allowance,
+        exclude_multipack=bool(st.session_state.parts_exclude_multipack),
+        exclude_hardware=bool(st.session_state.parts_exclude_hardware),
+        min_age=float(st.session_state.parts_min_age or 0),
+        min_value=float(st.session_state.parts_min_value or 0),
+        allow_partial_qty=bool(st.session_state.parts_allow_partial),
+    )
+    queue = [c.line.part_number for c in candidates]
+    st.session_state.parts_offer_queue = queue
+    st.session_state.parts_offer_index = 0
+    st.session_state.parts_offer_active = bool(queue)
+    st.session_state.parts_offer_qty = {
+        c.line.part_number: c.return_qty for c in candidates
+    }
+
+
+def _current_offer_candidate(lines):
+    if not st.session_state.get("parts_offer_active"):
+        return None
+    queue = st.session_state.get("parts_offer_queue") or []
+    idx = int(st.session_state.get("parts_offer_index") or 0)
+    if not queue or idx < 0 or idx >= len(queue):
+        return None
+    by_pn = _line_lookup(lines)
+    line = by_pn.get(str(queue[idx]).strip().upper())
+    if not line:
+        return None
+    qty_map = st.session_state.get("parts_offer_qty") or {}
+    qty = float(qty_map.get(line.part_number, line.qoh) or line.qoh)
+    unit = line.cost if line.cost > 0 else (line.value / line.qoh if line.qoh else 0)
+    value = round(qty * unit, 2) if unit else round(float(line.value or 0), 2)
+    return {
+        "part_number": line.part_number,
+        "description": line.description,
+        "source": line.source,
+        "age": line.age,
+        "bin": line.bin_location or "—",
+        "qty": qty,
+        "value": value,
+        "index": idx,
+        "total": len(queue),
+    }
+
+
+def _accept_current_offer() -> None:
+    offer_pn = None
+    queue = st.session_state.get("parts_offer_queue") or []
+    idx = int(st.session_state.get("parts_offer_index") or 0)
+    if queue and 0 <= idx < len(queue):
+        offer_pn = queue[idx]
+    if not offer_pn:
+        st.session_state.parts_offer_active = False
+        return
+    selected = list(st.session_state.get("parts_selected_pns") or [])
+    if offer_pn not in selected:
+        selected.append(offer_pn)
+    qty_map = dict(st.session_state.get("parts_selected_qty") or {})
+    offer_qty = (st.session_state.get("parts_offer_qty") or {}).get(offer_pn)
+    if offer_qty is not None:
+        qty_map[offer_pn] = float(offer_qty)
+    removed = [
+        pn for pn in (st.session_state.get("parts_removed_pns") or []) if pn != offer_pn
+    ]
+    rem_qty = dict(st.session_state.get("parts_removed_qty") or {})
+    rem_qty.pop(offer_pn, None)
+    st.session_state.parts_selected_pns = selected
+    st.session_state.parts_selected_qty = qty_map
+    st.session_state.parts_removed_pns = removed
+    st.session_state.parts_removed_qty = rem_qty
+    st.session_state.parts_offer_active = False
+    st.session_state.parts_offer_queue = []
+    st.session_state.parts_offer_index = 0
+
+
+def _advance_offer() -> None:
+    queue = st.session_state.get("parts_offer_queue") or []
+    idx = int(st.session_state.get("parts_offer_index") or 0) + 1
+    if idx >= len(queue):
+        st.session_state.parts_offer_active = False
+        st.session_state.parts_offer_index = 0
+        st.session_state.parts_manual_mode = True
+        return
+    st.session_state.parts_offer_index = idx
+
+
+def _enter_manual_selection() -> None:
+    st.session_state.parts_offer_active = False
+    st.session_state.parts_offer_queue = []
+    st.session_state.parts_offer_index = 0
+    st.session_state.parts_manual_mode = True
 
 
 def _line_lookup(lines) -> dict:
@@ -230,8 +346,8 @@ def _sync_selection_from_editors(
     edited_sel: pd.DataFrame,
     edited_removed: pd.DataFrame,
     edited_avail: pd.DataFrame,
-) -> bool:
-    """Update suggested + removed trays from checkbox editors. Returns True if changed."""
+) -> tuple[bool, list[str]]:
+    """Update suggested + removed trays. Returns (changed, newly_unchecked_pns)."""
     prev_selected = list(st.session_state.get("parts_selected_pns") or [])
     prev_qty = dict(st.session_state.get("parts_selected_qty") or {})
     prev_removed = list(st.session_state.get("parts_removed_pns") or [])
@@ -332,13 +448,13 @@ def _sync_selection_from_editors(
         and removed == prev_removed
         and clean_removed_qty == prev_removed_qty
     ):
-        return False
+        return False, []
 
     st.session_state.parts_selected_pns = selected
     st.session_state.parts_selected_qty = clean_qty
     st.session_state.parts_removed_pns = removed
     st.session_state.parts_removed_qty = clean_removed_qty
-    return True
+    return True, unchecked_from_suggested
 
 
 def _current_snapshot(plan, lines):
@@ -560,17 +676,18 @@ def render():
 
     sel_fp = "|".join(st.session_state.get("parts_selected_pns") or [])
     rem_fp = "|".join(st.session_state.get("parts_removed_pns") or [])
-    editor_token = abs(hash(f"{sel_fp}::{rem_fp}")) % 10_000_000
+    offer_fp = f"{st.session_state.get('parts_offer_index')}:{len(st.session_state.get('parts_offer_queue') or [])}"
+    editor_token = abs(hash(f"{sel_fp}::{rem_fp}::{offer_fp}")) % 10_000_000
 
     st.markdown("##### Suggested returns")
     st.caption(
-        "Auto-filled by age × value. Uncheck to park a part in Removed below — "
-        "return $ always comes from this box."
+        "Auto-filled by age × value. Uncheck a part to park it in Removed and get the "
+        "next best suggestion. Return $ always comes from this box."
     )
     sel_df = _selected_editor_df(plan)
     if sel_df.empty:
         st.info(
-            "Nothing in the suggested box yet — check a part in Removed or Other candidates."
+            "Nothing in the suggested box yet — accept a next suggestion or pick manually."
         )
         edited_sel = sel_df
     else:
@@ -588,10 +705,65 @@ def render():
             disabled=["Part Number", "Description", "Source", "Age (mo)", "Bin", "Return $"],
         )
 
+    offer = _current_offer_candidate(lines)
+    if st.session_state.get("parts_offer_active") and offer:
+        st.markdown("##### Next suggested return")
+        st.caption(
+            f"Suggestion {offer['index'] + 1} of {offer['total']} · "
+            f"${plan.remaining_allowance:,.2f} allowance remaining"
+        )
+        st.markdown(
+            status_banner(
+                f"<strong>{offer['part_number']}</strong> — {offer['description']} · "
+                f"{offer['source']} · Age {offer['age']:.0f} mo · Bin {offer['bin']} · "
+                f"Qty {offer['qty']:.0f} · <strong>${offer['value']:,.2f}</strong>",
+                "info",
+            ),
+            unsafe_allow_html=True,
+        )
+        b1, b2, b3 = st.columns(3)
+        with b1:
+            if st.button(
+                "➕ Add to suggested",
+                type="primary",
+                use_container_width=True,
+                key="parts_offer_add",
+            ):
+                _accept_current_offer()
+                st.rerun()
+        with b2:
+            if st.button(
+                "Next suggestion →",
+                use_container_width=True,
+                key="parts_offer_next",
+            ):
+                _advance_offer()
+                st.rerun()
+        with b3:
+            if st.button(
+                "Manual selection",
+                use_container_width=True,
+                key="parts_offer_manual",
+            ):
+                _enter_manual_selection()
+                st.rerun()
+    elif st.session_state.get("parts_manual_mode"):
+        st.markdown(
+            status_banner(
+                "Manual selection — pick parts from Other candidates below, "
+                "or Add back from Removed.",
+                "info",
+            ),
+            unsafe_allow_html=True,
+        )
+        if st.button("Back to guided suggestions", key="parts_exit_manual"):
+            st.session_state.parts_manual_mode = False
+            _start_replacement_offer(lines, max(float(plan.remaining_allowance or 0), 0.0))
+            st.rerun()
+
     st.markdown("##### Removed from suggested")
     st.caption(
-        "Parts you unchecked from Suggested. Check Include to put them back — "
-        "no hunting through the full list."
+        "Parts you unchecked from Suggested. Check Add back to restore them."
     )
     removed_df = _removed_editor_df(lines)
     if removed_df.empty:
@@ -616,37 +788,63 @@ def render():
             disabled=["Part Number", "Description", "Source", "Age (mo)", "Bin", "Return $"],
         )
 
-    st.markdown("##### Other candidates")
-    st.caption("Check Include to move a part into Suggested returns and recalculate.")
-    avail_df = _available_editor_df(plan)
-    if avail_df.empty:
-        st.caption("No other candidates.")
-        edited_avail = avail_df
+    show_other = bool(
+        st.session_state.get("parts_manual_mode")
+        or not st.session_state.get("parts_offer_active")
+    )
+    edited_avail = pd.DataFrame()
+    if show_other:
+        st.markdown("##### Other candidates")
+        st.caption("Check Include to move a part into Suggested returns and recalculate.")
+        avail_df = _available_editor_df(plan)
+        if avail_df.empty:
+            st.caption("No other candidates.")
+            edited_avail = avail_df
+        else:
+            edited_avail = st.data_editor(
+                avail_df,
+                use_container_width=True,
+                hide_index=True,
+                key=f"parts_available_editor_{editor_token}",
+                height=360,
+                column_config={
+                    "Include": st.column_config.CheckboxColumn("Include", default=False),
+                    "Value": st.column_config.NumberColumn(format="$%.2f"),
+                    "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
+                    "Pack": st.column_config.NumberColumn(format="%.0f"),
+                },
+                disabled=[
+                    "Part Number",
+                    "Description",
+                    "Source",
+                    "Age (mo)",
+                    "Value",
+                    "Pack",
+                    "Note",
+                ],
+            )
     else:
-        edited_avail = st.data_editor(
-            avail_df,
-            use_container_width=True,
-            hide_index=True,
-            key=f"parts_available_editor_{editor_token}",
-            height=360,
-            column_config={
-                "Include": st.column_config.CheckboxColumn("Include", default=False),
-                "Value": st.column_config.NumberColumn(format="$%.2f"),
-                "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
-                "Pack": st.column_config.NumberColumn(format="%.0f"),
-            },
-            disabled=[
-                "Part Number",
-                "Description",
-                "Source",
-                "Age (mo)",
-                "Value",
-                "Pack",
-                "Note",
-            ],
+        st.caption(
+            "Other candidates are hidden while a next suggestion is open — "
+            "use **Manual selection** to pick from the full list."
         )
 
-    if _sync_selection_from_editors(edited_sel, edited_removed, edited_avail):
+    changed, unchecked = _sync_selection_from_editors(
+        edited_sel, edited_removed, edited_avail
+    )
+    if changed:
+        if unchecked:
+            after = plan_from_selected_parts(
+                lines,
+                float(st.session_state.parts_allowance or 0),
+                st.session_state.get("parts_selected_pns") or [],
+                qty_by_part=st.session_state.get("parts_selected_qty") or {},
+                exclude_multipack=bool(st.session_state.parts_exclude_multipack),
+                exclude_hardware=bool(st.session_state.parts_exclude_hardware),
+                min_age=float(st.session_state.parts_min_age or 0),
+                min_value=float(st.session_state.parts_min_value or 0),
+            )
+            _start_replacement_offer(lines, max(float(after.remaining_allowance or 0), 0.0))
         st.rerun()
 
     if plan.selected_count:
@@ -665,6 +863,10 @@ def render():
         st.session_state.parts_sel_seed = ""
         st.session_state.parts_removed_pns = []
         st.session_state.parts_removed_qty = {}
+        st.session_state.parts_offer_active = False
+        st.session_state.parts_offer_queue = []
+        st.session_state.parts_offer_index = 0
+        st.session_state.parts_manual_mode = False
         st.rerun()
 
     st.text_area("Notes (optional — included on PDF)", key="parts_notes", height=80)

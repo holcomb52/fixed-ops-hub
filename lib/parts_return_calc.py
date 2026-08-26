@@ -282,3 +282,91 @@ def plan_from_selected_parts(
         key=lambda c: (-c.score, -c.line.age, -c.line.value, c.line.part_number)
     )
     return plan
+
+
+def ranked_replacement_candidates(
+    lines: Sequence[PartsInventoryLine],
+    *,
+    selected_part_numbers: Sequence[str],
+    skip_part_numbers: Sequence[str] = (),
+    remaining_allowance: float = 0.0,
+    exclude_multipack: bool = True,
+    exclude_hardware: bool = True,
+    min_age: float = 0.0,
+    min_value: float = 0.0,
+    allow_partial_qty: bool = True,
+    extra_hardware_keywords: Sequence[str] = (),
+) -> List[ReturnCandidate]:
+    """
+    Next best age×value parts to fill remaining allowance after a removal.
+
+    Eligible parts only (not already selected / skipped by manager). Parts that
+    fit the remaining dollars are listed first; over-budget parts follow.
+    """
+    selected = {str(pn).strip().upper() for pn in selected_part_numbers if pn}
+    skipped = {str(pn).strip().upper() for pn in skip_part_numbers if pn}
+    remaining = max(float(remaining_allowance or 0), 0.0)
+
+    fits: List[ReturnCandidate] = []
+    over: List[ReturnCandidate] = []
+
+    for line in lines:
+        key = line.part_number.upper()
+        if key in selected or key in skipped:
+            continue
+        reason = classify_line(
+            line,
+            exclude_multipack=exclude_multipack,
+            exclude_hardware=exclude_hardware,
+            min_age=min_age,
+            min_value=min_value,
+            extra_hardware_keywords=extra_hardware_keywords,
+        )
+        if reason:
+            continue
+
+        score = age_value_score(line.age, line.value)
+        if "MNS" in (line.source or ""):
+            score *= 1.05
+        unit = _line_unit_cost(line)
+        full_value = round(float(line.value or 0), 2)
+
+        if full_value <= remaining + 0.005:
+            fits.append(
+                ReturnCandidate(
+                    line=line,
+                    return_qty=line.qoh,
+                    return_value=full_value,
+                    score=score,
+                )
+            )
+            continue
+
+        if allow_partial_qty and unit > 0 and not is_multipack(line) and remaining >= unit:
+            qty = int(remaining // unit)
+            if qty >= 1:
+                value = round(qty * unit, 2)
+                fits.append(
+                    ReturnCandidate(
+                        line=line,
+                        return_qty=float(qty),
+                        return_value=value,
+                        score=score,
+                    )
+                )
+                continue
+
+        over.append(
+            ReturnCandidate(
+                line=line,
+                return_qty=line.qoh,
+                return_value=full_value,
+                score=score,
+                skip_reason="Exceeds remaining allowance",
+            )
+        )
+
+    key_fn = lambda c: (-c.score, -c.line.age, -c.line.value, c.line.part_number)
+    fits.sort(key=key_fn)
+    over.sort(key=key_fn)
+    return fits + over

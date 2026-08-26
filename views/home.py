@@ -56,7 +56,7 @@ def render():
         ("💰 Payroll", "Technician flag sheets + service advisor pay plans", "Live", "cyan"),
         ("🛡️ Warranty", "Customer-pay ELR analysis for rate submissions.", "Live", "green"),
         ("📈 Labor Rate", "Build a customer-pay grid from target ELR + hour mix.", "Live", "violet"),
-        ("🔩 Parts", "MNS return allowance plans — save to cloud Reports.", "Live", "orange"),
+        ("🔩 Parts", "MNS returns and 6MS stocking planner.", "Live", "orange"),
     ]
     cols = st.columns(2)
     for idx, (title, desc, status, accent) in enumerate(cards):

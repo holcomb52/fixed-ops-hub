@@ -23,6 +23,7 @@ from lib.parts_return_parser import (
 from lib.parts_return_pdf_export import generate_parts_return_pdf
 from lib.parts_return_snapshot import serialize_parts_return_plan
 from lib.parts_return_storage import save_parts_return_run
+from views import parts_stocking
 from views.payroll_helpers import render_payroll_sync_error
 
 
@@ -513,14 +514,22 @@ def _current_snapshot(plan, lines):
 
 
 def render():
+    tab_returns, tab_stocking = st.tabs(["Returns", "Stocking"])
+    with tab_returns:
+        _render_returns()
+    with tab_stocking:
+        parts_stocking.render()
+
+
+def _render_returns():
     _init_state()
 
     st.markdown(
         page_hero(
-            "Parts",
+            "Returns",
             "Return allowance planner for MNS (months no sale). "
             "Rank by age × value, then export PDF and save to Reports.",
-            tag="Returns",
+            tag="MNS",
             tag_style="live",
         ),
         unsafe_allow_html=True,

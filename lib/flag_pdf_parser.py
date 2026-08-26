@@ -34,11 +34,13 @@ PDF_NAME_MAP = {
 }
 
 NAME_RE = re.compile(r"Tech Name:\s+(.+?)\s*\(Items:")
-SUMMARY_RE = re.compile(r"Group T[^\d]*([\d.]+)\s+([\d.,]+)\s+([\d.,]+)")
+# "Group Totals …" or truncated "Group ..."
+SUMMARY_RE = re.compile(r"Group\b[^\d]*([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)")
 DATE_RANGE_RE = re.compile(r"Date Range:\s*(\d{2}/\d{2}/\d{2})\s*-\s*(\d{2}/\d{2}/\d{2})")
 # Signed hours / dollars (CDK adjustments can be negative)
 _SIGNED_NUM = r"-?\d+(?:\.\d+)?"
 _SIGNED_MONEY = r"-?[\d,]+(?:\.\d+)?"
+_DEPT = r"(Service|PDI|Body|Parts|Lube|[A-Za-z]+)"
 
 # Classic spaced layout (older CDK exports)
 LINE_RE = re.compile(
@@ -50,7 +52,7 @@ LINE_RE = re.compile(
 JAMMED_LINE_RE = re.compile(
     r"^(\d{3,6})"
     r"(\d{2}/\d{2}/\d\S*?)"
-    r"(Service|PDI|Body|Parts|Lube|[A-Za-z]+)"
+    rf"{_DEPT}"
     r"\s+(\d{5,8})"
     r"\s+(\S+)"
     rf"\s+({_SIGNED_NUM})"
@@ -65,7 +67,36 @@ JAMMED_LINE_RE = re.compile(
 JAMMED_LINE_NO_ACTUAL_RE = re.compile(
     r"^(\d{3,6})"
     r"(\d{2}/\d{2}/\d\S*?)"
-    r"(Service|PDI|Body|Parts|Lube|[A-Za-z]+)"
+    rf"{_DEPT}"
+    r"\s+(\d{5,8})"
+    r"\s+(\S+)"
+    rf"\s+({_SIGNED_NUM})"
+    r"\s+(\S+)"
+    rf"\s+({_SIGNED_MONEY})"
+    r"\s+(\d+)"
+    r"\s+(\S+)"
+)
+# Aug 2026+ CDK layout: Date jammed to Department, then Tech# / RO / Op …
+# 08/25/2...Service 3520 582046 50CHZ 0.00 0.60 22.... 13.65 1 Warranty I
+DATE_FIRST_LINE_RE = re.compile(
+    r"^(\d{2}/\d{2}/\d\S*?)"
+    rf"{_DEPT}"
+    r"\s+(\d{3,6})"
+    r"\s+(\d{5,8})"
+    r"\s+(\S+)"
+    rf"\s+({_SIGNED_NUM})"
+    rf"\s+({_SIGNED_NUM})"
+    r"\s+(\S+)"
+    rf"\s+({_SIGNED_MONEY})"
+    r"\s+(\d+)"
+    r"\s+(\S+)"
+)
+# Date-first when Actual Time is omitted:
+# 08/25/2...Service 3520 582255 26CHZOILC... 0.30 22.... 6.83 3 Internal I
+DATE_FIRST_LINE_NO_ACTUAL_RE = re.compile(
+    r"^(\d{2}/\d{2}/\d\S*?)"
+    rf"{_DEPT}"
+    r"\s+(\d{3,6})"
     r"\s+(\d{5,8})"
     r"\s+(\S+)"
     rf"\s+({_SIGNED_NUM})"
@@ -167,10 +198,18 @@ def _bill_type_from_line(line: str) -> str:
     return ""
 
 
+def _rate_from_token(rate_raw: str) -> float:
+    try:
+        return float(rate_raw)
+    except ValueError:
+        return 0.0
+
+
 def _parse_detail_line(line: str) -> Optional[tuple]:
     """
     Return (tech_number, FlagLineItem) for a detail row, or None.
-    Supports classic spaced CDK lines and newer jammed/truncated exports.
+    Supports classic spaced CDK lines and newer jammed/truncated exports
+    (tech#-first and date-first column orders).
     """
     lm = LINE_RE.match(line)
     if lm:
@@ -190,12 +229,6 @@ def _parse_detail_line(line: str) -> Optional[tuple]:
 
     jm = JAMMED_LINE_RE.match(line)
     if jm:
-        rate_raw = jm.group(8)
-        try:
-            st_rate = float(rate_raw)
-        except ValueError:
-            st_rate = 0.0
-
         return (
             jm.group(1),
             FlagLineItem(
@@ -204,7 +237,7 @@ def _parse_detail_line(line: str) -> Optional[tuple]:
                 ro_number=jm.group(4),
                 operation_code=jm.group(5),
                 booked_hours=float(jm.group(7)),
-                st_rate=st_rate,
+                st_rate=_rate_from_token(jm.group(8)),
                 extended=float(jm.group(9).replace(",", "")),
                 bill_type=_bill_type_from_token(jm.group(11)),
             ),
@@ -212,26 +245,52 @@ def _parse_detail_line(line: str) -> Optional[tuple]:
 
     # Actual Time column dropped by truncation — remaining hours field is Booked.
     na = JAMMED_LINE_NO_ACTUAL_RE.match(line)
-    if not na:
+    if na:
+        return (
+            na.group(1),
+            FlagLineItem(
+                date=na.group(2).replace("...", ""),
+                department=na.group(3),
+                ro_number=na.group(4),
+                operation_code=na.group(5),
+                booked_hours=float(na.group(6)),
+                st_rate=_rate_from_token(na.group(7)),
+                extended=float(na.group(8).replace(",", "")),
+                bill_type=_bill_type_from_token(na.group(10)),
+            ),
+        )
+
+    df = DATE_FIRST_LINE_RE.match(line)
+    if df:
+        return (
+            df.group(3),
+            FlagLineItem(
+                date=df.group(1).replace("...", ""),
+                department=df.group(2),
+                ro_number=df.group(4),
+                operation_code=df.group(5),
+                booked_hours=float(df.group(7)),
+                st_rate=_rate_from_token(df.group(8)),
+                extended=float(df.group(9).replace(",", "")),
+                bill_type=_bill_type_from_token(df.group(11)),
+            ),
+        )
+
+    dna = DATE_FIRST_LINE_NO_ACTUAL_RE.match(line)
+    if not dna:
         return None
 
-    rate_raw = na.group(7)
-    try:
-        st_rate = float(rate_raw)
-    except ValueError:
-        st_rate = 0.0
-
     return (
-        na.group(1),
+        dna.group(3),
         FlagLineItem(
-            date=na.group(2).replace("...", ""),
-            department=na.group(3),
-            ro_number=na.group(4),
-            operation_code=na.group(5),
-            booked_hours=float(na.group(6)),
-            st_rate=st_rate,
-            extended=float(na.group(8).replace(",", "")),
-            bill_type=_bill_type_from_token(na.group(10)),
+            date=dna.group(1).replace("...", ""),
+            department=dna.group(2),
+            ro_number=dna.group(4),
+            operation_code=dna.group(5),
+            booked_hours=float(dna.group(6)),
+            st_rate=_rate_from_token(dna.group(7)),
+            extended=float(dna.group(8).replace(",", "")),
+            bill_type=_bill_type_from_token(dna.group(10)),
         ),
     )
 

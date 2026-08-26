@@ -87,6 +87,41 @@ def test_classic_negative_booked_adjustment():
     assert item.bill_type == "Warranty"
 
 
+def test_date_first_truncated_line():
+    line = "08/25/2...Service 3520 582046 50CHZ 0.00 0.60 22.... 13.65 1 Warranty I"
+    parsed = _parse_detail_line(line)
+    assert parsed is not None
+    tech_number, item = parsed
+    assert tech_number == "3520"
+    assert item.date.startswith("08/25/2")
+    assert item.department == "Service"
+    assert item.ro_number == "582046"
+    assert item.booked_hours == 0.60
+    assert item.extended == 13.65
+    assert item.bill_type == "Warranty"
+
+
+def test_date_first_missing_actual_column():
+    line = "08/25/2...Service 3520 582255 26CHZOILC... 0.30 22.... 6.83 3 Internal I"
+    parsed = _parse_detail_line(line)
+    assert parsed is not None
+    tech_number, item = parsed
+    assert tech_number == "3520"
+    assert item.ro_number == "582255"
+    assert item.booked_hours == 0.30
+    assert item.extended == 6.83
+    assert item.bill_type == "Internal"
+
+
+def test_group_ellipsis_summary():
+    from lib.flag_pdf_parser import SUMMARY_RE
+
+    sm = SUMMARY_RE.search("Group ... 0.00 88.80 2,020.90")
+    assert sm is not None
+    assert float(sm.group(2)) == 88.80
+    assert float(sm.group(3).replace(",", "")) == 2020.90
+
+
 def test_finalize_sums_when_group_total_missing():
     from lib.flag_pdf_parser import FlagLineItem
 

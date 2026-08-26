@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from lib.page_ui import page_hero, stat_card, status_banner
-from lib.parts_return_calc import build_return_plan
+from lib.parts_return_calc import build_return_plan, plan_from_selected_parts
 from lib.parts_return_parser import (
     SOURCE_MNR,
     SOURCE_MNS,
@@ -44,6 +44,9 @@ def _init_state():
         "parts_return_month": date.today().replace(day=1),
         "active_parts_return_run_id": None,
         "parts_return_completed": False,
+        "parts_selected_pns": [],
+        "parts_selected_qty": {},
+        "parts_sel_seed": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -77,6 +80,7 @@ def _load_uploaded(report_type: str, uploaded, bytes_key: str, name_key: str, si
     st.session_state[sig_key] = sig
     st.session_state[f"parts_{report_type.lower()}_lines"] = lines
     st.session_state.pop("parts_saved_snapshot", None)
+    st.session_state.parts_sel_seed = ""
     st.markdown(
         status_banner(
             f"✓ Loaded {report_type}: {len(lines)} parts from {uploaded.name}",
@@ -94,43 +98,129 @@ def _combined_lines():
     return merge_parts_reports(mns, mnr)
 
 
-def _plan_dataframe(plan):
+def _selection_seed(lines) -> str:
+    return "|".join(
+        [
+            st.session_state.get("parts_mns_sig") or "",
+            st.session_state.get("parts_mnr_sig") or "",
+            str(float(st.session_state.get("parts_allowance") or 0)),
+            str(bool(st.session_state.get("parts_exclude_multipack"))),
+            str(bool(st.session_state.get("parts_exclude_hardware"))),
+            str(float(st.session_state.get("parts_min_age") or 0)),
+            str(float(st.session_state.get("parts_min_value") or 0)),
+            str(bool(st.session_state.get("parts_allow_partial"))),
+            str(len(lines)),
+        ]
+    )
+
+
+def _seed_selection_from_auto(lines) -> None:
+    seed = _selection_seed(lines)
+    if st.session_state.get("parts_sel_seed") == seed:
+        return
+    if st.session_state.get("parts_sel_seed") == "restored" and st.session_state.get(
+        "parts_selected_pns"
+    ):
+        # Keep restored picks until files/filters change enough to make a new seed.
+        st.session_state.parts_sel_seed = seed
+        return
+    auto = build_return_plan(
+        lines,
+        float(st.session_state.parts_allowance or 0),
+        exclude_multipack=bool(st.session_state.parts_exclude_multipack),
+        exclude_hardware=bool(st.session_state.parts_exclude_hardware),
+        min_age=float(st.session_state.parts_min_age or 0),
+        min_value=float(st.session_state.parts_min_value or 0),
+        allow_partial_qty=bool(st.session_state.parts_allow_partial),
+    )
+    st.session_state.parts_selected_pns = [c.line.part_number for c in auto.selected]
+    st.session_state.parts_selected_qty = {
+        c.line.part_number: c.return_qty for c in auto.selected
+    }
+    st.session_state.parts_sel_seed = seed
+
+
+def _selected_editor_df(plan) -> pd.DataFrame:
     rows = []
     for item in plan.selected:
         line = item.line
         rows.append(
             {
+                "Include": True,
                 "Part Number": line.part_number,
                 "Description": line.description,
                 "Source": line.source,
                 "Age (mo)": line.age,
                 "Bin": line.bin_location or "—",
-                "QOH": line.qoh,
                 "Return qty": item.return_qty,
-                "Cost": line.cost,
                 "Return $": item.return_value,
-                "Score": round(item.score, 1),
             }
         )
     return pd.DataFrame(rows)
 
 
-def _skipped_dataframe(plan, limit: int = 40):
+def _available_editor_df(plan) -> pd.DataFrame:
     rows = []
-    for item in plan.skipped[:limit]:
+    for item in plan.skipped:
         line = item.line
         rows.append(
             {
+                "Include": False,
                 "Part Number": line.part_number,
                 "Description": line.description,
                 "Source": line.source,
                 "Age (mo)": line.age,
                 "Value": line.value,
                 "Pack": line.pack,
-                "Reason": item.skip_reason,
+                "Note": item.skip_reason,
             }
         )
     return pd.DataFrame(rows)
+
+
+def _sync_selection_from_editors(edited_sel: pd.DataFrame, edited_avail: pd.DataFrame) -> bool:
+    """Update session selection from checkbox editors. Returns True if changed."""
+    selected: list[str] = []
+    qty_map = dict(st.session_state.get("parts_selected_qty") or {})
+
+    if edited_sel is not None and not edited_sel.empty:
+        for _, row in edited_sel.iterrows():
+            pn = str(row.get("Part Number") or "").strip()
+            if not pn:
+                continue
+            if bool(row.get("Include")):
+                selected.append(pn)
+                try:
+                    qty_map[pn] = float(row.get("Return qty") or qty_map.get(pn) or 0)
+                except (TypeError, ValueError):
+                    pass
+            else:
+                qty_map.pop(pn, None)
+
+    if edited_avail is not None and not edited_avail.empty:
+        for _, row in edited_avail.iterrows():
+            pn = str(row.get("Part Number") or "").strip()
+            if not pn:
+                continue
+            if bool(row.get("Include")):
+                if pn not in selected:
+                    selected.append(pn)
+                qty_map.setdefault(pn, None)  # full QOH in plan builder
+            else:
+                if pn in selected:
+                    selected = [p for p in selected if p != pn]
+                qty_map.pop(pn, None)
+
+    # Drop qty stubs that mean "use full QOH"
+    clean_qty = {k: v for k, v in qty_map.items() if v is not None and k in selected}
+
+    prev = list(st.session_state.get("parts_selected_pns") or [])
+    prev_qty = dict(st.session_state.get("parts_selected_qty") or {})
+    if selected == prev and clean_qty == prev_qty:
+        return False
+    st.session_state.parts_selected_pns = selected
+    st.session_state.parts_selected_qty = clean_qty
+    return True
 
 
 def _current_snapshot(plan, lines):
@@ -286,14 +376,16 @@ def render():
             key="parts_min_value",
         )
 
-    plan = build_return_plan(
+    _seed_selection_from_auto(lines)
+    plan = plan_from_selected_parts(
         lines,
         float(st.session_state.parts_allowance or 0),
+        st.session_state.get("parts_selected_pns") or [],
+        qty_by_part=st.session_state.get("parts_selected_qty") or {},
         exclude_multipack=bool(st.session_state.parts_exclude_multipack),
         exclude_hardware=bool(st.session_state.parts_exclude_hardware),
         min_age=float(st.session_state.parts_min_age or 0),
         min_value=float(st.session_state.parts_min_value or 0),
-        allow_partial_qty=bool(st.session_state.parts_allow_partial),
     )
     snapshot = _current_snapshot(plan, lines)
 
@@ -319,29 +411,97 @@ def render():
             unsafe_allow_html=True,
         )
     with s4:
+        left_label = "Allowance left"
+        left_value = plan.remaining_allowance
+        accent = "orange"
+        if left_value < -0.005:
+            left_label = "Over allowance"
+            left_value = abs(left_value)
+            accent = "rose"
         st.markdown(
             stat_card(
-                "Allowance left",
-                f"${plan.remaining_allowance:,.2f}",
-                accent="orange",
+                left_label,
+                f"${left_value:,.2f}",
+                accent=accent,
                 icon="▤",
             ),
             unsafe_allow_html=True,
         )
 
-    if plan.selected_count == 0:
+    if plan.remaining_allowance < -0.005:
         st.markdown(
             status_banner(
-                "No returnable parts fit this allowance with the current filters.",
+                f"Selected parts are ${abs(plan.remaining_allowance):,.2f} over the "
+                f"${plan.allowance:,.2f} allowance — uncheck something in Suggested returns.",
                 "warn",
             ),
             unsafe_allow_html=True,
         )
+
+    sel_fp = "|".join(st.session_state.get("parts_selected_pns") or [])
+    editor_token = abs(hash(sel_fp)) % 10_000_000
+
+    st.markdown("##### Suggested returns")
+    st.caption(
+        "Auto-filled by age × value. Uncheck to remove, or check a part below to add it here — "
+        "return $ always comes from this box."
+    )
+    sel_df = _selected_editor_df(plan)
+    if sel_df.empty:
+        st.info("Nothing in the suggested box yet — check parts in Other candidates below.")
+        edited_sel = sel_df
     else:
-        st.markdown("##### Recommended returns (age × value)")
-        df = _plan_dataframe(plan)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        csv = df.to_csv(index=False).encode("utf-8")
+        edited_sel = st.data_editor(
+            sel_df,
+            use_container_width=True,
+            hide_index=True,
+            key=f"parts_suggested_editor_{editor_token}",
+            column_config={
+                "Include": st.column_config.CheckboxColumn("Include", default=True),
+                "Return $": st.column_config.NumberColumn(format="$%.2f"),
+                "Return qty": st.column_config.NumberColumn(format="%.0f", min_value=0),
+                "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
+            },
+            disabled=["Part Number", "Description", "Source", "Age (mo)", "Bin", "Return $"],
+        )
+
+    st.markdown("##### Other candidates")
+    st.caption("Check Include to move a part into Suggested returns and recalculate.")
+    avail_df = _available_editor_df(plan)
+    if avail_df.empty:
+        st.caption("No other candidates.")
+        edited_avail = avail_df
+    else:
+        edited_avail = st.data_editor(
+            avail_df,
+            use_container_width=True,
+            hide_index=True,
+            key=f"parts_available_editor_{editor_token}",
+            height=360,
+            column_config={
+                "Include": st.column_config.CheckboxColumn("Include", default=False),
+                "Value": st.column_config.NumberColumn(format="$%.2f"),
+                "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
+                "Pack": st.column_config.NumberColumn(format="%.0f"),
+            },
+            disabled=[
+                "Part Number",
+                "Description",
+                "Source",
+                "Age (mo)",
+                "Value",
+                "Pack",
+                "Note",
+            ],
+        )
+
+    if _sync_selection_from_editors(edited_sel, edited_avail):
+        st.rerun()
+
+    if plan.selected_count:
+        csv = _selected_editor_df(plan).drop(columns=["Include"], errors="ignore").to_csv(
+            index=False
+        ).encode("utf-8")
         st.download_button(
             "Download return list (CSV)",
             data=csv,
@@ -350,13 +510,9 @@ def render():
             use_container_width=True,
         )
 
-    with st.expander("Skipped / filtered parts", expanded=False):
-        skipped_df = _skipped_dataframe(plan)
-        if skipped_df.empty:
-            st.caption("Nothing skipped.")
-        else:
-            st.caption(f"Showing first {len(skipped_df)} of {len(plan.skipped)} skipped lines.")
-            st.dataframe(skipped_df, use_container_width=True, hide_index=True)
+    if st.button("Reset to age × value suggestion", use_container_width=True):
+        st.session_state.parts_sel_seed = ""
+        st.rerun()
 
     st.text_area("Notes (optional — included on PDF)", key="parts_notes", height=80)
 

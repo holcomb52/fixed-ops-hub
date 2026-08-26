@@ -183,3 +183,102 @@ def build_return_plan(
 
     plan.remaining_allowance = max(remaining, 0.0)
     return plan
+
+
+def _line_unit_cost(line: PartsInventoryLine) -> float:
+    if line.cost > 0:
+        return float(line.cost)
+    if line.qoh > 0 and line.value > 0:
+        return float(line.value) / float(line.qoh)
+    return 0.0
+
+
+def plan_from_selected_parts(
+    lines: Sequence[PartsInventoryLine],
+    allowance: float,
+    selected_part_numbers: Sequence[str],
+    *,
+    qty_by_part: Optional[dict] = None,
+    exclude_multipack: bool = True,
+    exclude_hardware: bool = True,
+    min_age: float = 0.0,
+    min_value: float = 0.0,
+    extra_hardware_keywords: Sequence[str] = (),
+) -> PartsReturnPlan:
+    """
+    Build a plan from an explicit manager selection.
+
+    Checked parts are the suggested list; totals are calculated only from that box.
+    Filter reasons are informational for unchecked rows.
+    """
+    allowance = max(float(allowance or 0), 0.0)
+    qty_by_part = qty_by_part or {}
+    by_pn = {line.part_number.upper(): line for line in lines}
+    selected_order = []
+    seen = set()
+    for pn in selected_part_numbers:
+        key = str(pn or "").strip().upper()
+        if not key or key in seen or key not in by_pn:
+            continue
+        seen.add(key)
+        selected_order.append(key)
+
+    plan = PartsReturnPlan(allowance=allowance, remaining_allowance=allowance)
+    used = 0.0
+
+    for key in selected_order:
+        line = by_pn[key]
+        score = age_value_score(line.age, line.value)
+        if "MNS" in (line.source or ""):
+            score *= 1.05
+        unit = _line_unit_cost(line)
+        raw_qty = qty_by_part.get(line.part_number, qty_by_part.get(key, line.qoh))
+        try:
+            qty = float(raw_qty)
+        except (TypeError, ValueError):
+            qty = float(line.qoh or 0)
+        qty = max(min(qty, float(line.qoh or 0)), 0.0)
+        if qty <= 0:
+            continue
+        if unit > 0:
+            value = round(qty * unit, 2)
+        else:
+            value = round(float(line.value or 0) * (qty / float(line.qoh or 1)), 2)
+        plan.selected.append(
+            ReturnCandidate(
+                line=line,
+                return_qty=qty,
+                return_value=value,
+                score=score,
+            )
+        )
+        used = round(used + value, 2)
+
+    plan.remaining_allowance = round(allowance - used, 2)
+
+    for line in lines:
+        key = line.part_number.upper()
+        if key in seen:
+            continue
+        reason = classify_line(
+            line,
+            exclude_multipack=exclude_multipack,
+            exclude_hardware=exclude_hardware,
+            min_age=min_age,
+            min_value=min_value,
+            extra_hardware_keywords=extra_hardware_keywords,
+        ) or "Not selected"
+        plan.skipped.append(
+            ReturnCandidate(
+                line=line,
+                return_qty=line.qoh,
+                return_value=round(line.value, 2),
+                score=age_value_score(line.age, line.value),
+                skip_reason=reason,
+            )
+        )
+
+    plan.skipped.sort(
+        key=lambda c: (-c.score, -c.line.age, -c.line.value, c.line.part_number)
+    )
+    return plan

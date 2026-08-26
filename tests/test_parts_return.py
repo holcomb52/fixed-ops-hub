@@ -162,6 +162,26 @@ class PartsReturnTests(unittest.TestCase):
         pdf = generate_parts_return_pdf(snap)
         self.assertTrue(pdf.startswith(b"%PDF"))
 
+    def test_manual_selection_drives_math(self):
+        from lib.parts_return_calc import plan_from_selected_parts
+
+        lines = [
+            _line(part_number="AUTO", description="BATTERY", age=16, value=500, cost=500, qoh=1),
+            _line(part_number="PICK", description="SENSOR", age=10, value=80, cost=80, qoh=1),
+            _line(part_number="BOLT1", description="BOLT HEX", age=20, value=40, cost=5, qoh=8),
+        ]
+        plan = plan_from_selected_parts(
+            lines,
+            allowance=200,
+            selected_part_numbers=["PICK", "BOLT1"],
+            exclude_hardware=True,
+        )
+        selected = [c.line.part_number for c in plan.selected]
+        self.assertEqual(selected, ["PICK", "BOLT1"])
+        self.assertEqual(plan.selected_value, 120.0)
+        self.assertEqual(plan.remaining_allowance, 80.0)
+        self.assertTrue(any(c.line.part_number == "AUTO" for c in plan.skipped))
+
 
 if __name__ == "__main__":
     unittest.main()

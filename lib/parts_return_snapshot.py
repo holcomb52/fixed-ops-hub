@@ -81,6 +81,10 @@ def serialize_parts_return_plan(
         "notes": notes or "",
         "selected": [_candidate_dict(item) for item in plan.selected],
         "skipped": [_candidate_dict(item) for item in plan.skipped[:100]],
+        "selected_part_numbers": [item.line.part_number for item in plan.selected],
+        "selected_qty_by_part": {
+            item.line.part_number: item.return_qty for item in plan.selected
+        },
     }
 
 
@@ -133,6 +137,21 @@ def apply_parts_return_snapshot_to_session(snapshot: dict, run_id: str, status: 
     st.session_state.parts_mns_name = str(snapshot.get("mns_name", "") or "")
     st.session_state.parts_mnr_name = str(snapshot.get("mnr_name", "") or "")
     st.session_state.parts_saved_snapshot = snapshot
+    st.session_state.parts_selected_pns = list(
+        snapshot.get("selected_part_numbers")
+        or [row.get("part_number") for row in (snapshot.get("selected") or [])]
+    )
+    qty_map = snapshot.get("selected_qty_by_part") or {}
+    if not qty_map:
+        qty_map = {
+            str(row.get("part_number")): float(row.get("return_qty") or 0)
+            for row in (snapshot.get("selected") or [])
+            if row.get("part_number")
+        }
+    st.session_state.parts_selected_qty = {
+        str(k): float(v or 0) for k, v in qty_map.items()
+    }
+    st.session_state.parts_sel_seed = "restored"
     # Rebuild line lists from selected+skipped so the page can re-display without files.
     restored: List[PartsInventoryLine] = []
     seen = set()

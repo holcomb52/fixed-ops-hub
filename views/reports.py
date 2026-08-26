@@ -880,8 +880,23 @@ def _render_labor_rate_runs():
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
-def render():
+def render(parts_only: bool = False):
     init_payroll_session()
+
+    if parts_only:
+        st.markdown(
+            page_hero(
+                "Reports",
+                "Saved parts return plans — reopen anytime to export PDF or adjust the list.",
+                tag="Parts",
+                tag_style="live",
+            ),
+            unsafe_allow_html=True,
+        )
+        if not is_configured():
+            st.caption("History is saved locally. Connect Supabase to sync across devices.")
+        _render_parts_return_runs()
+        return
 
     st.markdown(
         page_hero(

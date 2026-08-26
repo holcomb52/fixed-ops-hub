@@ -69,10 +69,15 @@ If your GitHub username is different, replace `holcomb52` in the URL.
 ```toml
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
 SUPABASE_KEY = "your_service_role_key_here"
-APP_PASSWORD = "choose-a-strong-password"
+APP_PASSWORD = "choose-a-strong-admin-password"
+PARTS_MANAGER_PASSWORD = "choose-a-strong-parts-password"
+PARTS_MANAGER_LABEL = "Parts Manager"
 ```
 
-Use the **service_role** key from Supabase (not the anon key). Pick a strong `APP_PASSWORD` you will use to sign in.
+Use the **service_role** key from Supabase (not the anon key).
+
+- `APP_PASSWORD` — full Fixed Ops Hub access (you)
+- `PARTS_MANAGER_PASSWORD` — Parts tab + Parts Returns reports only (Parts Manager)
 
 5. Click **Deploy**.
 
@@ -84,7 +89,7 @@ Wait 2–5 minutes. Streamlit gives you a public URL.
 
 In **Google Chrome** on Mac and Windows, bookmark your Streamlit URL.
 
-Sign in with the `APP_PASSWORD` you set in secrets.
+Sign in with `APP_PASSWORD` (full access) or give the Parts Manager `PARTS_MANAGER_PASSWORD`.
 
 ---
 
@@ -94,7 +99,7 @@ Sign in with the `APP_PASSWORD` you set in secrets.
 |-------|--------|
 | **No Windows install** | Cloud runs on Streamlit servers — your PC only needs Chrome |
 | **Saved reports** | Payroll and warranty saves go to Supabase when configured |
-| **Password** | `APP_PASSWORD` in secrets protects the app — required for dealership data |
+| **Passwords** | `APP_PASSWORD` = full app; `PARTS_MANAGER_PASSWORD` = Parts + Parts Returns only |
 | **Updates** | Push changes to GitHub → Streamlit redeploys automatically |
 | **AI** | This app does not use AI — it is spreadsheet math and reporting only |
 

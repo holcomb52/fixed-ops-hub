@@ -23,7 +23,14 @@ If Python version is locked, **delete the app** and **Create app** again — cho
     )
     st.stop()
 
-from lib.app_auth import require_login
+from lib.app_auth import (
+    allowed_pages,
+    clamp_nav_page,
+    current_user_label,
+    is_parts_manager,
+    require_login,
+    sign_out,
+)
 from lib.page_ui import coming_soon_panel
 from lib.supabase_client import is_configured
 from styles import CUSTOM_CSS
@@ -41,7 +48,7 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 if not require_login():
     st.stop()
 
-PAGES = {
+ALL_PAGES = {
     "Home": home.render,
     "Payroll": payroll.render,
     "Flag Sheet": flag_sheet.render,
@@ -65,24 +72,31 @@ NAV_LABELS = {
     "Reports": "📊  Reports",
 }
 
+visible_page_names = allowed_pages()
+PAGES = {name: ALL_PAGES[name] for name in visible_page_names if name in ALL_PAGES}
+
 with st.sidebar:
+    brand_tag = "Parts" if is_parts_manager() else "Command Center"
     st.markdown(
-        """
+        f"""
         <div class="brand-block">
             <div class="brand-logo">⚡</div>
             <div class="brand-name">Fixed Ops Hub</div>
-            <div class="brand-tag">Command Center</div>
+            <div class="brand-tag">{brand_tag}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    st.caption(f"Signed in as **{current_user_label()}**")
 
     if "nav_page" not in st.session_state:
-        st.session_state.nav_page = "Home"
+        st.session_state.nav_page = visible_page_names[0] if visible_page_names else "Parts"
 
     pending_nav = st.session_state.pop("pending_nav", None)
     if pending_nav in PAGES:
         st.session_state.nav_page = pending_nav
+
+    st.session_state.nav_page = clamp_nav_page(st.session_state.nav_page)
 
     page = st.radio(
         "Navigate",
@@ -96,6 +110,9 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    if st.button("Sign out", use_container_width=True):
+        sign_out()
+        st.rerun()
 
     db_status = "ONLINE" if is_configured() else "OFFLINE"
     st.markdown(
@@ -117,4 +134,7 @@ if PAGES.get(page) is None:
         unsafe_allow_html=True,
     )
 else:
-    PAGES[page]()
+    if page == "Reports":
+        reports.render(parts_only=is_parts_manager())
+    else:
+        PAGES[page]()

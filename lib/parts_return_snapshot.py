@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 from lib.parts_return_calc import PartsReturnPlan, ReturnCandidate
 from lib.parts_return_parser import PartsInventoryLine
@@ -59,6 +59,8 @@ def serialize_parts_return_plan(
     min_value: float = 0.0,
     allow_partial: bool = True,
     notes: str = "",
+    removed_part_numbers: Optional[List[str]] = None,
+    removed_qty_by_part: Optional[dict] = None,
 ) -> dict:
     return {
         "label": label,
@@ -84,6 +86,10 @@ def serialize_parts_return_plan(
         "selected_part_numbers": [item.line.part_number for item in plan.selected],
         "selected_qty_by_part": {
             item.line.part_number: item.return_qty for item in plan.selected
+        },
+        "removed_part_numbers": list(removed_part_numbers or []),
+        "removed_qty_by_part": {
+            str(k): float(v or 0) for k, v in (removed_qty_by_part or {}).items()
         },
     }
 
@@ -150,6 +156,11 @@ def apply_parts_return_snapshot_to_session(snapshot: dict, run_id: str, status: 
         }
     st.session_state.parts_selected_qty = {
         str(k): float(v or 0) for k, v in qty_map.items()
+    }
+    st.session_state.parts_removed_pns = list(snapshot.get("removed_part_numbers") or [])
+    rem_qty = snapshot.get("removed_qty_by_part") or {}
+    st.session_state.parts_removed_qty = {
+        str(k): float(v or 0) for k, v in rem_qty.items()
     }
     st.session_state.parts_sel_seed = "restored"
     # Rebuild line lists from selected+skipped so the page can re-display without files.

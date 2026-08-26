@@ -46,6 +46,8 @@ def _init_state():
         "parts_return_completed": False,
         "parts_selected_pns": [],
         "parts_selected_qty": {},
+        "parts_removed_pns": [],
+        "parts_removed_qty": {},
         "parts_sel_seed": "",
     }
     for key, value in defaults.items():
@@ -81,6 +83,8 @@ def _load_uploaded(report_type: str, uploaded, bytes_key: str, name_key: str, si
     st.session_state[f"parts_{report_type.lower()}_lines"] = lines
     st.session_state.pop("parts_saved_snapshot", None)
     st.session_state.parts_sel_seed = ""
+    st.session_state.parts_removed_pns = []
+    st.session_state.parts_removed_qty = {}
     st.markdown(
         status_banner(
             f"✓ Loaded {report_type}: {len(lines)} parts from {uploaded.name}",
@@ -137,7 +141,13 @@ def _seed_selection_from_auto(lines) -> None:
     st.session_state.parts_selected_qty = {
         c.line.part_number: c.return_qty for c in auto.selected
     }
+    st.session_state.parts_removed_pns = []
+    st.session_state.parts_removed_qty = {}
     st.session_state.parts_sel_seed = seed
+
+
+def _line_lookup(lines) -> dict:
+    return {str(line.part_number).strip().upper(): line for line in lines}
 
 
 def _selected_editor_df(plan) -> pd.DataFrame:
@@ -159,10 +169,48 @@ def _selected_editor_df(plan) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _removed_editor_df(lines) -> pd.DataFrame:
+    by_pn = _line_lookup(lines)
+    qty_map = st.session_state.get("parts_removed_qty") or {}
+    rows = []
+    for pn in st.session_state.get("parts_removed_pns") or []:
+        line = by_pn.get(str(pn).strip().upper())
+        if not line:
+            continue
+        qty = qty_map.get(line.part_number, qty_map.get(pn, line.qoh))
+        try:
+            qty = float(qty)
+        except (TypeError, ValueError):
+            qty = float(line.qoh or 0)
+        unit = line.cost if line.cost > 0 else (
+            line.value / line.qoh if line.qoh else 0
+        )
+        value = round(qty * unit, 2) if unit else round(float(line.value or 0), 2)
+        rows.append(
+            {
+                "Include": False,
+                "Part Number": line.part_number,
+                "Description": line.description,
+                "Source": line.source,
+                "Age (mo)": line.age,
+                "Bin": line.bin_location or "—",
+                "Return qty": qty,
+                "Return $": value,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _available_editor_df(plan) -> pd.DataFrame:
+    removed = {
+        str(pn).strip().upper()
+        for pn in (st.session_state.get("parts_removed_pns") or [])
+    }
     rows = []
     for item in plan.skipped:
         line = item.line
+        if line.part_number.upper() in removed:
+            continue
         rows.append(
             {
                 "Include": False,
@@ -178,11 +226,24 @@ def _available_editor_df(plan) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _sync_selection_from_editors(edited_sel: pd.DataFrame, edited_avail: pd.DataFrame) -> bool:
-    """Update session selection from checkbox editors. Returns True if changed."""
-    selected: list[str] = []
-    qty_map = dict(st.session_state.get("parts_selected_qty") or {})
+def _sync_selection_from_editors(
+    edited_sel: pd.DataFrame,
+    edited_removed: pd.DataFrame,
+    edited_avail: pd.DataFrame,
+) -> bool:
+    """Update suggested + removed trays from checkbox editors. Returns True if changed."""
+    prev_selected = list(st.session_state.get("parts_selected_pns") or [])
+    prev_qty = dict(st.session_state.get("parts_selected_qty") or {})
+    prev_removed = list(st.session_state.get("parts_removed_pns") or [])
+    prev_removed_qty = dict(st.session_state.get("parts_removed_qty") or {})
 
+    selected: list[str] = []
+    qty_map = dict(prev_qty)
+    removed: list[str] = []
+    removed_qty = dict(prev_removed_qty)
+
+    # Still-checked suggested rows stay selected.
+    unchecked_from_suggested: list[str] = []
     if edited_sel is not None and not edited_sel.empty:
         for _, row in edited_sel.iterrows():
             pn = str(row.get("Part Number") or "").strip()
@@ -195,7 +256,57 @@ def _sync_selection_from_editors(edited_sel: pd.DataFrame, edited_avail: pd.Data
                 except (TypeError, ValueError):
                     pass
             else:
+                unchecked_from_suggested.append(pn)
+                try:
+                    removed_qty[pn] = float(
+                        row.get("Return qty") or prev_qty.get(pn) or removed_qty.get(pn) or 0
+                    )
+                except (TypeError, ValueError):
+                    removed_qty[pn] = prev_qty.get(pn, removed_qty.get(pn))
                 qty_map.pop(pn, None)
+
+    # Removed tray: keep unless Include is checked (add back).
+    restored_from_removed: list[str] = []
+    if edited_removed is not None and not edited_removed.empty:
+        for _, row in edited_removed.iterrows():
+            pn = str(row.get("Part Number") or "").strip()
+            if not pn:
+                continue
+            if bool(row.get("Include")):
+                restored_from_removed.append(pn)
+                if pn not in selected:
+                    selected.append(pn)
+                try:
+                    qty_map[pn] = float(
+                        row.get("Return qty") or removed_qty.get(pn) or qty_map.get(pn) or 0
+                    )
+                except (TypeError, ValueError):
+                    pass
+                removed_qty.pop(pn, None)
+            else:
+                if pn not in removed:
+                    removed.append(pn)
+                try:
+                    removed_qty[pn] = float(
+                        row.get("Return qty") or removed_qty.get(pn) or 0
+                    )
+                except (TypeError, ValueError):
+                    pass
+
+    # Preserve prior removed order for anything not shown in the editor this pass.
+    for pn in prev_removed:
+        if pn in restored_from_removed or pn in selected:
+            continue
+        if pn not in removed:
+            removed.append(pn)
+
+    # Newly unchecked from suggested go to the front of the removed tray.
+    for pn in reversed(unchecked_from_suggested):
+        if pn in selected:
+            continue
+        if pn in removed:
+            removed = [p for p in removed if p != pn]
+        removed.insert(0, pn)
 
     if edited_avail is not None and not edited_avail.empty:
         for _, row in edited_avail.iterrows():
@@ -205,21 +316,28 @@ def _sync_selection_from_editors(edited_sel: pd.DataFrame, edited_avail: pd.Data
             if bool(row.get("Include")):
                 if pn not in selected:
                     selected.append(pn)
-                qty_map.setdefault(pn, None)  # full QOH in plan builder
-            else:
-                if pn in selected:
-                    selected = [p for p in selected if p != pn]
-                qty_map.pop(pn, None)
+                qty_map.setdefault(pn, None)
+                if pn in removed:
+                    removed = [p for p in removed if p != pn]
+                removed_qty.pop(pn, None)
 
-    # Drop qty stubs that mean "use full QOH"
     clean_qty = {k: v for k, v in qty_map.items() if v is not None and k in selected}
+    clean_removed_qty = {
+        k: v for k, v in removed_qty.items() if v is not None and k in removed
+    }
 
-    prev = list(st.session_state.get("parts_selected_pns") or [])
-    prev_qty = dict(st.session_state.get("parts_selected_qty") or {})
-    if selected == prev and clean_qty == prev_qty:
+    if (
+        selected == prev_selected
+        and clean_qty == prev_qty
+        and removed == prev_removed
+        and clean_removed_qty == prev_removed_qty
+    ):
         return False
+
     st.session_state.parts_selected_pns = selected
     st.session_state.parts_selected_qty = clean_qty
+    st.session_state.parts_removed_pns = removed
+    st.session_state.parts_removed_qty = clean_removed_qty
     return True
 
 
@@ -242,6 +360,8 @@ def _current_snapshot(plan, lines):
         min_value=float(st.session_state.parts_min_value or 0),
         allow_partial=bool(st.session_state.parts_allow_partial),
         notes=str(st.session_state.get("parts_notes") or ""),
+        removed_part_numbers=list(st.session_state.get("parts_removed_pns") or []),
+        removed_qty_by_part=dict(st.session_state.get("parts_removed_qty") or {}),
     )
 
 
@@ -439,16 +559,19 @@ def render():
         )
 
     sel_fp = "|".join(st.session_state.get("parts_selected_pns") or [])
-    editor_token = abs(hash(sel_fp)) % 10_000_000
+    rem_fp = "|".join(st.session_state.get("parts_removed_pns") or [])
+    editor_token = abs(hash(f"{sel_fp}::{rem_fp}")) % 10_000_000
 
     st.markdown("##### Suggested returns")
     st.caption(
-        "Auto-filled by age × value. Uncheck to remove, or check a part below to add it here — "
+        "Auto-filled by age × value. Uncheck to park a part in Removed below — "
         "return $ always comes from this box."
     )
     sel_df = _selected_editor_df(plan)
     if sel_df.empty:
-        st.info("Nothing in the suggested box yet — check parts in Other candidates below.")
+        st.info(
+            "Nothing in the suggested box yet — check a part in Removed or Other candidates."
+        )
         edited_sel = sel_df
     else:
         edited_sel = st.data_editor(
@@ -458,6 +581,34 @@ def render():
             key=f"parts_suggested_editor_{editor_token}",
             column_config={
                 "Include": st.column_config.CheckboxColumn("Include", default=True),
+                "Return $": st.column_config.NumberColumn(format="$%.2f"),
+                "Return qty": st.column_config.NumberColumn(format="%.0f", min_value=0),
+                "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
+            },
+            disabled=["Part Number", "Description", "Source", "Age (mo)", "Bin", "Return $"],
+        )
+
+    st.markdown("##### Removed from suggested")
+    st.caption(
+        "Parts you unchecked from Suggested. Check Include to put them back — "
+        "no hunting through the full list."
+    )
+    removed_df = _removed_editor_df(lines)
+    if removed_df.empty:
+        st.caption("No removed parts yet.")
+        edited_removed = removed_df
+    else:
+        edited_removed = st.data_editor(
+            removed_df,
+            use_container_width=True,
+            hide_index=True,
+            key=f"parts_removed_editor_{editor_token}",
+            column_config={
+                "Include": st.column_config.CheckboxColumn(
+                    "Add back",
+                    default=False,
+                    help="Check to move this part back into Suggested returns.",
+                ),
                 "Return $": st.column_config.NumberColumn(format="$%.2f"),
                 "Return qty": st.column_config.NumberColumn(format="%.0f", min_value=0),
                 "Age (mo)": st.column_config.NumberColumn(format="%.0f"),
@@ -495,7 +646,7 @@ def render():
             ],
         )
 
-    if _sync_selection_from_editors(edited_sel, edited_avail):
+    if _sync_selection_from_editors(edited_sel, edited_removed, edited_avail):
         st.rerun()
 
     if plan.selected_count:
@@ -512,6 +663,8 @@ def render():
 
     if st.button("Reset to age × value suggestion", use_container_width=True):
         st.session_state.parts_sel_seed = ""
+        st.session_state.parts_removed_pns = []
+        st.session_state.parts_removed_qty = {}
         st.rerun()
 
     st.text_area("Notes (optional — included on PDF)", key="parts_notes", height=80)

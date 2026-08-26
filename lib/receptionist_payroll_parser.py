@@ -9,6 +9,45 @@ from typing import BinaryIO, Dict, List, Union
 
 import openpyxl
 
+# Codes that should never fill a receptionist appointment count from CASHIERS.
+CASHIERS_SKIP_CODES = frozenset({"SVCPTL", "NUMA", "22SISTRUNKB"})
+
+
+def cashiers_taker_codes(row) -> list[str]:
+    return [str(code).strip().upper() for code in (getattr(row, "taker_codes", None) or []) if str(code).strip()]
+
+
+def skips_cashiers_appointment_import(row) -> bool:
+    """RecallPulse appointments (Brandy / 22SISTRUNKB) are entered by hand, not from CASHIERS."""
+    if bool(getattr(row, "has_recall_pulse_plan", False)):
+        return True
+    if str(getattr(row, "name", "") or "").strip() == "Brandy Sistrunk":
+        return True
+    return "22SISTRUNKB" in cashiers_taker_codes(row)
+
+
+def cashiers_appointment_count_for_row(
+    row,
+    by_code: Dict[str, CashierReportSummary],
+    by_last: Dict[str, CashierReportSummary],
+) -> float:
+    """CASHIERS appointment total for a roster row, or 0 if skipped / unmatched."""
+    if skips_cashiers_appointment_import(row):
+        return 0.0
+    appt_count = 0.0
+    for code in cashiers_taker_codes(row):
+        report = by_code.get(code)
+        if report:
+            appt_count += report.appointments_set
+    if appt_count:
+        return float(appt_count)
+    last_name = str(getattr(row, "last_name", "") or "").strip().upper()
+    if last_name:
+        report = by_last.get(last_name)
+        if report:
+            return float(report.appointments_set)
+    return 0.0
+
 # Dealer taker codes that do not follow the 22LASTNAME pattern.
 CODE_LAST_NAME = {
     "SVCPTL": "SVCPTL",

@@ -35,6 +35,7 @@ from views.receptionist_payroll_helpers import (
     capture_open_receptionist_inputs,
     capture_receptionist_values,
     init_receptionist_payroll_session,
+    persist_appointments_change,
     persist_receptionist_changes,
     rec_key,
     refresh_receptionist_value_store,
@@ -277,9 +278,13 @@ def _render_receptionist_section(row) -> None:
         st.text_input(
             "Appointments set",
             key=_appointments_text_key(row.name),
-            on_change=persist_receptionist_changes,
+            on_change=persist_appointments_change,
             args=(row.name,),
-            help="Auto-filled from CASHIERS .xlsx. Type a new number to override — RecallPulse tiers recalculate immediately.",
+            help=(
+                "Enter RecallPulse appointments. CASHIERS import does not fill this field."
+                if row.has_recall_pulse_plan
+                else "Auto-filled from CASHIERS .xlsx. Type a new number to keep it if you re-import."
+            ),
         )
     with c2:
         st.text_input(
@@ -376,7 +381,7 @@ def render():
 
     st.markdown(
         '<span class="legend-chip chip-manual">Click a name · enter appts, tires, SPIFF, bonuses</span> '
-        '<span class="legend-chip chip-calc">Appointments auto-fill from CASHIERS .xlsx — editable</span> '
+        '<span class="legend-chip chip-calc">CASHIERS fills appointments except Brandy (RecallPulse) — all counts are editable</span> '
         '<span class="legend-chip chip-live">Summary chart updates on each change</span>',
         unsafe_allow_html=True,
     )
@@ -408,8 +413,6 @@ def render():
             report_bytes = report_file.read()
             report_sig = f"{report_file.name}:{len(report_bytes)}"
             if st.session_state.get("cashiers_processed_sig") != report_sig:
-                # Fresh upload replaces prior typed overrides with report counts.
-                st.session_state.receptionist_appt_overrides = []
                 matched = apply_cashiers_report_to_session(
                     parse_cashiers_report(BytesIO(report_bytes))
                 )
@@ -417,7 +420,7 @@ def render():
                 st.markdown(
                     status_banner(
                         f"✓ Loaded CASHIERS report — matched {matched} receptionists. "
-                        "You can type over Appointments set to override.",
+                        "Brandy’s appointments stay on RecallPulse. Typed appointment counts are kept.",
                         "success",
                     ),
                     unsafe_allow_html=True,

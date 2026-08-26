@@ -15,7 +15,14 @@ from lib.receptionist_payroll_calc import (
     ReceptionistPayrollRow,
     ensure_receptionist_row_fields,
 )
-from lib.receptionist_payroll_parser import report_by_code, report_by_last_name
+from lib.receptionist_payroll_parser import (
+    CASHIERS_SKIP_CODES,
+    cashiers_appointment_count_for_row,
+    cashiers_taker_codes,
+    report_by_code,
+    report_by_last_name,
+    skips_cashiers_appointment_import,
+)
 from lib.receptionist_roster import flatten_roster, load_roster, normalize_roster, save_roster, update_employee
 
 RECEPTIONIST_FIELDS = {
@@ -383,12 +390,17 @@ def persist_receptionist_changes(name: str | None = None):
     if name:
         st.session_state[section_open_key(name)] = True
         _commit_receptionist_inputs(name)
-        mark_appointments_override(name)
     refresh_receptionist_value_store()
     from lib.payroll_autosave import autosave_receptionist_payroll
 
     autosave_receptionist_payroll()
     st.rerun()
+
+
+def persist_appointments_change(name: str):
+    """Typed appointment count wins over a later CASHIERS import."""
+    mark_appointments_override(name)
+    persist_receptionist_changes(name)
 
 
 def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
@@ -505,21 +517,21 @@ def apply_cashiers_report_to_session(report_rows) -> int:
     overrides = set(st.session_state.get("receptionist_appt_overrides") or [])
 
     for row in flatten_roster(st.session_state.receptionist_roster):
-        # Keep manually typed appointment counts when the same report is still open.
-        if row.name in overrides:
-            for code in row.taker_codes:
-                matched_codes.add(str(code).strip().upper())
+        codes = cashiers_taker_codes(row)
+        if skips_cashiers_appointment_import(row):
+            matched_codes.update(codes)
             continue
-        appt_count = 0.0
-        for code in row.taker_codes:
-            report = by_code.get(code.upper())
-            if report:
-                appt_count += report.appointments_set
-                matched_codes.add(code.upper())
+        # Keep a typed appointment count instead of the spreadsheet number.
+        if row.name in overrides:
+            matched_codes.update(codes)
+            continue
+        appt_count = cashiers_appointment_count_for_row(row, by_code, by_last)
+        for code in codes:
+            if code in by_code:
+                matched_codes.add(code)
         if not appt_count and row.last_name:
             report = by_last.get(row.last_name.upper())
             if report:
-                appt_count = report.appointments_set
                 matched_codes.add(report.code.upper())
         if appt_count:
             appt_value = float(appt_count)
@@ -534,7 +546,7 @@ def apply_cashiers_report_to_session(report_rows) -> int:
         for row in report_rows
         if row.code.upper() not in matched_codes
         and row.appointments_set > 0
-        and row.code.upper() not in {"SVCPTL", "NUMA"}
+        and row.code.upper() not in CASHIERS_SKIP_CODES
     ]
     st.session_state.cashiers_unmatched = [
         {

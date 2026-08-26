@@ -60,6 +60,36 @@ class RecallPulseBonusTests(unittest.TestCase):
         self.assertEqual(result.appointment_pay, 20.0)
         self.assertEqual(result.stretch_pay, 0.0)
 
+    def test_cashiers_import_skips_brandy_sistrunk(self):
+        from lib.receptionist_payroll_parser import (
+            CashierReportSummary,
+            cashiers_appointment_count_for_row,
+            skips_cashiers_appointment_import,
+        )
+
+        brandy = ReceptionistPayrollRow(
+            name="Brandy Sistrunk",
+            last_name="SISTRUNK",
+            taker_codes=["22SISTRUNKB"],
+            has_recall_pulse_plan=True,
+        )
+        misty = ReceptionistPayrollRow(
+            name="Misty Carver",
+            last_name="CARVER",
+            taker_codes=["22CARVERM"],
+        )
+        by_code = {
+            "22SISTRUNKB": CashierReportSummary("22SISTRUNKB", "SISTRUNK", 40, "Sistrunk"),
+            "22CARVERM": CashierReportSummary("22CARVERM", "CARVER", 12, "Carver"),
+        }
+        by_last = {
+            "SISTRUNK": by_code["22SISTRUNKB"],
+            "CARVER": by_code["22CARVERM"],
+        }
+        self.assertTrue(skips_cashiers_appointment_import(brandy))
+        self.assertEqual(cashiers_appointment_count_for_row(brandy, by_code, by_last), 0.0)
+        self.assertEqual(cashiers_appointment_count_for_row(misty, by_code, by_last), 12.0)
+
 
 if __name__ == "__main__":
     unittest.main()

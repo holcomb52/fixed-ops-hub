@@ -30,9 +30,12 @@ from lib.receptionist_payroll_calc import (
     ReceptionistPayrollRow,
 )
 from lib.receptionist_payroll_parser import (
+    cashiers_appointment_count_for_row,
     last_name_from_taker_code,
     parse_cashiers_report,
     report_by_code,
+    report_by_last_name,
+    skips_cashiers_appointment_import,
 )
 from lib.receptionist_roster import (
     default_roster,
@@ -140,19 +143,18 @@ class PayrollLockinTests(unittest.TestCase):
         )
         rows = parse_cashiers_report(BytesIO(payload))
         by_code = report_by_code(rows)
+        by_last = report_by_last_name(rows)
         self.assertEqual(by_code["22SCHNEIDERM"].appointments_set, 21)
 
         matched = {}
         for row in flatten_roster(default_roster()):
-            total = 0.0
-            for code in row.taker_codes:
-                hit = by_code.get(code.upper())
-                if hit:
-                    total += hit.appointments_set
+            total = cashiers_appointment_count_for_row(row, by_code, by_last)
             if total:
                 matched[row.name] = total
         self.assertEqual(matched["Megan Schneider"], 21)
-        self.assertEqual(matched["Brandy Sistrunk"], 3)
+        self.assertNotIn("Brandy Sistrunk", matched)
+        brandy = next(r for r in flatten_roster(default_roster()) if r.name == "Brandy Sistrunk")
+        self.assertTrue(skips_cashiers_appointment_import(brandy))
 
     def test_taker_code_last_name_handles_digit_suffix(self):
         self.assertEqual(last_name_from_taker_code("22SCHNEIDERM"), "SCHNEIDER")

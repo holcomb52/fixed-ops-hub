@@ -17,7 +17,11 @@ def render():
 
     if is_configured():
         st.markdown(
-            status_banner("Supabase connected — live data ready.", "success"),
+            status_banner(
+                "Supabase connected — live data ready. "
+                "Parts return plans save to Reports when you Complete & Save.",
+                "success",
+            ),
             unsafe_allow_html=True,
         )
     else:
@@ -28,8 +32,8 @@ def render():
 
     c1, c2, c3, c4 = st.columns(4)
     stats = [
-        ("Modules Live", "2", "cyan", "⚡"),
-        ("In Pipeline", "2", "orange", "◈"),
+        ("Modules Live", "4", "cyan", "⚡"),
+        ("In Pipeline", "0", "orange", "◈"),
         ("Database", "Supabase" if is_configured() else "—", "violet", "◎"),
         ("Cloud", "Streamlit", "green", "☁"),
     ]
@@ -48,12 +52,13 @@ def render():
         unsafe_allow_html=True,
     )
 
-    cols = st.columns(3)
     cards = [
         ("💰 Payroll", "Technician flag sheets + service advisor pay plans", "Live", "cyan"),
         ("🛡️ Warranty", "Customer-pay ELR analysis for rate submissions.", "Live", "green"),
         ("📈 Labor Rate", "Build a customer-pay grid from target ELR + hour mix.", "Live", "violet"),
+        ("🔩 Parts", "MNS/MNR return allowance plans — save to cloud Reports.", "Live", "orange"),
     ]
-    for col, (title, desc, status, accent) in zip(cols, cards):
-        with col:
+    cols = st.columns(2)
+    for idx, (title, desc, status, accent) in enumerate(cards):
+        with cols[idx % 2]:
             st.markdown(module_card(title, desc, status, accent), unsafe_allow_html=True)

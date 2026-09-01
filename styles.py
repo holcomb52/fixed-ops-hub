@@ -125,32 +125,33 @@ div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] {
 div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button {
     width: 100% !important;
     min-height: 2.85rem !important;
-    padding: 0.62rem 0.95rem !important;
+    padding: 0.62rem 0.95rem 0.62rem 1rem !important;
     border-radius: 12px !important;
     text-align: left !important;
     justify-content: flex-start !important;
     font-size: 0.94rem !important;
     line-height: 1.25 !important;
     border-width: 1px !important;
+    border-left-width: 4px !important;
     transition: all 0.2s ease !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="secondary"] {
-    background: rgba(255, 255, 255, 0.03) !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
     box-shadow: none !important;
     transform: none !important;
+    opacity: 1 !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="secondary"]:hover {
-    transform: translateX(3px) !important;
-    background: rgba(255, 255, 255, 0.06) !important;
+    transform: translateX(4px) !important;
+    filter: brightness(1.08);
 }
 
 div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="primary"] {
     font-weight: 700 !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
     transform: none !important;
+    filter: brightness(1.05);
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-home + div[data-testid="stButton"] > button {
@@ -159,9 +160,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-home + div[data-testid="stButton"] 
     letter-spacing: 0.03em !important;
     color: #f8fafc !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-home + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(148, 163, 184, 0.35) !important;
+    border-left-color: #94a3b8 !important;
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.16), rgba(148, 163, 184, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-home + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(248, 250, 252, 0.45) !important;
-    background: linear-gradient(135deg, rgba(248, 250, 252, 0.18), rgba(148, 163, 184, 0.08)) !important;
+    border-color: rgba(248, 250, 252, 0.5) !important;
+    border-left-color: #f8fafc !important;
+    background: linear-gradient(90deg, rgba(248, 250, 252, 0.28), rgba(148, 163, 184, 0.12)) !important;
+    box-shadow: 0 0 20px rgba(148, 163, 184, 0.2) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-payroll + div[data-testid="stButton"] > button {
@@ -172,10 +180,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-payroll + div[data-testid="stButton
     font-size: 0.82rem !important;
     color: #6ee7b7 !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-payroll + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(52, 211, 153, 0.28) !important;
+    border-left-color: #34d399 !important;
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.18), rgba(52, 211, 153, 0.05)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-payroll + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(52, 211, 153, 0.55) !important;
-    background: linear-gradient(135deg, rgba(52, 211, 153, 0.22), rgba(52, 211, 153, 0.08)) !important;
-    box-shadow: 0 0 18px rgba(52, 211, 153, 0.18) !important;
+    border-color: rgba(52, 211, 153, 0.65) !important;
+    border-left-color: #34d399 !important;
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.38), rgba(52, 211, 153, 0.14)) !important;
+    box-shadow: 0 0 22px rgba(52, 211, 153, 0.28) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-flag-sheet + div[data-testid="stButton"] > button {
@@ -184,9 +198,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-flag-sheet + div[data-testid="stBut
     font-style: italic !important;
     color: #bae6fd !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-flag-sheet + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(56, 189, 248, 0.28) !important;
+    border-left-color: #38bdf8 !important;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-flag-sheet + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(56, 189, 248, 0.5) !important;
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0.07)) !important;
+    border-color: rgba(56, 189, 248, 0.55) !important;
+    border-left-color: #38bdf8 !important;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.32), rgba(56, 189, 248, 0.1)) !important;
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.22) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-warranty + div[data-testid="stButton"] > button {
@@ -194,9 +215,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-warranty + div[data-testid="stButto
     font-weight: 600 !important;
     color: #86efac !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-warranty + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(74, 222, 128, 0.28) !important;
+    border-left-color: #4ade80 !important;
+    background: linear-gradient(90deg, rgba(74, 222, 128, 0.16), rgba(74, 222, 128, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-warranty + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(52, 211, 153, 0.45) !important;
-    background: linear-gradient(135deg, rgba(74, 222, 128, 0.18), rgba(52, 211, 153, 0.07)) !important;
+    border-color: rgba(74, 222, 128, 0.55) !important;
+    border-left-color: #4ade80 !important;
+    background: linear-gradient(90deg, rgba(74, 222, 128, 0.3), rgba(52, 211, 153, 0.1)) !important;
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.2) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-warranty-admin-bonus + div[data-testid="stButton"] > button {
@@ -205,9 +233,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-warranty-admin-bonus + div[data-tes
     font-size: 0.86rem !important;
     color: #fde68a !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-warranty-admin-bonus + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(251, 191, 36, 0.28) !important;
+    border-left-color: #fbbf24 !important;
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-warranty-admin-bonus + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(251, 191, 36, 0.5) !important;
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.07)) !important;
+    border-color: rgba(251, 191, 36, 0.6) !important;
+    border-left-color: #fbbf24 !important;
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.32), rgba(251, 191, 36, 0.1)) !important;
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.22) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-csi-bonus + div[data-testid="stButton"] > button {
@@ -216,10 +251,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-csi-bonus + div[data-testid="stButt
     letter-spacing: 0.04em !important;
     color: #fcd34d !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-csi-bonus + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(245, 158, 11, 0.32) !important;
+    border-left-color: #f59e0b !important;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.2), rgba(245, 158, 11, 0.05)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-csi-bonus + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(251, 191, 36, 0.55) !important;
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.24), rgba(245, 158, 11, 0.1)) !important;
-    box-shadow: 0 0 18px rgba(251, 191, 36, 0.16) !important;
+    border-color: rgba(251, 191, 36, 0.65) !important;
+    border-left-color: #fbbf24 !important;
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.38), rgba(245, 158, 11, 0.14)) !important;
+    box-shadow: 0 0 22px rgba(251, 191, 36, 0.28) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-eom-report + div[data-testid="stButton"] > button {
@@ -228,9 +269,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-eom-report + div[data-testid="stBut
     font-size: 0.84rem !important;
     color: #ffbc9a !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-eom-report + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(255, 107, 53, 0.28) !important;
+    border-left-color: #ff6b35 !important;
+    background: linear-gradient(90deg, rgba(255, 107, 53, 0.16), rgba(255, 107, 53, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-eom-report + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(255, 107, 53, 0.5) !important;
-    background: linear-gradient(135deg, rgba(255, 107, 53, 0.22), rgba(255, 107, 53, 0.08)) !important;
+    border-color: rgba(255, 107, 53, 0.6) !important;
+    border-left-color: #ff6b35 !important;
+    background: linear-gradient(90deg, rgba(255, 107, 53, 0.34), rgba(255, 107, 53, 0.12)) !important;
+    box-shadow: 0 0 20px rgba(255, 107, 53, 0.24) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-labor-rate + div[data-testid="stButton"] > button {
@@ -239,9 +287,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-labor-rate + div[data-testid="stBut
     font-size: 0.84rem !important;
     color: #c4b5fd !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-labor-rate + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(167, 139, 250, 0.28) !important;
+    border-left-color: #a78bfa !important;
+    background: linear-gradient(90deg, rgba(167, 139, 250, 0.16), rgba(167, 139, 250, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-labor-rate + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(167, 139, 250, 0.5) !important;
-    background: linear-gradient(135deg, rgba(167, 139, 250, 0.22), rgba(167, 139, 250, 0.08)) !important;
+    border-color: rgba(167, 139, 250, 0.6) !important;
+    border-left-color: #a78bfa !important;
+    background: linear-gradient(90deg, rgba(167, 139, 250, 0.34), rgba(167, 139, 250, 0.12)) !important;
+    box-shadow: 0 0 20px rgba(167, 139, 250, 0.24) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-parts + div[data-testid="stButton"] > button {
@@ -250,10 +305,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-parts + div[data-testid="stButton"]
     letter-spacing: 0.02em !important;
     color: #ff8c5a !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-parts + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(255, 107, 53, 0.3) !important;
+    border-left-color: #ff6b35 !important;
+    background: linear-gradient(90deg, rgba(255, 107, 53, 0.18), rgba(255, 140, 90, 0.05)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-parts + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(255, 107, 53, 0.55) !important;
-    background: linear-gradient(135deg, rgba(255, 107, 53, 0.24), rgba(255, 140, 90, 0.1)) !important;
-    box-shadow: 0 0 18px rgba(255, 107, 53, 0.16) !important;
+    border-color: rgba(255, 107, 53, 0.65) !important;
+    border-left-color: #ff6b35 !important;
+    background: linear-gradient(90deg, rgba(255, 107, 53, 0.38), rgba(255, 140, 90, 0.14)) !important;
+    box-shadow: 0 0 22px rgba(255, 107, 53, 0.28) !important;
 }
 
 div[data-testid="stSidebar"] .nav-marker.nav-reports + div[data-testid="stButton"] > button {
@@ -263,10 +324,16 @@ div[data-testid="stSidebar"] .nav-marker.nav-reports + div[data-testid="stButton
     letter-spacing: 0.03em !important;
     color: #7eeaff !important;
 }
+div[data-testid="stSidebar"] .nav-marker.nav-reports + div[data-testid="stButton"] > button[kind="secondary"] {
+    border-color: rgba(0, 212, 255, 0.28) !important;
+    border-left-color: #00d4ff !important;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.16), rgba(0, 212, 255, 0.04)) !important;
+}
 div[data-testid="stSidebar"] .nav-marker.nav-reports + div[data-testid="stButton"] > button[kind="primary"] {
-    border-color: rgba(0, 212, 255, 0.55) !important;
-    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.08)) !important;
-    box-shadow: 0 0 18px rgba(0, 212, 255, 0.16) !important;
+    border-color: rgba(0, 212, 255, 0.65) !important;
+    border-left-color: #00d4ff !important;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.32), rgba(0, 212, 255, 0.1)) !important;
+    box-shadow: 0 0 22px rgba(0, 212, 255, 0.28) !important;
 }
 
 /* Legacy radio nav (unused) */

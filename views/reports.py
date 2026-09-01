@@ -93,6 +93,13 @@ from lib.warranty_admin_bonus_storage import (
     list_warranty_admin_bonus_runs,
     load_warranty_admin_bonus_run,
 )
+from lib.csi_bonus_pdf_export import generate_csi_bonus_pdf
+from lib.csi_bonus_storage import (
+    apply_csi_bonus_snapshot_to_session,
+    delete_csi_bonus_run,
+    list_csi_bonus_runs,
+    load_csi_bonus_run,
+)
 from views.payroll_helpers import init_payroll_session
 
 ACCENT_TECH = "orange"
@@ -100,6 +107,7 @@ ACCENT_ADVISOR = "cyan"
 ACCENT_RECEPTIONIST = "violet"
 ACCENT_WARRANTY = "amber"
 ACCENT_WARRANTY_ADMIN = "green"
+ACCENT_CSI = "amber"
 ACCENT_EOM = "orange"
 ACCENT_LABOR = "cyan"
 ACCENT_PARTS = "violet"
@@ -812,6 +820,101 @@ def _render_parts_stocking_runs():
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
+def _render_csi_bonus_runs():
+    runs = list_csi_bonus_runs()
+
+    st.markdown(team_section_divider(ACCENT_CSI), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "CSI Bonus",
+            "Saved NPS bonuses for Serenity Skinner and Brandy Sistrunk",
+            accent=ACCENT_CSI,
+            icon="⭐",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved CSI bonuses yet. Finish on **CSI Bonus** "
+                "and click **Complete & Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        pay_period = run.get("pay_period", "—")
+        completed = _fmt_date(run.get("completed_at", ""))
+        grand = _money(run.get("grand_total"))
+        loaded = load_csi_bonus_run(run_id)
+        employee = (
+            run.get("employee_name")
+            or (loaded or {}).get("snapshot", {}).get("employee_name")
+            or "—"
+        )
+        meta = (
+            f"{employee} · Completed"
+            if run.get("status") != "draft"
+            else f"{employee} · In progress"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                pay_period,
+                ACCENT_CSI,
+                caption=_run_status_caption(run, completed),
+                amount=grand,
+                meta=meta,
+                badge_html=_run_status_badge(run),
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"csi_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_csi_bonus_snapshot_to_session(
+                        loaded.get("snapshot") or {},
+                        run_id,
+                        status=loaded.get("status", "completed"),
+                    )
+                    st.session_state.pending_nav = "CSI Bonus"
+                    st.rerun()
+        with a2:
+            if loaded and loaded.get("snapshot"):
+                stub = str(pay_period).replace(" ", "_")
+                emp_stub = str(employee).replace(" ", "_")
+                st.download_button(
+                    "📄 Export PDF",
+                    data=generate_csi_bonus_pdf(loaded["snapshot"]),
+                    file_name=f"CSI_BONUS_{emp_stub}_{stub}.pdf",
+                    mime="application/pdf",
+                    key=f"csi_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("csi", run_id)
+        _render_delete_report_controls(
+            prefix="csi",
+            run_id=run_id,
+            run_label=f"{employee} · {pay_period}",
+            delete_fn=delete_csi_bonus_run,
+            active_session_key="active_csi_bonus_run_id",
+            extra_clear_keys=["csi_bonus_completed"],
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
 def _render_labor_rate_runs():
     labor_runs = list_labor_rate_runs()
 
@@ -1295,6 +1398,7 @@ def render(parts_only: bool = False):
 
     _render_warranty_runs()
     _render_warranty_admin_bonus_runs()
+    _render_csi_bonus_runs()
     _render_eom_report_runs()
     _render_parts_return_runs()
     _render_parts_stocking_runs()

@@ -513,17 +513,54 @@ def _current_snapshot(plan, lines):
     )
 
 
-def render():
+def _render_parts_mode_switcher() -> str:
     if "parts_active_tab" not in st.session_state:
         st.session_state.parts_active_tab = "Returns"
+    active = st.session_state.parts_active_tab
 
-    tab = st.radio(
-        "Parts section",
-        ["Returns", "Stocking"],
-        horizontal=True,
-        key="parts_active_tab",
-        label_visibility="collapsed",
-    )
+    with st.container(border=True):
+        st.markdown(
+            '<span class="parts-mode-marker"></span>'
+            '<div class="parts-mode-banner">'
+            '<div class="parts-mode-banner-title">Parts workspace</div>'
+            '<div class="parts-mode-banner-sub">'
+            "Choose <strong>Returns</strong> (MNS allowance) or "
+            "<strong>Stocking</strong> (6MS order planner)"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            returns_active = active == "Returns"
+            if st.button(
+                "↩ Returns\nMNS return allowance",
+                key="parts_pick_returns",
+                use_container_width=True,
+                type="primary" if returns_active else "secondary",
+                help="Plan MNS parts returns against your allowance",
+            ):
+                if not returns_active:
+                    st.session_state.parts_active_tab = "Returns"
+                    st.rerun()
+        with c2:
+            stocking_active = active == "Stocking"
+            if st.button(
+                "📦 Stocking\n6MS order planner",
+                key="parts_pick_stocking",
+                use_container_width=True,
+                type="primary" if stocking_active else "secondary",
+                help="Upload 6-month sales and build order lists",
+            ):
+                if not stocking_active:
+                    st.session_state.parts_active_tab = "Stocking"
+                    st.rerun()
+
+    return active
+
+
+def render():
+    _render_parts_mode_switcher()
+    tab = st.session_state.get("parts_active_tab", "Returns")
     if tab == "Returns":
         _render_returns()
     else:

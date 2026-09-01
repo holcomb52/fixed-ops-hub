@@ -359,6 +359,98 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     box-shadow: 0 0 18px rgba(0, 212, 255, 0.18) !important;
 }
 
+/* Parts Returns / Stocking mode switcher */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker) {
+    border: 2px solid rgba(255, 107, 53, 0.45) !important;
+    background: linear-gradient(
+        135deg,
+        rgba(255, 107, 53, 0.12),
+        rgba(0, 212, 255, 0.08),
+        rgba(12, 18, 32, 0.92)
+    ) !important;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35), 0 0 28px rgba(255, 107, 53, 0.12) !important;
+    margin-bottom: 1.25rem !important;
+    padding-top: 0.35rem !important;
+}
+
+.parts-mode-marker {
+    display: none;
+}
+
+.parts-mode-banner {
+    margin-bottom: 0.85rem;
+}
+
+.parts-mode-banner-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: 0.02em;
+}
+
+.parts-mode-banner-title::before {
+    content: "🔩 ";
+}
+
+.parts-mode-banner-sub {
+    font-size: 0.92rem;
+    color: #94a3b8;
+    margin-top: 0.35rem;
+    line-height: 1.45;
+}
+
+.parts-mode-banner-sub strong {
+    color: #e2e8f0;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker)
+[data-testid="stHorizontalBlock"]
+[data-testid="stButton"]
+> button {
+    min-height: 4.75rem !important;
+    font-size: 1.02rem !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+    border-width: 2px !important;
+    border-radius: 14px !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker)
+[data-testid="column"]:first-child
+[data-testid="stButton"]
+> button[kind="primary"] {
+    border-color: #ff6b35 !important;
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.42), rgba(255, 107, 53, 0.16)) !important;
+    box-shadow: 0 0 26px rgba(255, 107, 53, 0.28) !important;
+    color: #fff7ed !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker)
+[data-testid="column"]:last-child
+[data-testid="stButton"]
+> button[kind="primary"] {
+    border-color: #00d4ff !important;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.38), rgba(0, 212, 255, 0.14)) !important;
+    box-shadow: 0 0 26px rgba(0, 212, 255, 0.24) !important;
+    color: #ecfeff !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker)
+[data-testid="stButton"]
+> button[kind="secondary"] {
+    border-color: rgba(148, 163, 184, 0.45) !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+    color: #cbd5e1 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker)
+[data-testid="stButton"]
+> button[kind="secondary"]:hover {
+    border-color: rgba(0, 212, 255, 0.55) !important;
+    background: rgba(0, 212, 255, 0.1) !important;
+    color: #f8fafc !important;
+}
+
 .accent-purple::before { background: linear-gradient(90deg, #a78bfa, transparent); }
 .accent-purple:hover { box-shadow: 0 12px 40px rgba(167, 139, 250, 0.15); }
 .accent-purple .stat-value { color: #c4b5fd; }

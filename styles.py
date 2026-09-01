@@ -109,70 +109,9 @@ section[data-testid="stSidebar"] > div {
     font-family: 'JetBrains Mono', monospace;
 }
 
-/* Sidebar navigation */
+/* Sidebar navigation — list wrapper only; button styles live after global .stButton rules */
 div[data-testid="stSidebar"] .sidebar-nav-list {
     display: block;
-}
-
-div[data-testid="stSidebar"] .nav-marker {
-    display: none;
-}
-
-div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] {
-    margin-bottom: 0.35rem;
-}
-
-div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button,
-div[data-testid="stSidebar"] [data-testid="stButton"]:not(:last-of-type) > button {
-    width: 100% !important;
-    min-height: 2.75rem !important;
-    padding: 0.62rem 0.95rem !important;
-    border-radius: 12px !important;
-    text-align: left !important;
-    justify-content: flex-start !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.92rem !important;
-    font-weight: 500 !important;
-    line-height: 1.25 !important;
-    letter-spacing: 0 !important;
-    text-transform: none !important;
-    font-style: normal !important;
-    color: #cbd5e1 !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-left-width: 1px !important;
-    background: rgba(255, 255, 255, 0.04) !important;
-    box-shadow: none !important;
-    transition: all 0.2s ease !important;
-    transform: none !important;
-    filter: none !important;
-}
-
-div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="secondary"]:hover,
-div[data-testid="stSidebar"] [data-testid="stButton"]:not(:last-of-type) > button[kind="secondary"]:hover {
-    color: #f1f5f9 !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border-color: rgba(255, 255, 255, 0.16) !important;
-    transform: translateX(3px) !important;
-    box-shadow: none !important;
-}
-
-div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="primary"],
-div[data-testid="stSidebar"] [data-testid="stButton"]:not(:last-of-type) > button[kind="primary"] {
-    color: #f8fafc !important;
-    font-weight: 600 !important;
-    background: rgba(255, 255, 255, 0.12) !important;
-    border-color: rgba(255, 255, 255, 0.22) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
-}
-
-div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="primary"]:hover,
-div[data-testid="stSidebar"] [data-testid="stButton"]:not(:last-of-type) > button[kind="primary"]:hover {
-    transform: none !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
-}
-
-div[data-testid="stSidebar"] [data-testid="stButton"]:last-of-type > button {
-    min-height: auto !important;
 }
 
 /* Legacy radio nav (unused) */
@@ -1140,6 +1079,58 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.parts-mode-marker)
     border-color: #00d4ff !important;
     box-shadow: 0 0 28px rgba(0, 212, 255, 0.3) !important;
     transform: translateY(-1px) !important;
+}
+
+/* Sidebar nav — neutral buttons inside keyed container (overrides global .stButton above) */
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton {
+    margin-bottom: 0.35rem;
+}
+
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton > button {
+    width: 100% !important;
+    min-height: 2.75rem !important;
+    padding: 0.62rem 0.95rem !important;
+    border-radius: 12px !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.92rem !important;
+    font-weight: 500 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    font-style: normal !important;
+    white-space: nowrap !important;
+    color: #cbd5e1 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease !important;
+    transform: none !important;
+    filter: none !important;
+}
+
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton > button:hover {
+    color: #f1f5f9 !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    transform: translateX(3px) !important;
+    box-shadow: none !important;
+}
+
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton > button[kind="primary"],
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton > button[data-testid="stBaseButton-primary"] {
+    color: #f8fafc !important;
+    font-weight: 600 !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton > button[kind="primary"]:hover,
+section[data-testid="stSidebar"] .st-key-sidebar_nav .stButton > button[data-testid="stBaseButton-primary"]:hover {
+    transform: none !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
 }
 
 .stTextInput input, .stNumberInput input, .stSelectbox > div > div,

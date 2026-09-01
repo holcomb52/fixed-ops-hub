@@ -121,7 +121,7 @@ with st.sidebar:
         f"""
         <div class="sidebar-footer">
             <div>Database <strong>{db_status}</strong></div>
-            <div style="margin-top:0.35rem">v0.2 · Supabase</div>
+            <div style="margin-top:0.35rem">v0.3 · Supabase</div>
         </div>
         """,
         unsafe_allow_html=True,

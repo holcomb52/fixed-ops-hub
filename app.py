@@ -100,16 +100,23 @@ with st.sidebar:
 
     st.session_state.nav_page = clamp_nav_page(st.session_state.nav_page)
 
-    page = st.radio(
-        "Navigate",
-        list(PAGES.keys()),
-        index=list(PAGES.keys()).index(st.session_state.nav_page)
-        if st.session_state.nav_page in PAGES
-        else 0,
-        label_visibility="collapsed",
-        key="nav_page",
-        format_func=lambda x: NAV_LABELS.get(x, x),
-    )
+    st.markdown('<div class="sidebar-nav-list">', unsafe_allow_html=True)
+    for page_name in PAGES.keys():
+        slug = page_name.lower().replace(" ", "-")
+        active = st.session_state.nav_page == page_name
+        st.markdown(f'<span class="nav-marker nav-{slug}"></span>', unsafe_allow_html=True)
+        if st.button(
+            NAV_LABELS.get(page_name, page_name),
+            key=f"sidebar_nav_{slug}",
+            use_container_width=True,
+            type="primary" if active else "secondary",
+        ):
+            if st.session_state.nav_page != page_name:
+                st.session_state.nav_page = page_name
+                st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    page = st.session_state.nav_page
 
     st.markdown("---")
     if st.button("Sign out", use_container_width=True):

@@ -109,7 +109,167 @@ section[data-testid="stSidebar"] > div {
     font-family: 'JetBrains Mono', monospace;
 }
 
-/* Radio nav pills */
+/* Sidebar navigation */
+div[data-testid="stSidebar"] .sidebar-nav-list {
+    display: block;
+}
+
+div[data-testid="stSidebar"] .nav-marker {
+    display: none;
+}
+
+div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] {
+    margin-bottom: 0.35rem;
+}
+
+div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button {
+    width: 100% !important;
+    min-height: 2.85rem !important;
+    padding: 0.62rem 0.95rem !important;
+    border-radius: 12px !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    font-size: 0.94rem !important;
+    line-height: 1.25 !important;
+    border-width: 1px !important;
+    transition: all 0.2s ease !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="secondary"] {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    transform: translateX(3px) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker + div[data-testid="stButton"] > button[kind="primary"] {
+    font-weight: 700 !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    transform: none !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-home + div[data-testid="stButton"] > button {
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    color: #f8fafc !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-home + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(248, 250, 252, 0.45) !important;
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.18), rgba(148, 163, 184, 0.08)) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-payroll + div[data-testid="stButton"] > button {
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    font-size: 0.82rem !important;
+    color: #6ee7b7 !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-payroll + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(52, 211, 153, 0.55) !important;
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.22), rgba(52, 211, 153, 0.08)) !important;
+    box-shadow: 0 0 18px rgba(52, 211, 153, 0.18) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-flag-sheet + div[data-testid="stButton"] > button {
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 600 !important;
+    font-style: italic !important;
+    color: #bae6fd !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-flag-sheet + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(56, 189, 248, 0.5) !important;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0.07)) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-warranty + div[data-testid="stButton"] > button {
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 600 !important;
+    color: #86efac !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-warranty + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(52, 211, 153, 0.45) !important;
+    background: linear-gradient(135deg, rgba(74, 222, 128, 0.18), rgba(52, 211, 153, 0.07)) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-warranty-admin-bonus + div[data-testid="stButton"] > button {
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.86rem !important;
+    color: #fde68a !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-warranty-admin-bonus + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(251, 191, 36, 0.5) !important;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.07)) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-csi-bonus + div[data-testid="stButton"] > button {
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em !important;
+    color: #fcd34d !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-csi-bonus + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(251, 191, 36, 0.55) !important;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.24), rgba(245, 158, 11, 0.1)) !important;
+    box-shadow: 0 0 18px rgba(251, 191, 36, 0.16) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-eom-report + div[data-testid="stButton"] > button {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 600 !important;
+    font-size: 0.84rem !important;
+    color: #ffbc9a !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-eom-report + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(255, 107, 53, 0.5) !important;
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.22), rgba(255, 107, 53, 0.08)) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-labor-rate + div[data-testid="stButton"] > button {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 600 !important;
+    font-size: 0.84rem !important;
+    color: #c4b5fd !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-labor-rate + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(167, 139, 250, 0.5) !important;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.22), rgba(167, 139, 250, 0.08)) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-parts + div[data-testid="stButton"] > button {
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+    color: #ff8c5a !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-parts + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(255, 107, 53, 0.55) !important;
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.24), rgba(255, 140, 90, 0.1)) !important;
+    box-shadow: 0 0 18px rgba(255, 107, 53, 0.16) !important;
+}
+
+div[data-testid="stSidebar"] .nav-marker.nav-reports + div[data-testid="stButton"] > button {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 600 !important;
+    font-size: 0.84rem !important;
+    letter-spacing: 0.03em !important;
+    color: #7eeaff !important;
+}
+div[data-testid="stSidebar"] .nav-marker.nav-reports + div[data-testid="stButton"] > button[kind="primary"] {
+    border-color: rgba(0, 212, 255, 0.55) !important;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.08)) !important;
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.16) !important;
+}
+
+/* Legacy radio nav (unused) */
 div[data-testid="stSidebar"] div[role="radiogroup"] {
     gap: 0.35rem;
 }

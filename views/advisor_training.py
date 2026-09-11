@@ -24,6 +24,7 @@ from lib.advisor_training_storage import (
     skills_from_session,
     topics_from_session,
 )
+from lib.advisor_training_pdf_export import generate_advisor_training_pdf
 from lib.page_ui import page_hero, stat_card, status_banner
 from views.payroll_helpers import render_payroll_sync_error
 
@@ -326,6 +327,25 @@ def render():
             status_banner("Select a trainer recommendation before saving.", "warn"),
             unsafe_allow_html=True,
         )
+
+    pdf_bytes = generate_advisor_training_pdf(snapshot)
+    trainee_stub = (snapshot["trainee_name"] or "Trainee").replace(" ", "_")
+    day_stub = snapshot["day_number"] or "X"
+    date_stub = date_label.replace("-", "")
+
+    e1, e2 = st.columns(2)
+    with e1:
+        st.download_button(
+            "📄 Export PDF",
+            data=pdf_bytes,
+            file_name=f"Advisor_Training_{trainee_stub}_Day{day_stub}_{date_stub}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary",
+            disabled=not snapshot["trainee_name"],
+        )
+    with e2:
+        st.caption("PDF mirrors the daily training log — topics, skills, notes, recommendation, and sign-off.")
 
     st.markdown("##### ✅ Save to Reports")
     confirm = st.checkbox(

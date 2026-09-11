@@ -106,6 +106,7 @@ from lib.advisor_training_storage import (
     list_advisor_training_logs,
     load_advisor_training_log,
 )
+from lib.advisor_training_pdf_export import generate_advisor_training_pdf
 from views.payroll_helpers import init_payroll_session
 
 ACCENT_TECH = "orange"
@@ -980,7 +981,7 @@ def _render_advisor_training_logs():
             ),
             unsafe_allow_html=True,
         )
-        a1, a2 = st.columns(2)
+        a1, a2, a3 = st.columns(3)
         with a1:
             if st.button(
                 "✏️ Reopen & edit",
@@ -996,6 +997,18 @@ def _render_advisor_training_logs():
                     st.session_state.pending_nav = "Advisor Training"
                     st.rerun()
         with a2:
+            if loaded and loaded.get("snapshot"):
+                stub_date = str(pay_period).replace("-", "").replace("/", "")
+                emp_stub = str(trainee).replace(" ", "_")
+                st.download_button(
+                    "📄 Export PDF",
+                    data=generate_advisor_training_pdf(loaded["snapshot"]),
+                    file_name=f"Advisor_Training_{emp_stub}_Day{day_num}_{stub_date}.pdf",
+                    mime="application/pdf",
+                    key=f"at_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
             _render_delete_report_button("at", run_id)
         _render_delete_report_controls(
             prefix="at",

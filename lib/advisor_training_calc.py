@@ -80,6 +80,15 @@ SKILL_LEVELS: List[Tuple[str, str]] = [
 SKILL_LEVEL_LABELS: Dict[str, str] = dict(SKILL_LEVELS)
 SKILL_RANK = {"needs_practice": 1, "developing": 2, "proficient": 3}
 
+RECOMMENDATIONS: List[Tuple[str, str]] = [
+    ("continue_training", "Continue training"),
+    ("release_solo", "Release on their own"),
+    ("termination", "Recommend termination"),
+]
+
+RECOMMENDATION_LABELS: Dict[str, str] = dict(RECOMMENDATIONS)
+RECOMMENDATION_IDS: List[str] = [rid for rid, _ in RECOMMENDATIONS]
+
 
 @dataclass
 class AdvisorTrainingProgress:
@@ -127,6 +136,11 @@ def skills_rated_count(skills: Dict[str, str]) -> int:
     return sum(1 for v in skills.values() if v)
 
 
+def normalize_recommendation(raw: Optional[str]) -> str:
+    value = str(raw or "").strip()
+    return value if value in RECOMMENDATION_LABELS else ""
+
+
 def build_snapshot(
     *,
     trainee_name: str,
@@ -139,9 +153,12 @@ def build_snapshot(
     trainee_questions: str = "",
     trainer_notes: str = "",
     next_focus: str = "",
+    recommendation: str = "",
+    recommendation_notes: str = "",
 ) -> dict:
     topics_n = normalize_topics(topics)
     skills_n = normalize_skills(skills)
+    rec = normalize_recommendation(recommendation)
     return {
         "trainee_name": (trainee_name or "").strip(),
         "trainer_name": (trainer_name or "").strip(),
@@ -155,6 +172,9 @@ def build_snapshot(
         "trainee_questions": (trainee_questions or "").strip(),
         "trainer_notes": (trainer_notes or "").strip(),
         "next_focus": (next_focus or "").strip(),
+        "recommendation": rec,
+        "recommendation_label": RECOMMENDATION_LABELS.get(rec, ""),
+        "recommendation_notes": (recommendation_notes or "").strip(),
     }
 
 

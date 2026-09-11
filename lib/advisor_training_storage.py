@@ -42,6 +42,8 @@ def serialize_advisor_training_session(
     trainee_questions: str = "",
     trainer_notes: str = "",
     next_focus: str = "",
+    recommendation: str = "",
+    recommendation_notes: str = "",
 ) -> dict:
     snapshot = build_snapshot(
         trainee_name=trainee_name,
@@ -54,6 +56,8 @@ def serialize_advisor_training_session(
         trainee_questions=trainee_questions,
         trainer_notes=trainer_notes,
         next_focus=next_focus,
+        recommendation=recommendation,
+        recommendation_notes=recommendation_notes,
     )
     snapshot["saved_at"] = _now_iso()
     return snapshot
@@ -72,6 +76,9 @@ def apply_advisor_training_snapshot_to_session(snapshot: dict, run_id: str, stat
     st.session_state.at_trainee_questions = snapshot.get("trainee_questions") or ""
     st.session_state.at_trainer_notes = snapshot.get("trainer_notes") or ""
     st.session_state.at_next_focus = snapshot.get("next_focus") or ""
+    rec = snapshot.get("recommendation") or ""
+    st.session_state.at_recommendation = rec if rec else "—"
+    st.session_state.at_recommendation_notes = snapshot.get("recommendation_notes") or ""
 
     log_date = (snapshot.get("log_date") or "").strip()
     if log_date:
@@ -99,6 +106,8 @@ def clear_advisor_training_session():
     st.session_state.at_trainee_questions = ""
     st.session_state.at_trainer_notes = ""
     st.session_state.at_next_focus = ""
+    st.session_state.at_recommendation = "—"
+    st.session_state.at_recommendation_notes = ""
     from datetime import date as date_cls
 
     st.session_state.at_log_date = date_cls.today()

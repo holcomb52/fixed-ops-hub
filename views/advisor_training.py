@@ -7,6 +7,8 @@ from datetime import date
 import streamlit as st
 
 from lib.advisor_training_calc import (
+    RECOMMENDATIONS,
+    RECOMMENDATION_LABELS,
     SKILL_LEVELS,
     SKILLS,
     TOPIC_GROUPS,
@@ -36,6 +38,8 @@ def _init_state():
         "at_trainee_questions": "",
         "at_trainer_notes": "",
         "at_next_focus": "",
+        "at_recommendation": "—",
+        "at_recommendation_notes": "",
         "active_advisor_training_run_id": None,
         "advisor_training_completed": False,
     }
@@ -234,10 +238,32 @@ def render():
         placeholder="What should tomorrow emphasize?",
     )
 
+    st.markdown("---")
+    st.markdown("##### 6. Trainer recommendation")
+    st.caption("End-of-day call on whether this advisor should keep training, go solo, or be let go.")
+
+    rec_options = ["—"] + [rid for rid, _ in RECOMMENDATIONS]
+    rec_labels = {"—": "Select a recommendation…", **RECOMMENDATION_LABELS}
+    st.radio(
+        "Recommendation",
+        rec_options,
+        key="at_recommendation",
+        format_func=lambda v: rec_labels.get(v, v),
+        horizontal=False,
+    )
+    st.text_area(
+        "Why this recommendation? (optional)",
+        key="at_recommendation_notes",
+        height=80,
+        placeholder="Brief rationale for continue / release / termination…",
+    )
+
     topics = topics_from_session()
     skills = skills_from_session()
     log_date: date = st.session_state.at_log_date
     date_label = log_date.isoformat() if isinstance(log_date, date) else str(log_date)
+    raw_rec = st.session_state.get("at_recommendation") or "—"
+    recommendation = "" if raw_rec in (None, "", "—") else str(raw_rec)
 
     snapshot = serialize_advisor_training_session(
         trainee_name=st.session_state.at_trainee_name,
@@ -250,12 +276,14 @@ def render():
         trainee_questions=st.session_state.at_trainee_questions,
         trainer_notes=st.session_state.at_trainer_notes,
         next_focus=st.session_state.at_next_focus,
+        recommendation=recommendation,
+        recommendation_notes=st.session_state.at_recommendation_notes,
     )
 
     checked = snapshot["topics_checked"]
     rated = snapshot["skills_rated"]
     st.markdown("---")
-    s1, s2, s3 = st.columns(3)
+    s1, s2, s3, s4 = st.columns(4)
     with s1:
         st.markdown(
             stat_card("Topics today", str(checked), "cyan", "☑"),
@@ -271,11 +299,31 @@ def render():
             stat_card("Training day", str(snapshot["day_number"]), "green", "#"),
             unsafe_allow_html=True,
         )
+    with s4:
+        rec_label = snapshot.get("recommendation_label") or "Not set"
+        rec_accent = {
+            "continue_training": "cyan",
+            "release_solo": "green",
+            "termination": "rose",
+        }.get(snapshot.get("recommendation") or "", "orange")
+        st.markdown(
+            stat_card("Recommendation", rec_label[:22], rec_accent, "◎"),
+            unsafe_allow_html=True,
+        )
 
-    can_save = bool(snapshot["trainee_name"] and snapshot["trainer_name"])
-    if not can_save:
+    can_save = bool(
+        snapshot["trainee_name"]
+        and snapshot["trainer_name"]
+        and snapshot.get("recommendation")
+    )
+    if not snapshot["trainee_name"] or not snapshot["trainer_name"]:
         st.markdown(
             status_banner("Enter trainee and trainer names before saving.", "warn"),
+            unsafe_allow_html=True,
+        )
+    elif not snapshot.get("recommendation"):
+        st.markdown(
+            status_banner("Select a trainer recommendation before saving.", "warn"),
             unsafe_allow_html=True,
         )
 

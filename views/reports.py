@@ -962,8 +962,9 @@ def _render_advisor_training_logs():
         day_num = snap.get("day_number") or int(run.get("grand_total") or 0) or "—"
         topics = snap.get("topics_checked", "—")
         trainer = snap.get("trainer_name") or "—"
+        rec = snap.get("recommendation_label") or "No recommendation"
         meta = (
-            f"{trainee} · Trainer {trainer} · {topics} topics"
+            f"{trainee} · {rec} · Trainer {trainer} · {topics} topics"
             if run.get("status") != "draft"
             else f"{trainee} · In progress"
         )

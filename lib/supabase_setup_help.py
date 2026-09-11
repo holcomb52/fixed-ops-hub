@@ -13,6 +13,7 @@ _MIGRATION_FILES = [
     Path(__file__).resolve().parent.parent / "supabase" / "parts_return_runs_table.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "parts_stocking_runs_table.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "csi_bonus_runs_table.sql",
+    Path(__file__).resolve().parent.parent / "supabase" / "advisor_training_logs_table.sql",
 ]
 
 _TABLE_FIXES = {
@@ -24,6 +25,7 @@ _TABLE_FIXES = {
     "parts_return_runs": "parts",
     "parts_stocking_runs": "parts_stocking",
     "csi_bonus_runs": "csi_bonus",
+    "advisor_training_logs": "advisor_training",
 }
 
 

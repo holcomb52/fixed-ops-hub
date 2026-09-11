@@ -100,6 +100,12 @@ from lib.csi_bonus_storage import (
     list_csi_bonus_runs,
     load_csi_bonus_run,
 )
+from lib.advisor_training_storage import (
+    apply_advisor_training_snapshot_to_session,
+    delete_advisor_training_log,
+    list_advisor_training_logs,
+    load_advisor_training_log,
+)
 from views.payroll_helpers import init_payroll_session
 
 ACCENT_TECH = "orange"
@@ -108,6 +114,7 @@ ACCENT_RECEPTIONIST = "violet"
 ACCENT_WARRANTY = "amber"
 ACCENT_WARRANTY_ADMIN = "green"
 ACCENT_CSI = "amber"
+ACCENT_TRAINING = "green"
 ACCENT_EOM = "orange"
 ACCENT_LABOR = "cyan"
 ACCENT_PARTS = "violet"
@@ -915,6 +922,92 @@ def _render_csi_bonus_runs():
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
 
+def _render_advisor_training_logs():
+    runs = list_advisor_training_logs()
+
+    st.markdown(team_section_divider(ACCENT_TRAINING), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "Advisor Training",
+            "Saved daily training logs for new service advisors",
+            accent=ACCENT_TRAINING,
+            icon="🎓",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved training logs yet. Finish on **Advisor Training** "
+                "and click **Complete & Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        pay_period = run.get("pay_period", "—")
+        completed = _fmt_date(run.get("completed_at", ""))
+        loaded = load_advisor_training_log(run_id)
+        snap = (loaded or {}).get("snapshot") or run.get("snapshot") or {}
+        trainee = (
+            run.get("employee_name")
+            or snap.get("trainee_name")
+            or "—"
+        )
+        day_num = snap.get("day_number") or int(run.get("grand_total") or 0) or "—"
+        topics = snap.get("topics_checked", "—")
+        trainer = snap.get("trainer_name") or "—"
+        meta = (
+            f"{trainee} · Trainer {trainer} · {topics} topics"
+            if run.get("status") != "draft"
+            else f"{trainee} · In progress"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                pay_period,
+                ACCENT_TRAINING,
+                caption=_run_status_caption(run, completed),
+                amount=f"Day {day_num}",
+                meta=meta,
+                badge_html=_run_status_badge(run),
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2 = st.columns(2)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"at_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_advisor_training_snapshot_to_session(
+                        loaded.get("snapshot") or {},
+                        run_id,
+                        status=loaded.get("status", "completed"),
+                    )
+                    st.session_state.pending_nav = "Advisor Training"
+                    st.rerun()
+        with a2:
+            _render_delete_report_button("at", run_id)
+        _render_delete_report_controls(
+            prefix="at",
+            run_id=run_id,
+            run_label=f"{trainee} · Day {day_num} · {pay_period}",
+            delete_fn=delete_advisor_training_log,
+            active_session_key="active_advisor_training_run_id",
+            extra_clear_keys=["advisor_training_completed"],
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
 def _render_labor_rate_runs():
     labor_runs = list_labor_rate_runs()
 
@@ -1399,6 +1492,7 @@ def render(parts_only: bool = False):
     _render_warranty_runs()
     _render_warranty_admin_bonus_runs()
     _render_csi_bonus_runs()
+    _render_advisor_training_logs()
     _render_eom_report_runs()
     _render_parts_return_runs()
     _render_parts_stocking_runs()

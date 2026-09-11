@@ -17,6 +17,7 @@ ALL_PAGES = [
     "Warranty",
     "Warranty Admin Bonus",
     "CSI Bonus",
+    "Advisor Training",
     "EOM Report",
     "Labor Rate",
     "Parts",

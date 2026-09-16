@@ -114,8 +114,8 @@ Sign in with `APP_PASSWORD` (full access) or give the Parts Manager `PARTS_MANAG
 - Confirm Supabase URL and key are correct in Secrets.
 - Run `supabase/schema.sql` (or the matching `supabase/*_table.sql`) if a cloud save says a table is missing.
 - Run `supabase/enable_rls.sql` on older projects so payroll tables are not readable with the anon key.
-- **`KeyError` / redacted crash / Python 3.14 in the logs:**  
-  The app will show a clear on-screen message if Cloud is on Python 3.14.  
+- **`KeyError` / redacted crash / Python 3.13+ in the logs:**  
+  The app will show a clear on-screen message if Cloud is on Python 3.13 or newer.  
   Open **Manage app → Settings**, set **Python version to 3.12**, then **Reboot**.  
   If the version can’t be changed, delete and recreate the app with **Python 3.12** in Advanced settings.
 

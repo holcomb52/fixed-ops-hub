@@ -2,12 +2,13 @@ import sys
 
 import streamlit as st
 
-# Streamlit Community Cloud currently defaults to Python 3.14, which breaks this app
-# (redacted KeyError / dataclass failures during import). Require 3.12 or 3.11.
-if sys.version_info >= (3, 14):
+# Streamlit Community Cloud often defaults to Python 3.13/3.14, which breaks this app
+# (redacted ImportError / KeyError / dataclass failures during import). Require 3.12 or 3.11.
+_PY = sys.version_info
+if _PY >= (3, 13):
     st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
     st.error(
-        f"Fixed Ops Hub cannot run on Python {sys.version_info.major}.{sys.version_info.minor}."
+        f"Fixed Ops Hub cannot run on Python {_PY.major}.{_PY.minor}."
     )
     st.markdown(
         """
@@ -23,32 +24,55 @@ If Python version is locked, **delete the app** and **Create app** again — cho
     )
     st.stop()
 
-from lib.app_auth import (
-    allowed_pages,
-    auth_enabled,
-    clamp_nav_page,
-    current_user_label,
-    is_parts_manager,
-    needs_password_warning,
-    require_login,
-    sign_out,
-)
-from lib.page_ui import coming_soon_panel, html_text
-from lib.supabase_client import configured_key_role, is_configured
-from styles import CUSTOM_CSS
-from views import (
-    advisor_training,
-    csi_bonus,
-    eom_report,
-    flag_sheet,
-    home,
-    labor_rate,
-    payroll,
-    parts,
-    reports,
-    warranty,
-    warranty_admin_bonus,
-)
+try:
+    from lib.app_auth import (
+        allowed_pages,
+        auth_enabled,
+        clamp_nav_page,
+        current_user_label,
+        is_parts_manager,
+        needs_password_warning,
+        require_login,
+        sign_out,
+    )
+    from lib.page_ui import coming_soon_panel, html_text
+    from lib.supabase_client import configured_key_role, is_configured
+    from styles import CUSTOM_CSS
+    from views import (
+        advisor_training,
+        csi_bonus,
+        eom_report,
+        flag_sheet,
+        home,
+        labor_rate,
+        payroll,
+        parts,
+        reports,
+        warranty,
+        warranty_admin_bonus,
+    )
+except Exception as exc:
+    st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
+    st.error(
+        f"App failed to start on Python {_PY.major}.{_PY.minor}: "
+        f"{type(exc).__name__}"
+    )
+    st.caption(str(exc)[:500] or "No details available.")
+    st.markdown(
+        """
+### Most common fix
+
+Streamlit Cloud must use **Python 3.12** (or **3.11**):
+
+1. **Manage app** → **Settings** → **Python version** → **3.12**
+2. **Save**, then **Reboot app**
+
+If the version can’t be changed, delete and recreate the app with **Python 3.12**
+under Advanced settings, then paste your secrets again.
+"""
+    )
+    st.stop()
+
 
 st.set_page_config(
     page_title="Fixed Ops Hub",

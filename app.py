@@ -1,6 +1,10 @@
 import sys
 
-from repo_path import format_import_error, prepare_local_lib_imports
+from repo_path import (
+    cloud_python_supported,
+    format_import_error,
+    prepare_local_lib_imports,
+)
 
 # Community Cloud can leave the repo root behind the venv on sys.path, or cache a
 # foreign ``lib`` module (the venv's lib/ directory). Either one raises a redacted
@@ -10,6 +14,28 @@ prepare_local_lib_imports()
 import streamlit as st
 
 _PY = sys.version_info
+_CLOUD_PYTHON_FIX = """
+### Fix in Streamlit Cloud (about 1 minute)
+
+1. Open **Manage app** (bottom right) → **Settings**
+2. Set **Python version** to **3.12** (or **3.11**)
+3. Click **Save**, then **Reboot app**
+
+If Python version is locked, **delete the app** and **Create app** again — choose
+**Python 3.12** under **Advanced settings**, then paste your secrets.
+"""
+
+# Live crash is at the app_auth import, after the old >=3.14 guard — Cloud is
+# therefore below 3.14. Historical redacted KeyError/dataclass failures also
+# happen on 3.13. Refuse anything other than 3.11/3.12 before that import.
+if not cloud_python_supported(_PY):
+    st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
+    st.error(
+        f"Fixed Ops Hub cannot run on Python {_PY.major}.{_PY.minor}. "
+        "Use Python 3.12 (or 3.11) on Streamlit Cloud."
+    )
+    st.markdown(_CLOUD_PYTHON_FIX)
+    st.stop()
 
 try:
     from lib.app_auth import (
@@ -45,18 +71,7 @@ except Exception as exc:
         f"{type(exc).__name__}"
     )
     st.code(format_import_error(exc), language="text")
-    st.markdown(
-        """
-### If the app is still down on Streamlit Cloud
-
-1. Open **Manage app** (bottom right)
-2. Open **Logs** and confirm this same import error
-3. **Settings → Python version → 3.12** → **Save** → **Reboot app**
-
-If Python version is locked, **delete the app** and **Create app** again — choose
-**Python 3.12** under **Advanced settings**, then paste your secrets.
-"""
-    )
+    st.markdown(_CLOUD_PYTHON_FIX)
     st.stop()
 
 

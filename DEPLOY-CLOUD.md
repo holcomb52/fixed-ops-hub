@@ -65,7 +65,7 @@ If your GitHub username is different, replace `holcomb52` in the URL.
 2. Click **Create app**.
 3. Choose your `fixed-ops-hub` repo, branch `main`, main file `app.py`.
 4. Click **Advanced settings**:
-   - **Python version:** `3.12` (recommended) or `3.11`. Current app code also imports cleanly on 3.13/3.14; 3.12 is still the safest Cloud pin.
+   - **Python version:** `3.12` or `3.11` — **required**. The app now refuses 3.13+ (and anything else) with on-screen Manage-app steps. Do **not** leave Cloud on 3.13/3.14.
    - **Secrets:** paste (see `streamlit-cloud-secrets.example.toml`):
 
 ```toml
@@ -114,12 +114,12 @@ Sign in with `APP_PASSWORD` (full access) or give the Parts Manager `PARTS_MANAG
 - Confirm Supabase URL and key are correct in Secrets.
 - Run `supabase/schema.sql` (or the matching `supabase/*_table.sql`) if a cloud save says a table is missing.
 - Run `supabase/enable_rls.sql` on older projects so payroll tables are not readable with the anon key.
-- **Redacted `ImportError` at `from lib.app_auth import`:**  
-  Community Cloud can resolve `lib` to the virtualenv `lib/` folder instead of this repo.  
-  Current `app.py` forces the repo root onto `sys.path` before that import.  
-  After this change deploys, **Reboot app**. If it still fails, the on-screen box shows the real exception (no secrets).  
-  Then: **Manage app → Settings → Python version → 3.12 → Save → Reboot**.  
-  If the version is locked, delete and recreate the app with **Python 3.12** in Advanced settings, then paste secrets again.
+- **Redacted `ImportError` at `from lib.app_auth import` / Python 3.13+:**  
+  The live crash is at that import, after the old 3.14-only guard, so Cloud is likely on **3.13**.  
+  Current `app.py` stops on anything other than 3.11/3.12 **before** importing `lib.app_auth`, with this fix on screen:  
+  **Manage app** (bottom right) → **Settings** → **Python version** → **3.12** → **Save** → **Reboot app**.  
+  If the version is locked, delete and recreate the app with **Python 3.12** in Advanced settings, then paste secrets again.  
+  The app also pins this repo ahead of the venv `lib/` folder, in case the ImportError is a package-name collision rather than the interpreter.
 
 ---
 

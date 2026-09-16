@@ -9,7 +9,7 @@ from pathlib import Path
 
 from lib.page_ui import html_text, status_banner
 from lib.supabase_client import jwt_role
-from repo_path import LOCAL_LIB_INIT, prepare_local_lib_imports
+from repo_path import LOCAL_LIB_INIT, cloud_python_supported, prepare_local_lib_imports
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -112,10 +112,23 @@ class RepoIntegrityTests(unittest.TestCase):
         ):
             self.assertIn(name, text)
         self.assertIn("prepare_local_lib_imports()", text)
-        self.assertNotIn("if _PY >= (3, 13)", text)
+        self.assertIn("cloud_python_supported(_PY)", text)
+        self.assertIn("st.stop()", text)
         app_auth = (ROOT / "lib" / "app_auth.py").read_text()
         self.assertIn("def needs_password_warning", app_auth)
         self.assertIn("def auth_enabled", app_auth)
+
+    def test_cloud_python_allows_only_3_11_and_3_12(self):
+        class Ver:
+            def __init__(self, major, minor):
+                self.major = major
+                self.minor = minor
+
+        self.assertTrue(cloud_python_supported(Ver(3, 11)))
+        self.assertTrue(cloud_python_supported(Ver(3, 12)))
+        self.assertFalse(cloud_python_supported(Ver(3, 10)))
+        self.assertFalse(cloud_python_supported(Ver(3, 13)))
+        self.assertFalse(cloud_python_supported(Ver(3, 14)))
 
 
 if __name__ == "__main__":

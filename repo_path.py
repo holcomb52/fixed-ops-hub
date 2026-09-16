@@ -10,6 +10,15 @@ REPO_ROOT = Path(__file__).resolve().parent
 LOCAL_LIB = REPO_ROOT / "lib"
 LOCAL_LIB_INIT = LOCAL_LIB / "__init__.py"
 
+# Community Cloud 3.13/3.14 has historically crashed this app with a redacted
+# KeyError/dataclass ImportError. Require the versions we deploy against.
+SUPPORTED_CLOUD_PYTHON = ((3, 11), (3, 12))
+
+
+def cloud_python_supported(info: object | None = None) -> bool:
+    ver = info or sys.version_info
+    return (int(ver.major), int(ver.minor)) in SUPPORTED_CLOUD_PYTHON
+
 
 def ensure_repo_root_on_sys_path() -> str:
     """Put the directory that contains ``lib/`` at sys.path[0]."""

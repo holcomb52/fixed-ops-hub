@@ -65,7 +65,7 @@ If your GitHub username is different, replace `holcomb52` in the URL.
 2. Click **Create app**.
 3. Choose your `fixed-ops-hub` repo, branch `main`, main file `app.py`.
 4. Click **Advanced settings**:
-   - **Python version:** `3.12` or `3.11` — **required**. Do **not** leave the default if it is 3.13/3.14 (those break this app).
+   - **Python version:** `3.12` (recommended) or `3.11`. Current app code also imports cleanly on 3.13/3.14; 3.12 is still the safest Cloud pin.
    - **Secrets:** paste (see `streamlit-cloud-secrets.example.toml`):
 
 ```toml
@@ -114,10 +114,12 @@ Sign in with `APP_PASSWORD` (full access) or give the Parts Manager `PARTS_MANAG
 - Confirm Supabase URL and key are correct in Secrets.
 - Run `supabase/schema.sql` (or the matching `supabase/*_table.sql`) if a cloud save says a table is missing.
 - Run `supabase/enable_rls.sql` on older projects so payroll tables are not readable with the anon key.
-- **`KeyError` / redacted crash / Python 3.13+ in the logs:**  
-  The app will show a clear on-screen message if Cloud is on Python 3.13 or newer.  
-  Open **Manage app → Settings**, set **Python version to 3.12**, then **Reboot**.  
-  If the version can’t be changed, delete and recreate the app with **Python 3.12** in Advanced settings.
+- **Redacted `ImportError` at `from lib.app_auth import`:**  
+  Community Cloud can resolve `lib` to the virtualenv `lib/` folder instead of this repo.  
+  Current `app.py` forces the repo root onto `sys.path` before that import.  
+  After this change deploys, **Reboot app**. If it still fails, the on-screen box shows the real exception (no secrets).  
+  Then: **Manage app → Settings → Python version → 3.12 → Save → Reboot**.  
+  If the version is locked, delete and recreate the app with **Python 3.12** in Advanced settings, then paste secrets again.
 
 ---
 

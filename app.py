@@ -1,28 +1,15 @@
 import sys
 
+from repo_path import format_import_error, prepare_local_lib_imports
+
+# Community Cloud can leave the repo root behind the venv on sys.path, or cache a
+# foreign ``lib`` module (the venv's lib/ directory). Either one raises a redacted
+# ImportError at ``from lib.app_auth import ...``. Force this checkout first.
+prepare_local_lib_imports()
+
 import streamlit as st
 
-# Streamlit Community Cloud often defaults to Python 3.13/3.14, which breaks this app
-# (redacted ImportError / KeyError / dataclass failures during import). Require 3.12 or 3.11.
 _PY = sys.version_info
-if _PY >= (3, 13):
-    st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
-    st.error(
-        f"Fixed Ops Hub cannot run on Python {_PY.major}.{_PY.minor}."
-    )
-    st.markdown(
-        """
-### Fix in Streamlit Cloud (about 1 minute)
-
-1. Open **Manage app** (bottom right) → **Settings**
-2. Set **Python version** to **3.12** (or **3.11**)
-3. Click **Save**, then **Reboot app**
-
-If Python version is locked, **delete the app** and **Create app** again — choose
-**Python 3.12** under **Advanced settings**, then paste your secrets.
-"""
-    )
-    st.stop()
 
 try:
     from lib.app_auth import (
@@ -54,21 +41,20 @@ try:
 except Exception as exc:
     st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
     st.error(
-        f"App failed to start on Python {_PY.major}.{_PY.minor}: "
+        f"Fixed Ops Hub failed to import on Python {_PY.major}.{_PY.minor}: "
         f"{type(exc).__name__}"
     )
-    st.caption(str(exc)[:500] or "No details available.")
+    st.code(format_import_error(exc), language="text")
     st.markdown(
         """
-### Most common fix
+### If the app is still down on Streamlit Cloud
 
-Streamlit Cloud must use **Python 3.12** (or **3.11**):
+1. Open **Manage app** (bottom right)
+2. Open **Logs** and confirm this same import error
+3. **Settings → Python version → 3.12** → **Save** → **Reboot app**
 
-1. **Manage app** → **Settings** → **Python version** → **3.12**
-2. **Save**, then **Reboot app**
-
-If the version can’t be changed, delete and recreate the app with **Python 3.12**
-under Advanced settings, then paste your secrets again.
+If Python version is locked, **delete the app** and **Create app** again — choose
+**Python 3.12** under **Advanced settings**, then paste your secrets.
 """
     )
     st.stop()

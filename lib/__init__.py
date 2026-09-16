@@ -1,3 +1,5 @@
-from lib.supabase_client import get_supabase, is_configured
+"""Fixed Ops Hub library package.
 
-__all__ = ["get_supabase", "is_configured"]
+Keep this module import-light. Calc/parser tests should not need Streamlit
+or Supabase just because they import a sibling module under ``lib``.
+"""

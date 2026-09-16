@@ -1,9 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${FIXED_OPS_HUB_PORT:-8510}"
 URL="http://localhost:${PORT}"
-START_SCRIPT="/Users/bigstud/Projects/fixed-ops-hub/scripts/start-fixed-ops-hub.sh"
+START_SCRIPT="$SCRIPT_DIR/start-fixed-ops-hub.sh"
 
 _streamlit_healthy() {
   curl -sf "${URL}/_stcore/health" >/dev/null 2>&1

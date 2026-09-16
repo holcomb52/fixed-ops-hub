@@ -20,3 +20,5 @@ create table if not exists labor_rate_runs (
 
 create index if not exists labor_rate_runs_completed_at_idx
     on labor_rate_runs (completed_at desc);
+
+alter table labor_rate_runs enable row level security;

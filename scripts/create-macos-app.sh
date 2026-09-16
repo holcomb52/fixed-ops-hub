@@ -1,9 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="Fixed Ops Hub"
 APP_DIR="$HOME/Applications/${APP_NAME}.app"
-PROJECT_DIR="/Users/bigstud/Projects/fixed-ops-hub"
 OPEN_SCRIPT="$PROJECT_DIR/scripts/open-fixed-ops-hub.sh"
 
 mkdir -p "$APP_DIR/Contents/MacOS"

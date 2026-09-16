@@ -17,3 +17,5 @@ create index if not exists idx_warranty_admin_bonus_runs_period
     on warranty_admin_bonus_runs (pay_period desc);
 create index if not exists idx_warranty_admin_bonus_runs_completed
     on warranty_admin_bonus_runs (completed_at desc);
+
+alter table warranty_admin_bonus_runs enable row level security;

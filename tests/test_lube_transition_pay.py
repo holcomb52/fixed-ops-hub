@@ -1,11 +1,16 @@
 """Flat Rate Lube declining period-dollar guarantee (Gary Freeze / Christopher Ingram)."""
 
+from __future__ import annotations
+
+import unittest
+
 from lib.tech_payroll_calc import (
     FLAT_RATE_LUBE_RATE,
     PERIOD_DOLLAR_GUARANTEE_1175,
     TechPayrollRow,
 )
 from lib.tech_roster import (
+    LUBE_TRANSITION_TECHS,
     ROLE_OPTIONS,
     ensure_roster_defaults,
     role_option_key,
@@ -71,7 +76,9 @@ def test_roster_migrates_old_gary_and_chris_once():
         ]
     }
     assert ensure_roster_defaults(teams) is True
-    for row in teams["Derrick's Team"]:
+    migrated = [row for row in teams["Derrick's Team"] if row.name in LUBE_TRANSITION_TECHS]
+    assert len(migrated) == 2
+    for row in migrated:
         assert row.pay_plan == "period_dollar_guarantee"
         assert row.hourly_rate == FLAT_RATE_LUBE_RATE
         assert row.period_dollar_guarantee == PERIOD_DOLLAR_GUARANTEE_1175
@@ -91,3 +98,11 @@ def test_role_options_set_rate_and_guarantee_band():
     assert row.hourly_rate == FLAT_RATE_LUBE_RATE
     assert row.period_dollar_guarantee == 590.0
     assert role_option_key(row) == key
+
+
+def load_tests(loader, tests, pattern):
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite

@@ -14,6 +14,7 @@ _MIGRATION_FILES = [
     Path(__file__).resolve().parent.parent / "supabase" / "parts_stocking_runs_table.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "csi_bonus_runs_table.sql",
     Path(__file__).resolve().parent.parent / "supabase" / "advisor_training_logs_table.sql",
+    Path(__file__).resolve().parent.parent / "supabase" / "labor_rate_runs_table.sql",
 ]
 
 _TABLE_FIXES = {

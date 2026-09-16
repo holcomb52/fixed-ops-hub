@@ -5,3 +5,5 @@ create table if not exists payroll_rosters (
     data jsonb not null,
     updated_at timestamptz default now()
 );
+
+alter table payroll_rosters enable row level security;

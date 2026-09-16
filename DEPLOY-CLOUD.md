@@ -23,9 +23,11 @@ Bookmark that in Google Chrome on every device.
 1. Create a Supabase project.
 2. Open **SQL Editor → New query**.
 3. Paste everything from `supabase/schema.sql` and click **Run**.
+   - New projects: this creates every table **and** enables Row Level Security (RLS).
+   - Existing projects that already ran an older `schema.sql`: also run `supabase/enable_rls.sql`, and `supabase/advisor_training_logs_table.sql` if Advisor Training cloud save fails.
 4. Go to **Project Settings → API** and copy:
    - **Project URL**
-   - **service_role** key (keep this secret)
+   - **service_role** key (keep this secret — the app cannot use the anon key after RLS)
 
 ---
 
@@ -74,10 +76,10 @@ PARTS_MANAGER_PASSWORD = "choose-a-strong-parts-password"
 PARTS_MANAGER_LABEL = "Parts Manager"
 ```
 
-Use the **service_role** key from Supabase (not the anon key).
+Use the **service_role** key from Supabase (not the anon key). After RLS is enabled, the anon key cannot read or write payroll tables.
 
-- `APP_PASSWORD` — full Fixed Ops Hub access (you)
-- `PARTS_MANAGER_PASSWORD` — Parts tab + Parts Returns reports only (Parts Manager)
+- `APP_PASSWORD` — full Fixed Ops Hub access (you). **Required** whenever the app is on a public URL with Supabase connected.
+- `PARTS_MANAGER_PASSWORD` — Parts tab + Parts Returns / Stocking reports only (Parts Manager)
 
 5. Click **Deploy**.
 
@@ -110,7 +112,8 @@ Sign in with `APP_PASSWORD` (full access) or give the Parts Manager `PARTS_MANAG
 - Check Streamlit **Manage app → Logs** for errors.
 - Confirm `requirements.txt` is in the repo root.
 - Confirm Supabase URL and key are correct in Secrets.
-- Run the new `warranty_labor_runs` SQL in Supabase if warranty save fails.
+- Run `supabase/schema.sql` (or the matching `supabase/*_table.sql`) if a cloud save says a table is missing.
+- Run `supabase/enable_rls.sql` on older projects so payroll tables are not readable with the anon key.
 - **`KeyError` / redacted crash / Python 3.14 in the logs:**  
   The app will show a clear on-screen message if Cloud is on Python 3.14.  
   Open **Manage app → Settings**, set **Python version to 3.12**, then **Reboot**.  

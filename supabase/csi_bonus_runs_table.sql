@@ -17,3 +17,5 @@ create index if not exists idx_csi_bonus_runs_period
     on csi_bonus_runs (pay_period desc);
 create index if not exists idx_csi_bonus_runs_completed
     on csi_bonus_runs (completed_at desc);
+
+alter table csi_bonus_runs enable row level security;

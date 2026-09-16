@@ -24,8 +24,8 @@ Interactive dealership operations dashboard — **Streamlit** frontend, **Supaba
 cd ~/Projects/fixed-ops-hub
 pip3 install -r requirements.txt
 cp .env.example .env
-# Edit .env with your Supabase URL and key
-streamlit run app.py
+# Edit .env with your Supabase URL and service_role key
+streamlit run app.py --server.port 8510
 ```
 
 Or use Streamlit secrets locally:
@@ -33,10 +33,10 @@ Or use Streamlit secrets locally:
 ```bash
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 # Edit secrets.toml with your credentials
-streamlit run app.py
+streamlit run app.py --server.port 8510
 ```
 
-Opens at [http://localhost:8510](http://localhost:8510).
+Opens at [http://localhost:8510](http://localhost:8510). Desktop / autostart scripts already pass this port. A plain `streamlit run app.py` uses Streamlit’s default **8501**.
 
 ### Open from a bookmark (Mac or Windows)
 
@@ -49,7 +49,7 @@ Use the same bookmark on every computer where Fixed Ops Hub is installed.
 #### Mac — one-time setup
 
 ```bash
-/Users/bigstud/Projects/fixed-ops-hub/scripts/install-autostart.sh
+./scripts/install-autostart.sh
 ```
 
 Then double-click **Fixed Ops Hub** on your Desktop or in Applications anytime. It starts the server and opens Chrome.
@@ -101,19 +101,27 @@ python3 -m unittest tests.test_payroll_lockin tests.test_recall_pulse_bonus test
 ## Project structure
 
 ```
-app.py                          # Main entry
-lib/supabase_client.py          # Supabase connection
-supabase/schema.sql             # Database tables (run once in Supabase)
-views/
-  home.py                       # Dashboard home
-  payroll.py                    # Payroll tab + employee roster
+app.py                          # Main Streamlit entry
+lib/                            # Calc, storage, auth, Supabase helpers
+views/                          # One module per sidebar tab
+supabase/schema.sql             # Database tables + RLS (run once in Supabase)
+scripts/                        # Mac / Windows local launchers
 ```
+
+The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.json`). It is **not** the product — do not run `npm run dev` expecting Fixed Ops Hub.
 
 ## Current modules
 
 | Tab | Status |
 |-----|--------|
-| Home | Live — shows Supabase connection status |
-| Payroll | Live — employee roster, add employees |
-| Inventory | Placeholder |
-| Reports | Placeholder |
+| Home | Live — connection status and module index |
+| Payroll | Live — technician, advisor, and receptionist pay |
+| Flag Sheet | Live — technician flag hours |
+| Warranty | Live — warranty ELR analysis |
+| Warranty Admin Bonus | Live |
+| CSI Bonus | Live |
+| Advisor Training | Live — daily training logs |
+| EOM Report | Live |
+| Labor Rate | Live — customer-pay rate grid |
+| Parts | Live — returns and stocking |
+| Reports | Live — saved runs, reopen / PDF / delete |

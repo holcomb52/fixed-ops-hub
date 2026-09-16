@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+import os
+from typing import List, Optional, Tuple
 
 import streamlit as st
 
@@ -28,6 +29,9 @@ PARTS_MANAGER_PAGES = ["Parts", "Reports"]
 
 
 def _secret(key: str, default: str = "") -> str:
+    env = (os.getenv(key) or "").strip()
+    if env:
+        return env
     try:
         return str(st.secrets.get(key, default) or default).strip()
     except Exception:
@@ -48,6 +52,13 @@ def _parts_manager_label() -> str:
 
 def auth_enabled() -> bool:
     return bool(_admin_password() or _parts_manager_password())
+
+
+def needs_password_warning(*, database_configured: bool, auth_on: Optional[bool] = None) -> bool:
+    """True when cloud data is wired up but anyone with the URL is an admin."""
+    if auth_on is None:
+        auth_on = auth_enabled()
+    return bool(database_configured) and not bool(auth_on)
 
 
 def current_role() -> str:

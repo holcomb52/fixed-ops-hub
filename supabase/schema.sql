@@ -204,9 +204,41 @@ create index if not exists idx_csi_bonus_runs_period
 create index if not exists idx_csi_bonus_runs_completed
     on csi_bonus_runs (completed_at desc);
 
--- Sample data (optional — remove if you want a blank slate)
-insert into employees (full_name, role, hourly_rate) values
-    ('Alex Rivera', 'Service Advisor', 28.50),
-    ('Jordan Kim', 'Technician', 32.00),
-    ('Sam Patel', 'Parts Manager', 30.00)
-on conflict do nothing;
+-- Service Advisor daily training logs (Reports → Advisor Training)
+create table if not exists advisor_training_logs (
+    id uuid primary key default gen_random_uuid(),
+    pay_period text not null,
+    status text not null default 'completed' check (status in ('draft', 'completed')),
+    snapshot jsonb not null,
+    grand_total numeric(12, 2),
+    employee_name text,
+    completed_at timestamptz,
+    updated_at timestamptz default now(),
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_advisor_training_logs_period
+    on advisor_training_logs (pay_period desc);
+create index if not exists idx_advisor_training_logs_completed
+    on advisor_training_logs (completed_at desc);
+create index if not exists idx_advisor_training_logs_employee
+    on advisor_training_logs (employee_name);
+
+-- Lock down the Data API. The Streamlit app uses the service_role key, which
+-- bypasses RLS. No policies are granted to anon/authenticated, so a leaked
+-- publishable/anon key cannot read payroll or saved reports.
+-- Existing projects: also run supabase/enable_rls.sql.
+alter table employees enable row level security;
+alter table pay_periods enable row level security;
+alter table tech_payroll_runs enable row level security;
+alter table advisor_payroll_runs enable row level security;
+alter table receptionist_payroll_runs enable row level security;
+alter table payroll_rosters enable row level security;
+alter table warranty_labor_runs enable row level security;
+alter table labor_rate_runs enable row level security;
+alter table warranty_admin_bonus_runs enable row level security;
+alter table eom_report_runs enable row level security;
+alter table parts_return_runs enable row level security;
+alter table parts_stocking_runs enable row level security;
+alter table csi_bonus_runs enable row level security;
+alter table advisor_training_logs enable row level security;

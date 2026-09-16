@@ -25,14 +25,16 @@ If Python version is locked, **delete the app** and **Create app** again — cho
 
 from lib.app_auth import (
     allowed_pages,
+    auth_enabled,
     clamp_nav_page,
     current_user_label,
     is_parts_manager,
+    needs_password_warning,
     require_login,
     sign_out,
 )
-from lib.page_ui import coming_soon_panel
-from lib.supabase_client import is_configured
+from lib.page_ui import coming_soon_panel, html_text
+from lib.supabase_client import configured_key_role, is_configured
 from styles import CUSTOM_CSS
 from views import (
     advisor_training,
@@ -98,12 +100,22 @@ with st.sidebar:
         <div class="brand-block">
             <div class="brand-logo">⚡</div>
             <div class="brand-name">Fixed Ops Hub</div>
-            <div class="brand-tag">{brand_tag}</div>
+            <div class="brand-tag">{html_text(brand_tag)}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
     st.caption(f"Signed in as **{current_user_label()}**")
+    if needs_password_warning(database_configured=is_configured(), auth_on=auth_enabled()):
+        st.warning(
+            "No APP_PASSWORD is set. Anyone with this URL can open payroll and reports. "
+            "Add APP_PASSWORD in Streamlit secrets or .env."
+        )
+    if configured_key_role() == "anon":
+        st.warning(
+            "SUPABASE_KEY looks like the anon/publishable key. "
+            "Use the service_role key so cloud saves still work after RLS is enabled."
+        )
 
     if "nav_page" not in st.session_state:
         st.session_state.nav_page = visible_page_names[0] if visible_page_names else "Parts"

@@ -17,3 +17,5 @@ create index if not exists idx_parts_stocking_runs_period
     on parts_stocking_runs (pay_period desc);
 create index if not exists idx_parts_stocking_runs_completed
     on parts_stocking_runs (completed_at desc);
+
+alter table parts_stocking_runs enable row level security;

@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 
-from lib.page_ui import page_hero, stat_card, status_banner
+from lib.page_ui import html_text, page_hero, stat_card, status_banner
 from lib.warranty_custom_exclusions import (
     add_custom_exclusion,
     load_custom_exclusions,
@@ -263,7 +263,10 @@ def _render_ro_card(
 
         title_col, total_col = st.columns([1.6, 1])
         with title_col:
-            st.markdown(f'<div class="warranty-ro-title">RO {recid}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="warranty-ro-title">RO {html_text(recid)}</div>',
+                unsafe_allow_html=True,
+            )
             st.caption(
                 f"{header.ro_date} · {len(ro_lines)} line{'s' if len(ro_lines) != 1 else ''}"
                 + (" · all lines excluded" if all_excluded else "")
@@ -290,7 +293,10 @@ def _render_ro_card(
 def _render_ro_line(line: WarrantyLaborRow, line_title: str, select_options: list[str]):
     excluded = bool((line.exclusion or "").strip())
     elr_class = _elr_class(line.elr, excluded)
-    st.markdown(f'<div class="warranty-ro-line-title">{line_title}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="warranty-ro-line-title">{html_text(line_title)}</div>',
+        unsafe_allow_html=True,
+    )
     top = st.columns([1.2, 1.8, 0.8, 0.9, 0.9])
     fields = [
         ("Op Code", line.op_code),
@@ -301,8 +307,8 @@ def _render_ro_line(line: WarrantyLaborRow, line_title: str, select_options: lis
     ]
     for col, (label, value) in zip(top, fields):
         col.markdown(
-            f'<div class="warranty-ro-line-label">{label}</div>'
-            f'<div class="{elr_class if label == "ELR" else ""}">{value}</div>',
+            f'<div class="warranty-ro-line-label">{html_text(label)}</div>'
+            f'<div class="{elr_class if label == "ELR" else ""}">{html_text(value)}</div>',
             unsafe_allow_html=True,
         )
     st.selectbox(

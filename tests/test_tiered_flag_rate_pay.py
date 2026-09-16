@@ -1,5 +1,9 @@
 """Gregory Phillips tiered flag-rate pay plan."""
 
+from __future__ import annotations
+
+import unittest
+
 from lib.tech_payroll_calc import (
     TIERED_FLAG_RATE_BASE,
     TechPayrollRow,
@@ -80,3 +84,11 @@ def test_role_sets_tiered_plan():
     _apply_role(row, "Shop Tech — Tiered flag rate ($45+)", [row], 0)
     assert row.pay_plan == "tiered_flag_rate"
     assert row.hourly_rate == TIERED_FLAG_RATE_BASE
+
+
+def load_tests(loader, tests, pattern):
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite

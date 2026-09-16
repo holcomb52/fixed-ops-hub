@@ -17,3 +17,5 @@ create index if not exists idx_parts_return_runs_period
     on parts_return_runs (pay_period desc);
 create index if not exists idx_parts_return_runs_completed
     on parts_return_runs (completed_at desc);
+
+alter table parts_return_runs enable row level security;

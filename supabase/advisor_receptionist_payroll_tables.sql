@@ -32,3 +32,6 @@ create table if not exists receptionist_payroll_runs (
 
 create index if not exists idx_receptionist_payroll_runs_period on receptionist_payroll_runs (pay_period desc);
 create index if not exists idx_receptionist_payroll_runs_completed on receptionist_payroll_runs (completed_at desc);
+
+alter table advisor_payroll_runs enable row level security;
+alter table receptionist_payroll_runs enable row level security;

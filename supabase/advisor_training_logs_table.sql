@@ -19,3 +19,5 @@ create index if not exists idx_advisor_training_logs_completed
     on advisor_training_logs (completed_at desc);
 create index if not exists idx_advisor_training_logs_employee
     on advisor_training_logs (employee_name);
+
+alter table advisor_training_logs enable row level security;

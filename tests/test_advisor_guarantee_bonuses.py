@@ -1,5 +1,9 @@
 """Guarantee advisors: CSI / alignment / SPIFF stack on top of the weekly floor."""
 
+from __future__ import annotations
+
+import unittest
+
 from lib.advisor_payroll_calc import (
     ALIGNMENT_BONUS_AMOUNT,
     PLAN_NEW_ADVISORS_GUARANTEE,
@@ -63,3 +67,11 @@ def test_bonuses_still_paid_when_commission_beats_guarantee():
     assert result.guarantee_active is False
     assert result.bonus_pay == ALIGNMENT_BONUS_AMOUNT + 750.0
     assert result.total_pay == result.commission_total + result.bonus_pay
+
+
+def load_tests(loader, tests, pattern):
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and callable(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite

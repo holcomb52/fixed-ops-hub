@@ -1,29 +1,36 @@
 from __future__ import annotations
 
+import html
+
+
+def html_text(value: object) -> str:
+    """Escape user/report text interpolated into unsafe_allow_html markup."""
+    return html.escape("" if value is None else str(value), quote=True)
+
 
 def page_hero(title: str, subtitle: str, tag: str = "", tag_style: str = "live") -> str:
     tag_html = ""
     if tag:
-        tag_html = f'<span class="hero-tag tag-{tag_style}">{tag}</span>'
+        tag_html = f'<span class="hero-tag tag-{html_text(tag_style)}">{html_text(tag)}</span>'
     return f"""
     <div class="page-hero">
         <div class="hero-glow"></div>
         {tag_html}
-        <h1 class="hero-title">{title}</h1>
-        <p class="hero-sub">{subtitle}</p>
+        <h1 class="hero-title">{html_text(title)}</h1>
+        <p class="hero-sub">{html_text(subtitle)}</p>
     </div>
     """
 
 
 def stat_card(label: str, value: str, accent: str = "cyan", icon: str = "") -> str:
-    icon_html = f'<span class="stat-icon">{icon}</span>' if icon else ""
+    icon_html = f'<span class="stat-icon">{html_text(icon)}</span>' if icon else ""
     return f"""
-    <div class="stat-card accent-{accent}">
+    <div class="stat-card accent-{html_text(accent)}">
         <div class="stat-top">
             {icon_html}
-            <span class="stat-label">{label}</span>
+            <span class="stat-label">{html_text(label)}</span>
         </div>
-        <div class="stat-value">{value}</div>
+        <div class="stat-value">{html_text(value)}</div>
         <div class="stat-glow"></div>
     </div>
     """
@@ -34,12 +41,12 @@ def module_card(title: str, desc: str, status: str, accent: str = "cyan") -> str
     badge_cls = "badge-live" if live else "badge-soon"
     badge_txt = status if live else status
     return f"""
-    <div class="module-card accent-{accent}">
+    <div class="module-card accent-{html_text(accent)}">
         <div class="module-header">
-            <h3>{title}</h3>
-            <span class="badge {badge_cls}">{badge_txt}</span>
+            <h3>{html_text(title)}</h3>
+            <span class="badge {badge_cls}">{html_text(badge_txt)}</span>
         </div>
-        <p>{desc}</p>
+        <p>{html_text(desc)}</p>
         <div class="module-shine"></div>
     </div>
     """
@@ -48,16 +55,16 @@ def module_card(title: str, desc: str, status: str, accent: str = "cyan") -> str
 def status_banner(message: str, kind: str = "success") -> str:
     icons = {"success": "●", "warn": "◆", "error": "▲", "info": "◎"}
     return f"""
-    <div class="status-banner banner-{kind}">
+    <div class="status-banner banner-{html_text(kind)}">
         <span class="banner-icon">{icons.get(kind, "●")}</span>
-        <span>{message}</span>
+        <span>{html_text(message)}</span>
     </div>
     """
 
 
 def section_title(title: str, subtitle: str = "") -> str:
-    sub = f'<p class="section-sub">{subtitle}</p>' if subtitle else ""
-    return f'<div class="section-title"><h2>{title}</h2>{sub}</div>'
+    sub = f'<p class="section-sub">{html_text(subtitle)}</p>' if subtitle else ""
+    return f'<div class="section-title"><h2>{html_text(title)}</h2>{sub}</div>'
 
 
 def report_section_header(
@@ -74,9 +81,9 @@ def report_section_header(
         label = "run" if run_count == 1 else "runs"
         count_html = (
             f'<span class="report-section-count" style="color: {theme["title"]};">'
-            f"{run_count} {label}</span>"
+            f"{int(run_count)} {label}</span>"
         )
-    sub = f'<p class="report-section-sub">{subtitle}</p>' if subtitle else ""
+    sub = f'<p class="report-section-sub">{html_text(subtitle)}</p>' if subtitle else ""
     return f"""
     <div class="report-section-header" style="
         border-left-color: {theme['border']};
@@ -86,10 +93,10 @@ def report_section_header(
             color: {theme['title']};
             background: {theme['avatar']};
             border-color: {theme['border']};
-        ">{icon}</div>
+        ">{html_text(icon)}</div>
         <div class="report-section-body">
             <div class="report-section-top">
-                <span class="report-section-title" style="color: {theme['title']};">{title}</span>
+                <span class="report-section-title" style="color: {theme['title']};">{html_text(title)}</span>
                 {count_html}
             </div>
             {sub}
@@ -111,12 +118,12 @@ def report_run_summary_card(
     theme = _accent_theme(accent)
     badge_block = badge_html or ""
     amount_block = (
-        f'<div class="report-run-amount" style="color: {theme["title"]};">{amount}</div>'
+        f'<div class="report-run-amount" style="color: {theme["title"]};">{html_text(amount)}</div>'
         if amount
         else ""
     )
-    meta_block = f'<div class="report-run-meta">{meta}</div>' if meta else ""
-    caption_block = f'<div class="report-run-caption">{caption}</div>' if caption else ""
+    meta_block = f'<div class="report-run-meta">{html_text(meta)}</div>' if meta else ""
+    caption_block = f'<div class="report-run-caption">{html_text(caption)}</div>' if caption else ""
     return f"""
     <div class="report-run-card" style="
         border-left-color: {theme['border']};
@@ -124,7 +131,7 @@ def report_run_summary_card(
     ">
         <div class="report-run-card-grid">
             <div class="report-run-card-main">
-                <h3 class="report-run-title" style="color: {theme['title']};">{title}</h3>
+                <h3 class="report-run-title" style="color: {theme['title']};">{html_text(title)}</h3>
                 {caption_block}
             </div>
             <div class="report-run-card-stats">
@@ -146,18 +153,18 @@ def pay_plan_section_header(
     badge: str = "",
     count_label: str = "advisor",
 ) -> str:
-    badge_html = f'<span class="pay-plan-badge">{badge}</span>' if badge else ""
+    badge_html = f'<span class="pay-plan-badge">{html_text(badge)}</span>' if badge else ""
     count_plural = f"{count_label}s" if count != 1 else count_label
     return f"""
-    <div class="pay-plan-section-header accent-{accent}">
-        <div class="pay-plan-section-icon">{icon}</div>
+    <div class="pay-plan-section-header accent-{html_text(accent)}">
+        <div class="pay-plan-section-icon">{html_text(icon)}</div>
         <div class="pay-plan-section-body">
             <div class="pay-plan-section-top">
-                <span class="pay-plan-section-title">{title}</span>
+                <span class="pay-plan-section-title">{html_text(title)}</span>
                 {badge_html}
-                <span class="pay-plan-section-count">{count} {count_plural}</span>
+                <span class="pay-plan-section-count">{int(count)} {html_text(count_plural)}</span>
             </div>
-            <p class="pay-plan-section-sub">{subtitle}</p>
+            <p class="pay-plan-section-sub">{html_text(subtitle)}</p>
         </div>
     </div>
     """
@@ -216,7 +223,8 @@ def advisor_pay_card_header(
     expanded: bool = False,
 ) -> str:
     theme = _accent_theme(accent)
-    initial = (name.strip() or "?")[0].upper()
+    safe_name = html_text(name)
+    initial = html_text((str(name).strip() or "?")[0].upper())
     state_cls = " advisor-pay-card-open" if expanded else ""
     return f"""
     <div class="advisor-pay-card{state_cls}" style="
@@ -229,9 +237,9 @@ def advisor_pay_card_header(
             border-color: {theme['border']};
         ">{initial}</div>
         <div class="advisor-pay-card-body">
-            <div class="advisor-pay-card-name" style="color: {theme['title']};">{name}</div>
+            <div class="advisor-pay-card-name" style="color: {theme['title']};">{safe_name}</div>
         </div>
-        <div class="advisor-pay-card-total" style="color: {theme['title']};">{total_pay}</div>
+        <div class="advisor-pay-card-total" style="color: {theme['title']};">{html_text(total_pay)}</div>
     </div>
     """
 
@@ -261,16 +269,17 @@ def team_section_divider(accent: str = "cyan") -> str:
 def employee_card(name: str, role: str, rate: str, status: str) -> str:
     active = status == "active"
     dot = "dot-live" if active else "dot-off"
+    display = str(name or "").strip() or "?"
     return f"""
     <div class="employee-card">
-        <div class="emp-avatar">{name[0].upper()}</div>
+        <div class="emp-avatar">{html_text(display[0].upper())}</div>
         <div class="emp-info">
-            <div class="emp-name">{name}</div>
-            <div class="emp-role">{role}</div>
+            <div class="emp-name">{html_text(name)}</div>
+            <div class="emp-role">{html_text(role)}</div>
         </div>
         <div class="emp-meta">
-            <div class="emp-rate">{rate}</div>
-            <div class="emp-status"><span class="{dot}"></span>{status}</div>
+            <div class="emp-rate">{html_text(rate)}</div>
+            <div class="emp-status"><span class="{dot}"></span>{html_text(status)}</div>
         </div>
     </div>
     """
@@ -280,7 +289,7 @@ def coming_soon_panel(title: str, desc: str) -> str:
     return f"""
     <div class="coming-soon">
         <div class="coming-ring"></div>
-        <h2>{title}</h2>
-        <p>{desc}</p>
+        <h2>{html_text(title)}</h2>
+        <p>{html_text(desc)}</p>
     </div>
     """

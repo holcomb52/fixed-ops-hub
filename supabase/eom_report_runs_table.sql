@@ -17,3 +17,5 @@ create index if not exists idx_eom_report_runs_period
     on eom_report_runs (pay_period desc);
 create index if not exists idx_eom_report_runs_completed
     on eom_report_runs (completed_at desc);
+
+alter table eom_report_runs enable row level security;

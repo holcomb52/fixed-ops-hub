@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_DIR="/Users/bigstud/Projects/fixed-ops-hub"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLIST_SRC="$PROJECT_DIR/scripts/com.fixedopshub.streamlit.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.fixedopshub.streamlit.plist"
 START_SCRIPT="$PROJECT_DIR/scripts/start-fixed-ops-hub.sh"
@@ -13,7 +14,7 @@ mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/fixed-ops-hub"
 
 "$PROJECT_DIR/scripts/create-macos-app.sh"
 
-cp "$PLIST_SRC" "$PLIST_DST"
+sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" -e "s|__HOME__|$HOME|g" "$PLIST_SRC" > "$PLIST_DST"
 
 if launchctl bootout "gui/$(id -u)/com.fixedopshub.streamlit" 2>/dev/null; then
   :

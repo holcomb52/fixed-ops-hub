@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import unittest
+from unittest.mock import patch
 
 from lib.app_auth import (
     PARTS_MANAGER_PAGES,
@@ -10,7 +12,9 @@ from lib.app_auth import (
     ROLE_PARTS_MANAGER,
     allowed_pages,
     default_page_for_role,
+    needs_password_warning,
     resolve_login,
+    _secret,
 )
 
 
@@ -48,6 +52,15 @@ class AppAuthTests(unittest.TestCase):
         self.assertEqual(default_page_for_role(ROLE_PARTS_MANAGER), "Parts")
         self.assertIn("Payroll", allowed_pages(ROLE_ADMIN))
         self.assertNotIn("Payroll", allowed_pages(ROLE_PARTS_MANAGER))
+
+    def test_env_secret_wins_over_empty_streamlit_secrets(self):
+        with patch.dict(os.environ, {"APP_PASSWORD": "env-boss"}, clear=False):
+            self.assertEqual(_secret("APP_PASSWORD"), "env-boss")
+
+    def test_password_warning_when_database_is_public(self):
+        self.assertTrue(needs_password_warning(database_configured=True, auth_on=False))
+        self.assertFalse(needs_password_warning(database_configured=True, auth_on=True))
+        self.assertFalse(needs_password_warning(database_configured=False, auth_on=False))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from lib.page_ui import html_text, status_banner
 from lib.supabase_client import jwt_role
+from repo_path import LOCAL_LIB_INIT, cloud_python_supported, prepare_local_lib_imports
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -64,6 +65,70 @@ class RepoIntegrityTests(unittest.TestCase):
         banner = status_banner("failed: <b>nope</b>", "warn")
         self.assertIn("&lt;b&gt;nope&lt;/b&gt;", banner)
         self.assertNotIn("<b>nope</b>", banner)
+
+    def test_prepare_local_lib_wins_over_venv_lib(self):
+        """Streamlit Cloud's venv/lib directory must not shadow repo lib.app_auth."""
+        import sys
+        import types
+
+        fake = types.ModuleType("lib")
+        fake.__file__ = "/tmp/fake-venv/lib/not-the-app.py"
+        fake.__path__ = ["/tmp/fake-venv/lib"]
+        saved = {
+            key: sys.modules[key]
+            for key in list(sys.modules)
+            if key == "lib" or key.startswith("lib.")
+        }
+        for key in saved:
+            del sys.modules[key]
+        sys.modules["lib"] = fake
+        try:
+            with self.assertRaises(ImportError):
+                from lib.app_auth import require_login  # noqa: F401
+
+            prepare_local_lib_imports()
+            from lib.app_auth import needs_password_warning, require_login
+
+            self.assertTrue(callable(require_login))
+            self.assertTrue(callable(needs_password_warning))
+            self.assertEqual(
+                Path(sys.modules["lib"].__file__).resolve(),
+                LOCAL_LIB_INIT.resolve(),
+            )
+        finally:
+            for key in list(sys.modules):
+                if key == "lib" or key.startswith("lib."):
+                    del sys.modules[key]
+            sys.modules.update(saved)
+
+    def test_app_py_imports_current_app_auth_names(self):
+        text = (ROOT / "app.py").read_text()
+        for name in (
+            "allowed_pages",
+            "auth_enabled",
+            "needs_password_warning",
+            "require_login",
+            "sign_out",
+        ):
+            self.assertIn(name, text)
+        self.assertIn("prepare_local_lib_imports()", text)
+        self.assertIn("cloud_python_supported(_PY)", text)
+        self.assertIn("st.stop()", text)
+        app_auth = (ROOT / "lib" / "app_auth.py").read_text()
+        self.assertIn("def needs_password_warning", app_auth)
+        self.assertIn("def auth_enabled", app_auth)
+
+    def test_cloud_python_allows_only_3_11_and_3_12(self):
+        class Ver:
+            def __init__(self, major, minor):
+                self.major = major
+                self.minor = minor
+
+        self.assertTrue(cloud_python_supported(Ver(3, 11)))
+        self.assertTrue(cloud_python_supported(Ver(3, 12)))
+        self.assertFalse(cloud_python_supported(Ver(3, 10)))
+        self.assertFalse(cloud_python_supported(Ver(3, 13)))
+        self.assertFalse(cloud_python_supported(Ver(3, 14)))
 
 
 if __name__ == "__main__":

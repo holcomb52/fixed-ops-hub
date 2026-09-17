@@ -1,17 +1,20 @@
 import sys
 
+from repo_path import (
+    cloud_python_supported,
+    format_import_error,
+    prepare_local_lib_imports,
+)
+
+# Community Cloud can leave the repo root behind the venv on sys.path, or cache a
+# foreign ``lib`` module (the venv's lib/ directory). Either one raises a redacted
+# ImportError at ``from lib.app_auth import ...``. Force this checkout first.
+prepare_local_lib_imports()
+
 import streamlit as st
 
-# Streamlit Community Cloud often defaults to Python 3.13/3.14, which breaks this app
-# (redacted ImportError / KeyError / dataclass failures during import). Require 3.12 or 3.11.
 _PY = sys.version_info
-if _PY >= (3, 13):
-    st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
-    st.error(
-        f"Fixed Ops Hub cannot run on Python {_PY.major}.{_PY.minor}."
-    )
-    st.markdown(
-        """
+_CLOUD_PYTHON_FIX = """
 ### Fix in Streamlit Cloud (about 1 minute)
 
 1. Open **Manage app** (bottom right) → **Settings**
@@ -21,7 +24,17 @@ if _PY >= (3, 13):
 If Python version is locked, **delete the app** and **Create app** again — choose
 **Python 3.12** under **Advanced settings**, then paste your secrets.
 """
+
+# Live crash is at the app_auth import, after the old >=3.14 guard — Cloud is
+# therefore below 3.14. Historical redacted KeyError/dataclass failures also
+# happen on 3.13. Refuse anything other than 3.11/3.12 before that import.
+if not cloud_python_supported(_PY):
+    st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
+    st.error(
+        f"Fixed Ops Hub cannot run on Python {_PY.major}.{_PY.minor}. "
+        "Use Python 3.12 (or 3.11) on Streamlit Cloud."
     )
+    st.markdown(_CLOUD_PYTHON_FIX)
     st.stop()
 
 try:
@@ -54,23 +67,11 @@ try:
 except Exception as exc:
     st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
     st.error(
-        f"App failed to start on Python {_PY.major}.{_PY.minor}: "
+        f"Fixed Ops Hub failed to import on Python {_PY.major}.{_PY.minor}: "
         f"{type(exc).__name__}"
     )
-    st.caption(str(exc)[:500] or "No details available.")
-    st.markdown(
-        """
-### Most common fix
-
-Streamlit Cloud must use **Python 3.12** (or **3.11**):
-
-1. **Manage app** → **Settings** → **Python version** → **3.12**
-2. **Save**, then **Reboot app**
-
-If the version can’t be changed, delete and recreate the app with **Python 3.12**
-under Advanced settings, then paste your secrets again.
-"""
-    )
+    st.code(format_import_error(exc), language="text")
+    st.markdown(_CLOUD_PYTHON_FIX)
     st.stop()
 
 

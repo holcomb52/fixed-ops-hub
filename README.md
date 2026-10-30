@@ -140,7 +140,7 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 1. On an existing Supabase project, run `supabase/warranty_audit_tables.sql` in the SQL Editor. A brand-new project that already ran `supabase/schema.sql` can skip this.
 2. Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) as shown above.
 3. Open **Warranty Audit**, upload the text-based Stellantis warranty manual PDF once, and click **Store manual**. Later audits reuse it until you replace it. A photo scan of the manual cannot be cited.
-4. Drag pictures onto **Drag pictures here**, or on your phone tap that box and choose **Take Photo** or **Photo Library**. One picture per page. You can also use **Or take a photo in this browser**. Click **Read repair order**, fix anything that was read wrong, then **Check this document**.
+4. Drag pictures onto **Drag pictures here**, or on your phone tap **Take the next picture**. Each picture stays on the claim. You can add up to 20. Click **Read repair order**, fix anything that was read wrong, then **Check this document**. To save the audit, this app's secrets need `SUPABASE_URL` and `SUPABASE_KEY` copied from the original Fixed Ops Hub app. The warranty audit tables are already in that Supabase project.
 5. Download the findings CSV, or click **Save audit to history** to keep it on this page and under Reports.
 
 The claim-acknowledgement checklist looks at the fields printed on a paid FCA claim acknowledgement: VIN, customer narrative, technician, LOP, failure code, hours, failed part, and the pre-tax total. A manual finding is added only when it quotes a sentence from the stored manual. The checker does not fill in Stellantis policy from memory.

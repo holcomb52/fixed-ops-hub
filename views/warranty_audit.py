@@ -10,6 +10,7 @@ import streamlit as st
 
 from lib.claim_camera import claim_camera
 from lib.page_ui import page_hero, section_title, stat_card, status_banner
+from lib.warranty_audit_claim import DEALER_CODE
 from lib.warranty_audit_llm import (
     LlmError,
     MAX_CLAIM_PHOTOS,
@@ -327,7 +328,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 11. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 12. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -450,12 +451,18 @@ def _repair_order_form(extracted: dict) -> dict:
     st.markdown("##### What was read")
     st.caption(
         "Change only a field that does not match the paper. "
-        "Pre-tax and the owner's name stay blank. List number is printed on the acknowledgement. "
-        "A plus sign next to a job number is a warranty add-on and needs your signature."
+        "The RO number and the claim number are the same. Dealer code is 68888. "
+        "In service date, date completed, and the service advisor number are in the top of the claim acknowledgement. "
+        "Time punches and a plus sign next to the job number are on the Warranty Copy."
     )
     a, b, c = st.columns(3)
     with a:
-        ro_number = st.text_input("RO number", value=extracted.get("ro_number") or "", key=f"{token}_ro")
+        ro_number = st.text_input(
+            "RO number",
+            value=extracted.get("ro_number") or extracted.get("claim_number") or "",
+            key=f"{token}_ro",
+            help="Same number as the claim. It is in the top section of the claim acknowledgement.",
+        )
         open_date = st.text_input("Open date", value=extracted.get("open_date") or "", key=f"{token}_open")
     with b:
         vin = st.text_input("VIN", value=extracted.get("vin") or "", key=f"{token}_vin")
@@ -491,7 +498,7 @@ def _repair_order_form(extracted: dict) -> dict:
     )
 
     st.markdown("##### Labor operations")
-    st.caption("Mark Add-on yes when a small plus sign is printed next to that job number.")
+    st.caption("On the Warranty Copy, a plus sign beside the job number is an add-on. Goodwill needs your signature too.")
     labor = st.data_editor(
         _frame(_labor_for_editor(extracted.get("labor_operations")), _LABOR_COLUMNS),
         num_rows="dynamic",
@@ -510,6 +517,7 @@ def _repair_order_form(extracted: dict) -> dict:
         },
     )
     st.markdown("##### Time punches")
+    st.caption("These are on the invoice that says Warranty Copy at the bottom.")
     punches = st.data_editor(
         _frame(extracted.get("time_punches"), _PUNCH_COLUMNS),
         num_rows="dynamic",
@@ -538,37 +546,13 @@ def _repair_order_form(extracted: dict) -> dict:
             "failed": "Failed (yes/no)",
         },
     )
-    signatures = extracted.get("signatures") or {}
-    s1, s2, s3, s4 = st.columns(4)
-    with s1:
-        customer_sig = st.selectbox(
-            "Customer signature",
-            _SIG_OPTIONS,
-            index=_sig_index(signatures.get("customer")),
-            key=f"{token}_sig_customer",
-        )
-    with s2:
-        advisor_sig = st.selectbox(
-            "Advisor signature",
-            _SIG_OPTIONS,
-            index=_sig_index(signatures.get("advisor")),
-            key=f"{token}_sig_advisor",
-        )
-    with s3:
-        tech_sig = st.selectbox(
-            "Technician signature",
-            _SIG_OPTIONS,
-            index=_sig_index(signatures.get("technician")),
-            key=f"{token}_sig_tech",
-        )
-    with s4:
-        manager_sig = st.selectbox(
-            "Your signature",
-            _SIG_OPTIONS,
-            index=_sig_index(signatures.get("service_manager")),
-            key=f"{token}_sig_manager",
-            help="Required on a warranty add-on, the job with a plus sign next to the job number.",
-        )
+    read_signatures = extracted.get("signatures") if isinstance(extracted.get("signatures"), dict) else {}
+    customer_sig = st.selectbox(
+        "Customer signature",
+        _SIG_OPTIONS,
+        index=_sig_index(read_signatures.get("customer")),
+        key=f"{token}_sig_customer",
+    )
     notes = st.text_area(
         "Other notes visible on the RO",
         value=extracted.get("other_visible_notes") or "",
@@ -595,9 +579,9 @@ def _repair_order_form(extracted: dict) -> dict:
         "repair_orders": _repair_blocks(labor_rows, part_rows, totals, ro_number, claim.get("technician_name") or ""),
         "signatures": {
             "customer": customer_sig,
-            "advisor": advisor_sig,
-            "technician": tech_sig,
-            "service_manager": manager_sig,
+            "advisor": read_signatures.get("advisor"),
+            "technician": read_signatures.get("technician"),
+            "service_manager": read_signatures.get("service_manager"),
         },
         "other_visible_notes": notes,
         "unreadable": extracted.get("unreadable") or [],
@@ -610,8 +594,9 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
     expanded = extracted.get("document_type") == "claim_acknowledgement"
     with st.expander("Claim acknowledgement fields", expanded=expanded):
         st.caption(
-            "These are the boxes on a paid FCA claim acknowledgement. "
-            "Owner's name and pre-tax total are left blank. List number is printed on the acknowledgement."
+            "The top section of the claim acknowledgement has the claim number, in service date, "
+            "date completed, and the service advisor number. The technician name is elsewhere on that form. "
+            "Pre-tax total is left blank."
         )
         doc_label = st.selectbox(
             "Document",
@@ -621,8 +606,18 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
         )
         c1, c2, c3 = st.columns(3)
         with c1:
-            claim_number = st.text_input("Claim number", value=extracted.get("claim_number") or "", key=f"{token}_claim")
-            dealer_code = st.text_input("Dealer", value=extracted.get("dealer_code") or "", key=f"{token}_dealer")
+            claim_number = st.text_input(
+                "Claim number",
+                value=extracted.get("claim_number") or extracted.get("ro_number") or "",
+                key=f"{token}_claim",
+                help="Same number as the RO. It is in the top section of the claim acknowledgement.",
+            )
+            dealer_code = st.text_input(
+                "Dealer",
+                value=extracted.get("dealer_code") or DEALER_CODE,
+                key=f"{token}_dealer",
+                help="This store's dealer code is 68888.",
+            )
             claim_status = st.text_input("Status", value=extracted.get("claim_status") or "", key=f"{token}_status")
             authorization = st.text_input("Authorization", value=extracted.get("authorization") or "", key=f"{token}_auth")
         with c2:
@@ -631,18 +626,27 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
             submission = st.text_input("Submission type", value=extracted.get("submission_type") or "", key=f"{token}_sub")
             continuation = st.text_input("Continuation", value=extracted.get("continuation") or "", key=f"{token}_cont")
         with c3:
-            in_service = st.text_input("In service date", value=extracted.get("in_service_date") or "", key=f"{token}_insvc")
+            in_service = st.text_input(
+                "In service date",
+                value=extracted.get("in_service_date") or "",
+                key=f"{token}_insvc",
+                help="In the top section of the claim acknowledgement.",
+            )
             received = st.text_input("Date received", value=extracted.get("date_received") or "", key=f"{token}_recv")
-            completed = st.text_input("Date completed", value=extracted.get("date_completed") or "", key=f"{token}_done")
-            advisor = st.text_input("Service advisor", value=extracted.get("service_advisor") or "", key=f"{token}_advisor")
+            completed = st.text_input(
+                "Date completed",
+                value=extracted.get("date_completed") or "",
+                key=f"{token}_done",
+                help="In the top section of the claim acknowledgement.",
+            )
+            advisor = st.text_input(
+                "Service advisor",
+                value=extracted.get("service_advisor") or "",
+                key=f"{token}_advisor",
+                help="The advisor number in the top section of the claim acknowledgement.",
+            )
         d1, d2, d3 = st.columns(3)
         with d1:
-            owner = st.text_input(
-                "Owner's name",
-                value=extracted.get("owner_name") or "",
-                key=f"{token}_owner",
-                help="Left blank on the claim acknowledgement.",
-            )
             vehicle = st.text_input("Vehicle description", value=extracted.get("vehicle_description") or "", key=f"{token}_vehicle")
         with d2:
             list_number = st.text_input(
@@ -654,7 +658,12 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
             reference = st.text_input("Reference number", value=extracted.get("reference_number") or "", key=f"{token}_ref")
         with d3:
             process_date = st.text_input("Process date", value=extracted.get("process_date") or "", key=f"{token}_process")
-            tech_name = st.text_input("Technician name", value=extracted.get("technician_name") or "", key=f"{token}_techname")
+            tech_name = st.text_input(
+                "Technician name",
+                value=extracted.get("technician_name") or "",
+                key=f"{token}_techname",
+                help="On the claim acknowledgement, next to the technician number.",
+            )
         totals = st.data_editor(
             _frame(extracted.get("repair_orders") or [], _TOTAL_COLUMNS),
             num_rows="dynamic",
@@ -689,7 +698,7 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
         "date_completed": completed,
         "process_date": process_date,
         "authorization": authorization,
-        "owner_name": owner,
+        "owner_name": "",
         "vehicle_description": vehicle,
         "service_advisor": advisor,
         "list_number": list_number,

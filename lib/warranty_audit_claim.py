@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+DEALER_CODE = "68888"
 CLAIM_SECTION = "FCA US LLC Global Claim Acknowledgement"
 CLAIM_NOTE = (
     "Reynolds Ignite paid-claim acknowledgement. "
@@ -206,6 +207,7 @@ def check_claim_criteria(repair_order: dict) -> list[dict]:
     if claim:
         findings.extend(_header_findings(order))
     findings.extend(_add_on_findings(order))
+    findings.extend(_goodwill_findings(order))
     findings.extend(_tech_note_findings(order))
 
     return findings
@@ -279,10 +281,36 @@ def _add_on_findings(order: dict) -> list[dict]:
                     f"Job {job} has a plus sign next to the job number, so it is a warranty add-on, "
                     "and your signature is missing."
                 ),
-                how_to_fix="Sign next to that added job on the repair order.",
+                how_to_fix="Sign next to that added job on the Warranty Copy.",
                 citation="Warranty add-on",
             ))
     return findings
+
+
+def _goodwill_findings(order: dict) -> list[dict]:
+    """Goodwill in the labor or the narrative needs your signature."""
+    pieces = [
+        order.get("customer_concern"),
+        order.get("cause"),
+        order.get("correction"),
+        order.get("tech_notes"),
+        order.get("other_visible_notes"),
+    ]
+    for line in _all_labor(order):
+        pieces.append(line.get("description"))
+        pieces.append(line.get("op_code"))
+    if not re.search(r"goodwill", " ".join(_clean(piece) for piece in pieces), re.IGNORECASE):
+        return []
+    signatures = order.get("signatures") if isinstance(order.get("signatures"), dict) else {}
+    if _signed(signatures.get("service_manager")):
+        return []
+    return [_shop_issue(
+        severity="critical",
+        ro_field="Goodwill",
+        whats_wrong="Goodwill is on this repair order, and your signature is missing.",
+        how_to_fix="Sign the Goodwill job on the Warranty Copy.",
+        citation="Goodwill",
+    )]
 
 
 _CAUSE_WORDS = re.compile(

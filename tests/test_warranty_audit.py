@@ -974,6 +974,33 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertNotIn("Owner name", fields)
         self.assertNotIn("RO 1 pre-tax total", fields)
 
+    def test_dealer_code_is_68888_and_the_ro_matches_the_claim(self):
+        order = normalize_repair_order({
+            "ro_number": "100245",
+            "dealer_code": "00001",
+            "owner_name": "SAMPLE",
+        })
+        self.assertEqual(order["dealer_code"], "68888")
+        self.assertEqual(order["claim_number"], "100245")
+        self.assertEqual(order["ro_number"], "100245")
+        self.assertEqual(order["owner_name"], "")
+        from_claim = normalize_repair_order({"claim_number": "100245"})
+        self.assertEqual(from_claim["ro_number"], "100245")
+
+    def test_goodwill_requires_your_signature(self):
+        claim = _paid_claim()
+        claim["correction"] += " GOODWILL adjustment."
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertIn("Goodwill", fields)
+        claim["signatures"] = {"service_manager": True}
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertNotIn("Goodwill", fields)
+        claim["signatures"] = {}
+        claim["correction"] = _paid_claim()["correction"]
+        claim["repair_orders"][0]["labor_lines"][0]["description"] = "Goodwill alignment"
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertIn("Goodwill", fields)
+
     def test_plus_sign_by_the_job_number_requires_your_signature(self):
         claim = _paid_claim()
         claim["repair_orders"][0]["labor_lines"][0]["job_number"] = "+2"

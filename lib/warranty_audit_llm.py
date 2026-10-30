@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
-from lib.warranty_audit_claim import check_claim_criteria
+from lib.warranty_audit_claim import DEALER_CODE, check_claim_criteria
 from lib.warranty_audit_manual import (
     SEVERITIES,
     build_summary,
@@ -46,18 +46,19 @@ The customer narrative and the time punches are required. Copy them in full."""
 TRANSCRIBE_USER_PROMPT = """Copy this page exactly. Do not summarize.
 
 Include every one of these when it is on the page:
-- The full customer narrative and the technician notes, word for word: concern, cause, correction, tests, and what was found
-- Every time punch: technician, time on, time off, and hours
-- Every job number. When a small plus sign is printed next to the job number, copy it as "Job +2" or "Job 2 +"
+- The top section of an FCA Global Claim Acknowledgement: claim number, RO number, in service date, date completed, date received, service advisor number, list number, VIN, coverage, claim type, submission type, continuation, and authorization. The RO number and the claim number are the same number.
+- The technician name printed with the technician identification. It is on the claim acknowledgement, not in that top section.
+- The full customer narrative and the technician notes, word for word: concern, cause, correction, tests, and what was found. If the word Goodwill appears, copy it.
+- Time punches are on the invoice whose bottom says Warranty Copy. Copy every punch: technician, time on, time off, and hours.
+- On that same Warranty Copy, every job number. When a small plus sign is printed beside the job number, copy it as "Job +2" or "Job 2 +" and copy any signature or initials next to that job.
 - Every labor line: LOP, description, failure code, hours, and technician
 - Every part: part number, description, quantity, and whether Failed Part is marked
-- List Number on the claim acknowledgement. Copy the digits exactly, such as 2025123
-- Header fields that are visible: VIN, dates, mileage, claim number, dealer, coverage, claim type, submission type, continuation, prior claim, vehicle, advisor, technician name and id, and authorization
-- A signature or initials next to an added job
+- List Number. Copy the digits exactly, such as 2025123
 
-Owner's name and Pre-Tax Total are usually blank. Copy them only when they are printed. Do not fill them in.
-Keep the technician notes as full sentences, not a short label. Keep every time punch on its own line.
-If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the notes, the list number, or the time punches out."""
+Do not copy the owner's name. Pre-Tax Total is usually blank. Do not fill those in.
+The service advisor is the number in the top section, not a person's name.
+Keep the technician notes as full sentences. Keep every time punch on its own line.
+If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the notes, the dates, the list number, or the time punches out."""
 
 EXTRACT_USER_PROMPT = """Read this Reynolds Ignite repair order or FCA Global Claim Acknowledgement.
 Return JSON with exactly these keys:
@@ -84,11 +85,16 @@ On a claim acknowledgement, split Customer Narrative into customer_concern (what
 cause (what was found), and correction (the repair performed, including any labor operation and hours the narrative states).
 tech_notes is the technician's full story: the tests, the cause, and the correction, word for word. Do not shorten it.
 Copy LOP into op_code, Failure Code into failure_code, and Hours into hours.
-job_number is the job number on the repair order. add_on is true only when a small plus sign is printed next to that job number. A plus sign inside a part number is not an add-on.
-list_number is the List Number on the claim acknowledgement. Copy every digit, such as 2025123.
-owner_name is usually blank. Leave it blank. Do not guess a name.
+The RO number and the claim number are the same number. Both are in the top section of the claim acknowledgement. Copy that number into ro_number and claim_number.
+in_service_date, date_completed, date_received, list_number, and service_advisor are in that same top section. service_advisor is the advisor number, not a name. Copy the printed dates. Do not leave a printed date blank.
+technician_name is on the claim acknowledgement next to the technician identification. It is not in the top section. Copy the name that is printed there.
+job_number is the job number on the Warranty Copy invoice. add_on is true only when a small plus sign is printed beside that job number on the Warranty Copy. A plus sign inside a part number is not an add-on.
+time_punches come from the invoice whose bottom says Warranty Copy. Copy every punch.
+list_number is the List Number in the top section. Copy every digit, such as 2025123.
+owner_name must be blank. Do not copy an owner name.
+dealer_code is 68888.
 pre_tax_total is usually blank. Leave it blank. Do not calculate it.
-signatures.service_manager is true only when a signature or initials are written next to an added job, false when that spot is visible and blank, and null when it is not in the pictures.
+signatures.service_manager is true when your signature or initials are on the Warranty Copy next to a job that has a plus sign, or next to a Goodwill job. It is false when that spot is visible and unsigned, and null when the Warranty Copy is not in the pictures.
 A claim can contain more than one repair order. Keep each RO's lines and totals together in repair_orders.
 Do not invent values that are not on the page."""
 
@@ -264,8 +270,9 @@ def build_structure_messages(transcript: str) -> list:
         EXTRACT_USER_PROMPT
         + "\n\nThe page text below was copied from the pictures. Use only that text.\n"
         + "Copy the full customer narrative into customer_concern, cause, and correction. Do not shorten it.\n"
-        + "Copy every time punch into time_punches. Copy every labor line and every part.\n"
-        + "If the page text contains the notes or the punches, those fields are readable. Do not leave them blank.\n\n"
+        + "Copy every time punch from the Warranty Copy into time_punches. Copy every labor line and every part.\n"
+        + "The top section of the claim acknowledgement has the in service date, date completed, service advisor number, and the RO number, which is the same as the claim number.\n"
+        + "If the page text contains the notes, the dates, or the punches, those fields are readable. Do not leave them blank.\n\n"
         + "PAGE TEXT\n"
         + transcript.strip()[:100000]
     )
@@ -330,6 +337,7 @@ def normalize_repair_order(data: dict) -> dict:
         text = _text(value)
         if text and text not in unreadable:
             unreadable.append(text)
+    ro_number, claim_number = _same_ro_and_claim(data.get("ro_number"), data.get("claim_number"))
     kind = _text(data.get("document_type")).casefold().replace("-", " ").replace("_", " ")
     if "claim acknowledgement" in kind or kind == "claim":
         document_type = "claim_acknowledgement"
@@ -339,15 +347,15 @@ def normalize_repair_order(data: dict) -> dict:
     return {
         "document_type": document_type,
         "dms": "reynolds_ignite" if "reynolds" in dms else "",
-        "ro_number": _text(data.get("ro_number")),
+        "ro_number": ro_number,
         "open_date": _text(data.get("open_date")),
         "close_date": _text(data.get("close_date")),
         "repair_date": _text(data.get("repair_date")),
         "vin": _text(data.get("vin")),
         "mileage": _text(data.get("mileage")),
-        "claim_number": _text(data.get("claim_number")),
+        "claim_number": claim_number,
         "claim_status": _text(data.get("claim_status")),
-        "dealer_code": _text(data.get("dealer_code")),
+        "dealer_code": DEALER_CODE,
         "in_service_date": _text(data.get("in_service_date")),
         "warranty_coverage": _text(data.get("warranty_coverage")),
         "claim_type": _text(data.get("claim_type")),
@@ -357,7 +365,7 @@ def normalize_repair_order(data: dict) -> dict:
         "date_completed": _text(data.get("date_completed")),
         "process_date": _text(data.get("process_date")),
         "authorization": _text(data.get("authorization")),
-        "owner_name": _text(data.get("owner_name")),
+        "owner_name": "",
         "vehicle_description": _text(data.get("vehicle_description")),
         "service_advisor": _text(data.get("service_advisor")),
         "list_number": _text(data.get("list_number")),
@@ -1029,6 +1037,17 @@ def _secret(key: str) -> str:
         return str(st.secrets.get(key, "") or "").strip()
     except Exception:
         return ""
+
+
+def _same_ro_and_claim(ro_value: object, claim_value: object) -> tuple[str, str]:
+    """The RO number and the claim number are the same number."""
+    ro_number = _text(ro_value)
+    claim_number = _text(claim_value)
+    if ro_number and not claim_number:
+        claim_number = ro_number
+    elif claim_number and not ro_number:
+        ro_number = claim_number
+    return ro_number, claim_number
 
 
 def _add_on_value(source: dict, job_number: object) -> bool | None:

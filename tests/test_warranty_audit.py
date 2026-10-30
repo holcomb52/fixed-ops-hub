@@ -437,6 +437,40 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertNotIn("_source", order["labor_operations"][0])
         self.assertFalse(order["parts"][0]["failed"])
         self.assertEqual(parse_json_object("```json\n{\"a\": 1}\n```"), {"a": 1})
+        self.assertEqual(parse_json_object('Sure {"vin": "ABC"} thanks'), {"vin": "ABC"})
+
+    def test_unreadable_group_is_read_one_picture_at_a_time(self):
+        from PIL import Image
+
+        calls = {"count": 0}
+
+        def complete(messages):
+            calls["count"] += 1
+            content = messages[-1]["content"]
+            image_count = 0
+            if isinstance(content, list):
+                image_count = sum(
+                    1 for part in content if isinstance(part, dict) and part.get("type") == "image_url"
+                )
+            if image_count > 1:
+                return "not json at all"
+            return json.dumps({"vin": "1C4RJFBG5LC000001", "customer_concern": "Camera is dead."})
+
+        def jpeg(mark: str) -> bytes:
+            image = Image.new("RGB", (40, 30), "white")
+            from PIL import ImageDraw
+
+            ImageDraw.Draw(image).text((2, 2), mark, fill=(0, 0, 0))
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG")
+            return buffer.getvalue()
+
+        order = extract_repair_order(
+            images=[(jpeg("a"), "image/jpeg"), (jpeg("b"), "image/jpeg")],
+            complete=complete,
+        )
+        self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
+        self.assertGreaterEqual(calls["count"], 3)
 
     def test_sample_pdf_round_trip_keeps_page_and_sentence(self):
         record = build_manual_record(

@@ -106,13 +106,24 @@ def parse_json_object(text: str) -> dict:
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1, flags=re.IGNORECASE)
         raw = re.sub(r"\s*```$", "", raw, count=1)
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        raise LlmError("The model did not return valid JSON.") from None
-    if not isinstance(data, dict):
-        raise LlmError("The model did not return a JSON object.")
-    return data
+    for candidate in (raw, _json_slice(raw)):
+        if not candidate:
+            continue
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data
+    raise LlmError("The model did not return valid JSON.")
+
+
+def _json_slice(text: str) -> str:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    return ""
 
 
 def complete_chat(messages: list, *, api_key: str, model: str, timeout: int = 120) -> str:
@@ -273,21 +284,21 @@ def extract_repair_order(
     if not images and not str(document_text or "").strip():
         raise LlmError("No readable repair-order image or text was provided.")
     prepared = [_smaller_for_model(image) for image in images]
-    batches = [prepared[index:index + 4] for index in range(0, len(prepared), 4)] or [[]]
+    batches = [prepared[index:index + 3] for index in range(0, len(prepared), 3)] or [[]]
     complete_fn = complete or _bound_complete()
     if len(batches) == 1:
         if on_progress:
             on_progress(1, 1)
-        messages = build_extract_messages(images=batches[0], document_text=document_text)
-        return normalize_repair_order(parse_json_object(complete_fn(messages)))
+        return normalize_repair_order(
+            _read_images(batches[0], document_text, complete_fn)
+        )
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     results: list[dict | None] = [None] * len(batches)
 
     def read_batch(batch: list[tuple[bytes, str]]) -> dict:
-        messages = build_extract_messages(images=batch, document_text="")
-        return parse_json_object(complete_fn(messages))
+        return _read_images(batch, "", complete_fn)
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         futures = {pool.submit(read_batch, batch): index for index, batch in enumerate(batches)}
@@ -298,6 +309,24 @@ def extract_repair_order(
             if on_progress:
                 on_progress(finished, len(batches))
     return normalize_repair_order(_merge_extracted([item for item in results if item]))
+
+
+def _read_images(images: list[tuple[bytes, str]], document_text: str, complete_fn: CompleteFn) -> dict:
+    """Read one group of pictures. If the reply is unusable, try each picture alone."""
+    messages = build_extract_messages(images=images, document_text=document_text)
+    try:
+        return parse_json_object(complete_fn(messages))
+    except LlmError:
+        if len(images) <= 1:
+            return {"unreadable": ["one picture"]}
+    parts = []
+    for image in images:
+        alone = build_extract_messages(images=[image], document_text="")
+        try:
+            parts.append(parse_json_object(complete_fn(alone)))
+        except LlmError:
+            parts.append({"unreadable": ["one picture"]})
+    return _merge_extracted(parts)
 
 
 def _smaller_for_model(image: tuple[bytes, str]) -> tuple[bytes, str]:

@@ -876,13 +876,12 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         claim["repair_orders"][0]["labor_lines"][0]["hours"] = "0.9"
         claim["repair_orders"][0]["labor_lines"][0]["failure_code"] = ""
         claim["repair_orders"][0]["part_lines"][0]["failed"] = None
-        claim["repair_orders"][0]["pre_tax_total"] = "50.00"
         claim["authorization"] = ""
         fields = {item["ro_field"] for item in check_claim_criteria(claim)}
         self.assertIn("RO 1 labor hours", fields)
         self.assertIn("RO 1 failure code", fields)
         self.assertIn("RO 1 failed part", fields)
-        self.assertIn("RO 1 pre-tax total", fields)
+        self.assertNotIn("RO 1 pre-tax total", fields)
         self.assertIn("Authorization", fields)
         hours = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "RO 1 labor hours")
         self.assertIn("0.3", hours["whats_wrong"])
@@ -894,6 +893,78 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         claim = _paid_claim()
         claim["correction"] += " SAME LABOR TIME FOR R&R 0.9HR."
         self.assertEqual(check_claim_criteria(claim), [])
+
+    def test_blank_pre_tax_and_owner_are_not_findings_and_list_number_is(self):
+        claim = _paid_claim()
+        self.assertEqual(claim["list_number"], "2025123")
+        self.assertEqual(claim["owner_name"], "")
+        self.assertEqual(claim["repair_orders"][0]["pre_tax_total"], "")
+        self.assertEqual(check_claim_criteria(claim), [])
+        claim["list_number"] = ""
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertIn("List number", fields)
+        self.assertNotIn("Owner name", fields)
+        self.assertNotIn("RO 1 pre-tax total", fields)
+
+    def test_plus_sign_by_the_job_number_requires_your_signature(self):
+        claim = _paid_claim()
+        claim["repair_orders"][0]["labor_lines"][0]["job_number"] = "+2"
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertIn("Job +2 add-on", fields)
+        add_on = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "Job +2 add-on")
+        self.assertIn("your signature", add_on["whats_wrong"])
+        self.assertEqual(add_on["severity"], "critical")
+        claim["signatures"] = {"service_manager": True}
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertNotIn("Job +2 add-on", fields)
+
+    def test_tech_notes_must_justify_the_repair(self):
+        claim = _paid_claim()
+        claim["customer_concern"] = "Customer states the tie rod is loose."
+        claim["cause"] = ""
+        claim["correction"] = "Replaced the rod."
+        claim["tech_notes"] = "Replaced the rod."
+        claim["repair_orders"][0]["labor_lines"] = [
+            {
+                "op_code": "02010101",
+                "description": "Tie rod end",
+                "failure_code": "11",
+                "hours": "0.8",
+                "tech_number": "20001",
+            }
+        ]
+        claim["repair_orders"][0]["part_lines"] = [
+            {
+                "part_number": "68123456AA",
+                "description": "Tie rod",
+                "quantity": "1",
+                "failed": True,
+            }
+        ]
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertIn("Tech notes", fields)
+        notes = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "Tech notes")
+        self.assertIn("cause", notes["whats_wrong"].lower())
+        claim["tech_notes"] = "Found the tie rod loose with excessive play and replaced the tie rod."
+        claim["cause"] = "Found the tie rod loose with excessive play."
+        claim["correction"] = "Replaced the tie rod."
+        self.assertFalse(any(item["ro_field"].startswith("Tech notes") for item in check_claim_criteria(claim)))
+
+    def test_normalize_keeps_the_list_number_add_on_and_tech_notes(self):
+        order = normalize_repair_order({
+            "list_number": "2025123",
+            "owner_name": None,
+            "pre_tax_total": "",
+            "tech_notes": "Found a broken wire and replaced the camera.",
+            "labor_operations": [{"job_number": "+2", "op_code": "08200170", "description": "Camera"}],
+            "signatures": {"service_manager": "yes"},
+        })
+        self.assertEqual(order["list_number"], "2025123")
+        self.assertEqual(order["owner_name"], "")
+        self.assertEqual(order["pre_tax_total"], "")
+        self.assertTrue(order["labor_operations"][0]["add_on"])
+        self.assertIn("broken wire", order["tech_notes"])
+        self.assertTrue(order["signatures"]["service_manager"])
 
     def test_plain_repair_order_does_not_require_authorization(self):
         order = _brake_ro()
@@ -933,10 +1004,10 @@ def _paid_claim() -> dict:
         "date_completed": "Jan 10, 2026",
         "process_date": "Jan 21, 2026",
         "authorization": "AUTH123",
-        "owner_name": "SAMPLE",
+        "owner_name": "",
         "vehicle_description": "2016 DODGE JOURNEY",
         "service_advisor": "10001",
-        "list_number": "1000",
+        "list_number": "2025123",
         "reference_number": "2000",
         "customer_concern": "CUSTOMER STATES REAR VIEW CAMERA INOPERATIVE.",
         "cause": "FOUND BROKEN WIRING IN THE CAMERA HARNESS.",
@@ -949,7 +1020,7 @@ def _paid_claim() -> dict:
                 "total_parts": "100.00",
                 "total_labor": "81.59",
                 "total_special_service": "0.00",
-                "pre_tax_total": "181.59",
+                "pre_tax_total": "",
                 "labor_lines": [
                     {
                         "op_code": "08200170",

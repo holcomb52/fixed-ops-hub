@@ -36,7 +36,7 @@ from lib.warranty_audit_storage import (
     save_manual_record,
 )
 
-_LABOR_COLUMNS = ["ro_number", "op_code", "description", "failure_code", "hours", "tech_number"]
+_LABOR_COLUMNS = ["ro_number", "job_number", "op_code", "description", "failure_code", "hours", "tech_number", "add_on"]
 _PUNCH_COLUMNS = ["tech_number", "on", "off", "hours"]
 _PART_COLUMNS = ["ro_number", "part_number", "description", "quantity", "failed"]
 _TOTAL_COLUMNS = [
@@ -245,7 +245,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 7. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 8. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -351,7 +351,11 @@ def _note_height(value: object) -> int:
 def _repair_order_form(extracted: dict) -> dict:
     token = st.session_state.get("warranty_audit_form_token") or "ro"
     st.markdown("##### What was read")
-    st.caption("Change any field that does not match the paper. Not visible means unknown, not missing.")
+    st.caption(
+        "Change only a field that does not match the paper. "
+        "Pre-tax and the owner's name stay blank. List number is printed on the acknowledgement. "
+        "A plus sign next to a job number is a warranty add-on and needs your signature."
+    )
     a, b, c = st.columns(3)
     with a:
         ro_number = st.text_input("RO number", value=extracted.get("ro_number") or "", key=f"{token}_ro")
@@ -381,21 +385,31 @@ def _repair_order_form(extracted: dict) -> dict:
         height=_note_height(extracted.get("correction")),
         key=f"{token}_correction",
     )
+    tech_notes = st.text_area(
+        "Tech notes",
+        value=extracted.get("tech_notes") or "",
+        height=_note_height(extracted.get("tech_notes") or extracted.get("cause")),
+        key=f"{token}_tech_notes",
+        help="The technician's story: what was found, the tests, and the repair. These notes have to justify the job.",
+    )
 
     st.markdown("##### Labor operations")
+    st.caption("Mark Add-on yes when a small plus sign is printed next to that job number.")
     labor = st.data_editor(
-        _frame(extracted.get("labor_operations"), _LABOR_COLUMNS),
+        _frame(_labor_for_editor(extracted.get("labor_operations")), _LABOR_COLUMNS),
         num_rows="dynamic",
         use_container_width=True,
         hide_index=True,
         key=f"{token}_labor",
         column_config={
             "ro_number": "RO #",
+            "job_number": "Job #",
             "op_code": "LOP",
             "description": "Description",
             "failure_code": "Failure code",
             "hours": "Hours",
             "tech_number": "Tech #",
+            "add_on": "Add-on (+)",
         },
     )
     st.markdown("##### Time punches")
@@ -428,7 +442,7 @@ def _repair_order_form(extracted: dict) -> dict:
         },
     )
     signatures = extracted.get("signatures") or {}
-    s1, s2, s3 = st.columns(3)
+    s1, s2, s3, s4 = st.columns(4)
     with s1:
         customer_sig = st.selectbox(
             "Customer signature",
@@ -450,6 +464,14 @@ def _repair_order_form(extracted: dict) -> dict:
             index=_sig_index(signatures.get("technician")),
             key=f"{token}_sig_tech",
         )
+    with s4:
+        manager_sig = st.selectbox(
+            "Your signature",
+            _SIG_OPTIONS,
+            index=_sig_index(signatures.get("service_manager")),
+            key=f"{token}_sig_manager",
+            help="Required on a warranty add-on, the job with a plus sign next to the job number.",
+        )
     notes = st.text_area(
         "Other notes visible on the RO",
         value=extracted.get("other_visible_notes") or "",
@@ -469,6 +491,7 @@ def _repair_order_form(extracted: dict) -> dict:
         "customer_concern": concern,
         "cause": cause,
         "correction": correction,
+        "tech_notes": tech_notes,
         "labor_operations": labor_rows,
         "time_punches": _records(punches, _PUNCH_COLUMNS),
         "parts": part_rows,
@@ -477,6 +500,7 @@ def _repair_order_form(extracted: dict) -> dict:
             "customer": customer_sig,
             "advisor": advisor_sig,
             "technician": tech_sig,
+            "service_manager": manager_sig,
         },
         "other_visible_notes": notes,
         "unreadable": extracted.get("unreadable") or [],
@@ -488,7 +512,10 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
     """Fields printed on an FCA Global Claim Acknowledgement from Reynolds Ignite."""
     expanded = extracted.get("document_type") == "claim_acknowledgement"
     with st.expander("Claim acknowledgement fields", expanded=expanded):
-        st.caption("These are the boxes on a paid FCA claim acknowledgement. Leave them blank on a plain repair order.")
+        st.caption(
+            "These are the boxes on a paid FCA claim acknowledgement. "
+            "Owner's name and pre-tax total are left blank. List number is printed on the acknowledgement."
+        )
         doc_label = st.selectbox(
             "Document",
             _DOC_OPTIONS,
@@ -513,10 +540,20 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
             advisor = st.text_input("Service advisor", value=extracted.get("service_advisor") or "", key=f"{token}_advisor")
         d1, d2, d3 = st.columns(3)
         with d1:
-            owner = st.text_input("Owner's name", value=extracted.get("owner_name") or "", key=f"{token}_owner")
+            owner = st.text_input(
+                "Owner's name",
+                value=extracted.get("owner_name") or "",
+                key=f"{token}_owner",
+                help="Left blank on the claim acknowledgement.",
+            )
             vehicle = st.text_input("Vehicle description", value=extracted.get("vehicle_description") or "", key=f"{token}_vehicle")
         with d2:
-            list_number = st.text_input("List number", value=extracted.get("list_number") or "", key=f"{token}_list")
+            list_number = st.text_input(
+                "List number",
+                value=extracted.get("list_number") or "",
+                key=f"{token}_list",
+                help="Printed on the claim acknowledgement, such as 2025123.",
+            )
             reference = st.text_input("Reference number", value=extracted.get("reference_number") or "", key=f"{token}_ref")
         with d3:
             process_date = st.text_input("Process date", value=extracted.get("process_date") or "", key=f"{token}_process")
@@ -534,7 +571,10 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
                 "total_parts": "Total parts",
                 "total_labor": "Total labor",
                 "total_special_service": "Special service",
-                "pre_tax_total": "Pre-tax total",
+                "pre_tax_total": st.column_config.TextColumn(
+                    "Pre-tax total",
+                    help="Left blank on these acknowledgements.",
+                ),
             },
         )
     return {
@@ -823,6 +863,23 @@ def _repair_blocks(labor_rows, part_rows, totals, ro_number: str, tech_name: str
 def _frame(rows, columns: list[str]) -> pd.DataFrame:
     frame = pd.DataFrame(list(rows or []), columns=columns)
     return frame.fillna("")
+
+
+def _labor_for_editor(lines) -> list[dict]:
+    rows = []
+    for line in lines or []:
+        if not isinstance(line, dict):
+            continue
+        add_on = line.get("add_on")
+        job = str(line.get("job_number") or "")
+        if add_on is True or str(add_on).strip().casefold() in {"true", "yes", "y", "+"} or "+" in job:
+            label = "yes"
+        elif add_on is False or str(add_on).strip().casefold() in {"false", "no", "n"}:
+            label = "no"
+        else:
+            label = ""
+        rows.append({column: line.get(column) or "" for column in _LABOR_COLUMNS if column != "add_on"} | {"add_on": label})
+    return rows
 
 
 def _parts_for_editor(parts) -> list[dict]:

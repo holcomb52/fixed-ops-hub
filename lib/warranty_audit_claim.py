@@ -15,6 +15,12 @@ CLAIM_NOTE = (
     "This checks a field auditors review on that printout. "
     "It is not a sentence from the warranty manual."
 )
+SHOP_SECTION = "Repair order documentation"
+SHOP_NOTE = (
+    "Dealership rule for this audit. A plus sign next to the job number is a warranty add-on "
+    "and needs your signature. Tech notes must justify the repair. "
+    "This is not a sentence from the warranty manual."
+)
 
 _VIN = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$", re.IGNORECASE)
 _HOURS = re.compile(r"(\d+(?:\.\d+)?)\s*(?:hr|hrs|hours)\b", re.IGNORECASE)
@@ -197,11 +203,10 @@ def check_claim_criteria(repair_order: dict) -> list[dict]:
                     citation="Failed Part",
                 ))
 
-        if claim:
-            findings.extend(_total_findings(block, label))
-
     if claim:
         findings.extend(_header_findings(order))
+    findings.extend(_add_on_findings(order))
+    findings.extend(_tech_note_findings(order))
 
     return findings
 
@@ -219,10 +224,9 @@ def _header_findings(order: dict) -> list[dict]:
         ("major", "date_completed", "Date completed", "Date Completed", "Enter the date the repair was completed."),
         ("minor", "process_date", "Process date", "Process Date", "Enter the process date."),
         ("critical", "authorization", "Authorization", "Authorization", "Enter the authorization number."),
-        ("minor", "owner_name", "Owner name", "Owner's Name", "Enter the owner's name."),
         ("minor", "vehicle_description", "Vehicle description", "Vehicle Description", "Enter the vehicle description."),
         ("major", "service_advisor", "Service advisor", "Service Advisor", "Enter the service advisor number."),
-        ("minor", "list_number", "List number", "List Number", "Enter the list number."),
+        ("minor", "list_number", "List number", "List Number", "Enter the list number from the claim acknowledgement."),
         ("minor", "reference_number", "Reference number", "Reference Number", "Enter the reference number."),
     )
     findings = []
@@ -248,35 +252,211 @@ def _header_findings(order: dict) -> list[dict]:
     return findings
 
 
-def _total_findings(block: dict, label: str) -> list[dict]:
-    parts = _money(block.get("total_parts"))
-    labor = _money(block.get("total_labor"))
-    special = _money(block.get("total_special_service"))
-    pre_tax = _money(block.get("pre_tax_total"))
-    if pre_tax is None:
-        return [_issue(
+def _add_on_findings(order: dict) -> list[dict]:
+    """A small plus sign next to the job number is a warranty add-on and needs your signature."""
+    signatures = order.get("signatures") if isinstance(order.get("signatures"), dict) else {}
+    signed = _signed(signatures.get("service_manager"))
+    findings = []
+    seen: set[str] = set()
+    for block in _repair_blocks(order):
+        lines = list(_rows(block.get("labor_lines")))
+        if _line_is_add_on(block):
+            lines.append(block)
+        for line in lines:
+            if not _line_is_add_on(line):
+                continue
+            job = _clean(line.get("job_number")) or _clean(line.get("op_code")) or _ro_label(block)
+            key = job.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            if signed:
+                continue
+            findings.append(_shop_issue(
+                severity="critical",
+                ro_field=f"Job {job} add-on",
+                whats_wrong=(
+                    f"Job {job} has a plus sign next to the job number, so it is a warranty add-on, "
+                    "and your signature is missing."
+                ),
+                how_to_fix="Sign next to that added job on the repair order.",
+                citation="Warranty add-on",
+            ))
+    return findings
+
+
+_CAUSE_WORDS = re.compile(
+    r"\b(?:found|tested|test|scan|scanned|code|dtc|reading|readings|measured|measurement|"
+    r"inspected|confirmed|verified|broken|cracked|leaking|leak|worn|damaged|corroded|"
+    r"seized|shorted|loose|noisy|noise|binding|contaminated|restricted|clogged|torn|"
+    r"failed|failure|diagnosis|diagnostic|spec|specs|voltage|pressure|ohms|"
+    r"excessive|play)\b",
+    re.IGNORECASE,
+)
+_NO_PROBLEM = re.compile(
+    r"no problem found|could not duplicate|operating as designed|no fault found|"
+    r"no trouble found|unable to duplicate|operating normally",
+    re.IGNORECASE,
+)
+_NOTE_STOP = {
+    "customer", "states", "stated", "says", "said", "with", "that", "this", "from",
+    "have", "been", "were", "when", "your", "repair", "repaired", "replace", "replaced",
+    "replacement", "performed", "installed", "removed", "labor", "hours", "total",
+    "operation", "vehicle", "warranty", "claim", "front", "rear", "left", "right",
+}
+
+
+def _tech_note_findings(order: dict) -> list[dict]:
+    """Tech notes must state the cause and match the complaint, the labor, and the failed parts."""
+    story = _tech_story(order)
+    if not story:
+        return [_shop_issue(
             severity="major",
-            ro_field=f"{label} pre-tax total",
-            whats_wrong="Pre-Tax Total is blank.",
-            how_to_fix="Enter the pre-tax total for this repair order.",
-            citation="Pre-Tax Total",
+            ro_field="Tech notes",
+            whats_wrong="Tech notes are missing, so the repair is not documented.",
+            how_to_fix="Write what the customer reported, what you found, the tests, and the repair.",
+            citation="Tech notes",
         )]
-    if None in (parts, labor, special):
-        return []
-    expected = round(parts + labor + special, 2)
-    if abs(expected - pre_tax) > 0.02:
-        return [_issue(
+
+    findings = []
+    labor = _all_labor(order)
+    parts = _all_parts(order)
+    zero_hour = [line for line in labor if _hours(line.get("hours")) == 0]
+    diagnosed = _CAUSE_WORDS.search(_NO_PROBLEM.sub(" ", story))
+    if not diagnosed:
+        if zero_hour:
+            wrong = "Tech notes do not state the diagnosis that supports the 0.0 hour operation."
+            fix = "Add the test results and the cause that support that diagnostic time."
+        else:
+            wrong = "Tech notes do not state the cause of the failure, so they do not justify the repair."
+            fix = "State what was found and why the part or operation was needed, not only that it was replaced."
+        findings.append(_shop_issue(
+            severity="major",
+            ro_field="Tech notes",
+            whats_wrong=wrong,
+            how_to_fix=fix,
+            citation="Tech notes",
+        ))
+    if _NO_PROBLEM.search(story) and (_billed_work(labor, parts)):
+        findings.append(_shop_issue(
             severity="critical",
-            ro_field=f"{label} pre-tax total",
+            ro_field="Tech notes",
+            whats_wrong="Tech notes say no problem was found, but the claim is for a repair.",
+            how_to_fix="Document the fault that was found, or remove the repair that the notes do not support.",
+            citation="Tech notes",
+        ))
+
+    story_tokens = _note_tokens(story)
+    concern_tokens = _note_tokens(order.get("customer_concern"))
+    if concern_tokens and not (concern_tokens & story_tokens):
+        findings.append(_shop_issue(
+            severity="major",
+            ro_field="Tech notes",
+            whats_wrong="Tech notes do not address the customer's complaint.",
+            how_to_fix="Write the notes so they cover the complaint, the cause, and the correction.",
+            citation="Tech notes",
+        ))
+
+    for line in labor:
+        code = _clean(line.get("op_code"))
+        if code and code.casefold() in story.casefold():
+            continue
+        described = _note_tokens(line.get("description"), minimum=3)
+        if not described or (described & _note_tokens(story, minimum=3)):
+            continue
+        label = code or _clean(line.get("description")) or "labor"
+        findings.append(_shop_issue(
+            severity="major",
+            ro_field=f"Tech notes {label}",
             whats_wrong=(
-                f"Total Parts {parts:.2f} + Total Labor {labor:.2f} + "
-                f"Total Special Service {special:.2f} is {expected:.2f}, "
-                f"and Pre-Tax Total is {pre_tax:.2f}."
+                f"Tech notes do not support {label}"
+                + (f" ({_clean(line.get('description'))})." if code and _clean(line.get("description")) else ".")
             ),
-            how_to_fix="Correct the part, labor, special service, and pre-tax totals so they add up.",
-            citation="Pre-Tax Total",
-        )]
-    return []
+            how_to_fix="Describe the repair that was performed for that labor operation.",
+            citation="Tech notes",
+        ))
+
+    story_compact = re.sub(r"[^a-z0-9]", "", story.casefold())
+    for part in parts:
+        if not _failed_part(part):
+            continue
+        number = re.sub(r"[^a-z0-9]", "", _clean(part.get("part_number")).casefold())
+        described = _note_tokens(part.get("description"), minimum=3)
+        if (described and described & _note_tokens(story, minimum=3)) or (len(number) >= 5 and number in story_compact):
+            continue
+        name = _clean(part.get("part_number")) or _clean(part.get("description")) or "part"
+        findings.append(_shop_issue(
+            severity="major",
+            ro_field=f"Tech notes {name}",
+            whats_wrong=f"Tech notes do not document failed part {name}.",
+            how_to_fix="Name that part and the cause of the failure in the tech notes.",
+            citation="Tech notes",
+        ))
+    return findings
+
+
+def _tech_story(order: dict) -> str:
+    story = " ".join(
+        piece for piece in (
+            _clean(order.get("tech_notes")),
+            _clean(order.get("cause")),
+            _clean(order.get("correction")),
+        ) if piece
+    )
+    if story:
+        return story
+    return _clean(order.get("other_visible_notes"))
+
+
+def _all_labor(order: dict) -> list[dict]:
+    lines = []
+    for block in _repair_blocks(order):
+        lines.extend(row for row in _rows(block.get("labor_lines")) if _line_has_text(row))
+    return lines
+
+
+def _all_parts(order: dict) -> list[dict]:
+    lines = []
+    for block in _repair_blocks(order):
+        lines.extend(row for row in _rows(block.get("part_lines")) if _line_has_text(row))
+    return lines
+
+
+def _billed_work(labor: list[dict], parts: list[dict]) -> bool:
+    if any((_hours(line.get("hours")) or 0) > 0 for line in labor):
+        return True
+    return any(_failed_part(part) or _clean(part.get("part_number")) for part in parts)
+
+
+def _failed_part(part: dict) -> bool:
+    flag = part.get("failed")
+    if flag is True:
+        return True
+    return str(flag).strip().casefold() in {"true", "yes", "y", "x"}
+
+
+def _line_is_add_on(line: dict) -> bool:
+    job = _clean(line.get("job_number"))
+    if "+" in job:
+        return True
+    flag = line.get("add_on")
+    if flag is True:
+        return True
+    return str(flag).strip().casefold() in {"true", "yes", "y", "+"}
+
+
+def _signed(value: object) -> bool:
+    if value is True:
+        return True
+    return str(value or "").strip().casefold() in {"true", "yes", "y", "signed"}
+
+
+def _note_tokens(value: object, *, minimum: int = 4) -> set[str]:
+    words = re.findall(rf"[a-z0-9]{{{minimum},}}", _clean(value).casefold())
+    stops = _NOTE_STOP
+    if minimum < 4:
+        stops = stops | {"the", "and", "for", "end", "set", "kit", "new", "old"}
+    return {word for word in words if word not in stops}
 
 
 def _repair_blocks(order: dict) -> list[dict]:
@@ -309,6 +489,7 @@ def _narrative(order: dict) -> str:
             _clean(order.get("customer_concern")),
             _clean(order.get("cause")),
             _clean(order.get("correction")),
+            _clean(order.get("tech_notes")),
             _clean(order.get("other_visible_notes")),
         ) if piece
     )
@@ -384,16 +565,52 @@ def _clean(value: object) -> str:
 
 
 def _issue(*, severity: str, ro_field: str, whats_wrong: str, how_to_fix: str, citation: str) -> dict:
+    return _finding(
+        severity=severity,
+        ro_field=ro_field,
+        whats_wrong=whats_wrong,
+        how_to_fix=how_to_fix,
+        citation=citation,
+        section=CLAIM_SECTION,
+        note=CLAIM_NOTE,
+        source="claim_acknowledgement",
+    )
+
+
+def _shop_issue(*, severity: str, ro_field: str, whats_wrong: str, how_to_fix: str, citation: str) -> dict:
+    return _finding(
+        severity=severity,
+        ro_field=ro_field,
+        whats_wrong=whats_wrong,
+        how_to_fix=how_to_fix,
+        citation=citation,
+        section=SHOP_SECTION,
+        note=SHOP_NOTE,
+        source="repair_order_documentation",
+    )
+
+
+def _finding(
+    *,
+    severity: str,
+    ro_field: str,
+    whats_wrong: str,
+    how_to_fix: str,
+    citation: str,
+    section: str,
+    note: str,
+    source: str,
+) -> dict:
     return {
         "severity": severity,
         "ro_field": ro_field,
         "whats_wrong": whats_wrong,
         "how_to_fix": how_to_fix,
-        "manual_section": CLAIM_SECTION,
+        "manual_section": section,
         "manual_page": None,
         "citation_quote": citation,
         "supported": True,
-        "support_note": CLAIM_NOTE,
+        "support_note": note,
         "counts_as_required_correction": True,
-        "source": "claim_acknowledgement",
+        "source": source,
     }

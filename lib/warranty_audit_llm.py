@@ -46,14 +46,18 @@ The customer narrative and the time punches are required. Copy them in full."""
 TRANSCRIBE_USER_PROMPT = """Copy this page exactly. Do not summarize.
 
 Include every one of these when it is on the page:
-- The full customer narrative, word for word: concern, cause, and correction
+- The full customer narrative and the technician notes, word for word: concern, cause, correction, tests, and what was found
 - Every time punch: technician, time on, time off, and hours
+- Every job number. When a small plus sign is printed next to the job number, copy it as "Job +2" or "Job 2 +"
 - Every labor line: LOP, description, failure code, hours, and technician
 - Every part: part number, description, quantity, and whether Failed Part is marked
-- Header fields that are visible: VIN, dates, mileage, claim number, dealer, coverage, claim type, submission type, continuation, prior claim, owner, vehicle, advisor, technician name and id, authorization, and totals
+- List Number on the claim acknowledgement. Copy the digits exactly, such as 2025123
+- Header fields that are visible: VIN, dates, mileage, claim number, dealer, coverage, claim type, submission type, continuation, prior claim, vehicle, advisor, technician name and id, and authorization
+- A signature or initials next to an added job
 
-Keep the narrative as a paragraph, not a short label. Keep every time punch on its own line.
-If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the notes or the time punches out."""
+Owner's name and Pre-Tax Total are usually blank. Copy them only when they are printed. Do not fill them in.
+Keep the technician notes as full sentences, not a short label. Keep every time punch on its own line.
+If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the notes, the list number, or the time punches out."""
 
 EXTRACT_USER_PROMPT = """Read this Reynolds Ignite repair order or FCA Global Claim Acknowledgement.
 Return JSON with exactly these keys:
@@ -64,21 +68,27 @@ claim_number, claim_status, dealer_code, in_service_date, warranty_coverage,
 claim_type, submission_type, continuation, date_received, date_completed, process_date,
 authorization, owner_name, vehicle_description, service_advisor,
 list_number, reference_number, prior_claim, technician_name,
-customer_concern, cause, correction,
-labor_operations (list of objects with ro_number, op_code, description, failure_code, hours, tech_number),
+customer_concern, cause, correction, tech_notes,
+labor_operations (list of objects with ro_number, job_number, op_code, description, failure_code, hours, tech_number, add_on),
 tech_numbers (list of strings),
 time_punches (list of objects with tech_number, on, off, hours),
 parts (list of objects with ro_number, part_number, description, quantity, failed),
 repair_orders (list of objects with ro_number, technician_id, technician_name,
 total_parts, total_labor, total_special_service, pre_tax_total,
 labor_lines, part_lines),
-signatures (object with customer, advisor, technician; each true, false, or null),
+signatures (object with customer, advisor, technician, service_manager; each true, false, or null),
 other_visible_notes (string),
 unreadable (list of field names you could not read).
 
 On a claim acknowledgement, split Customer Narrative into customer_concern (what the customer stated),
 cause (what was found), and correction (the repair performed, including any labor operation and hours the narrative states).
+tech_notes is the technician's full story: the tests, the cause, and the correction, word for word. Do not shorten it.
 Copy LOP into op_code, Failure Code into failure_code, and Hours into hours.
+job_number is the job number on the repair order. add_on is true only when a small plus sign is printed next to that job number. A plus sign inside a part number is not an add-on.
+list_number is the List Number on the claim acknowledgement. Copy every digit, such as 2025123.
+owner_name is usually blank. Leave it blank. Do not guess a name.
+pre_tax_total is usually blank. Leave it blank. Do not calculate it.
+signatures.service_manager is true only when a signature or initials are written next to an added job, false when that spot is visible and blank, and null when it is not in the pictures.
 A claim can contain more than one repair order. Keep each RO's lines and totals together in repair_orders.
 Do not invent values that are not on the page."""
 
@@ -289,17 +299,21 @@ def normalize_repair_order(data: dict) -> dict:
         data = {}
     data = _flatten_repair_orders(data)
     signatures = data.get("signatures") if isinstance(data.get("signatures"), dict) else {}
-    labor = _rows(
+    labor = []
+    for row in _rows(
         data.get("labor_operations"),
-        ("ro_number", "op_code", "description", "failure_code", "hours", "tech_number"),
-    )
+        ("ro_number", "job_number", "op_code", "description", "failure_code", "hours", "tech_number"),
+    ):
+        source = row.pop("_source", {})
+        row["add_on"] = _add_on_value(source, row.get("job_number"))
+        labor.append(row)
     punches = _rows(data.get("time_punches"), ("tech_number", "on", "off", "hours"))
     parts = []
     for row in _rows(data.get("parts"), ("ro_number", "part_number", "description", "quantity")):
         source = row.pop("_source", {})
         row["failed"] = _boolish(source.get("failed"))
         parts.append(row)
-    for row in labor + punches:
+    for row in punches:
         row.pop("_source", None)
     tech_numbers = []
     seen = set()
@@ -352,6 +366,7 @@ def normalize_repair_order(data: dict) -> dict:
         "customer_concern": _text(data.get("customer_concern")),
         "cause": _text(data.get("cause")),
         "correction": _text(data.get("correction")),
+        "tech_notes": _text(data.get("tech_notes")),
         "labor_operations": labor,
         "tech_numbers": tech_numbers,
         "time_punches": punches,
@@ -365,6 +380,7 @@ def normalize_repair_order(data: dict) -> dict:
             "customer": _boolish(signatures.get("customer")),
             "advisor": _boolish(signatures.get("advisor")),
             "technician": _boolish(signatures.get("technician")),
+            "service_manager": _boolish(signatures.get("service_manager")),
         },
         "other_visible_notes": _text(data.get("other_visible_notes")),
         "unreadable": unreadable,
@@ -521,7 +537,7 @@ def _merge_extracted(parts: list[dict]) -> dict:
                 merged.setdefault(key, [])
                 merged[key].extend(value)
                 continue
-            if key in ("customer_concern", "cause", "correction", "other_visible_notes"):
+            if key in ("customer_concern", "cause", "correction", "tech_notes", "other_visible_notes"):
                 current = str(merged.get(key) or "")
                 extra = str(value or "")
                 if extra and extra not in current:
@@ -644,8 +660,11 @@ def _normalize_repair_blocks(raw: object, labor: list[dict], parts: list[dict]) 
             if not isinstance(block, dict):
                 continue
             ro_number = _text(block.get("ro_number"))
+            job_number = _text(block.get("job_number"))
             blocks.append({
                 "ro_number": ro_number,
+                "job_number": job_number,
+                "add_on": _add_on_value(block, job_number),
                 "technician_id": _text(block.get("technician_id")),
                 "technician_name": _text(block.get("technician_name")),
                 "total_parts": _text(block.get("total_parts")),
@@ -880,6 +899,17 @@ def _secret(key: str) -> str:
         return str(st.secrets.get(key, "") or "").strip()
     except Exception:
         return ""
+
+
+def _add_on_value(source: dict, job_number: object) -> bool | None:
+    """A plus sign printed next to the job number marks a warranty add-on."""
+    job = _text(job_number) or _text(source.get("job_number"))
+    if "+" in job:
+        return True
+    flag = _boolish(source.get("add_on"))
+    if flag is None:
+        flag = _boolish(source.get("warranty_add_on"))
+    return flag
 
 
 def _text(value: object) -> str:

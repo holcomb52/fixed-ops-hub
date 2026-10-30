@@ -447,8 +447,10 @@ def append_claim_photos(
             break
         try:
             jpeg, _mime = shrink_image(raw)
-        except Exception as exc:
-            warnings.append(f"{name or 'Picture'} was not added. {exc}")
+        except Exception:
+            warnings.append(
+                f"{name or 'Picture'} was not added. Take that page again as a JPG, or choose Take Photo."
+            )
             continue
         sha = hashlib.sha256(jpeg).hexdigest()
         if sha in seen:

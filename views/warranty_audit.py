@@ -702,7 +702,8 @@ def _show_photo_tray(tray: list[dict]) -> None:
     columns = st.columns(3)
     for index, item in enumerate(tray):
         with columns[index % 3]:
-            st.image(item["data"], caption=f"{index + 1}. {item['name']}", width=180)
+            if not _show_one_photo(item["data"], f"{index + 1}. {item['name']}"):
+                st.caption(f"{index + 1}. {item['name']} could not be shown. Remove it and take that page again.")
             if st.button("Remove", key=f"warranty_audit_remove_{item['sha'][:12]}", use_container_width=True):
                 kept = [photo for photo in tray if photo["sha"] != item["sha"]]
                 st.session_state.warranty_audit_photo_tray = kept
@@ -711,6 +712,25 @@ def _show_photo_tray(tray: list[dict]) -> None:
         st.session_state.warranty_audit_photo_tray = []
         st.session_state.warranty_audit_photo_warnings = []
         st.rerun()
+
+
+def _show_one_photo(data: bytes, caption: str) -> bool:
+    """Show a picture without letting one bad file crash the page."""
+    try:
+        from PIL import Image
+
+        with Image.open(io_bytes(data)) as image:
+            image.load()
+        st.image(data, caption=caption, width=180)
+        return True
+    except Exception:
+        return False
+
+
+def io_bytes(data: bytes | None = None):
+    import io
+
+    return io.BytesIO() if data is None else io.BytesIO(data)
 
 
 def _repair_blocks(labor_rows, part_rows, totals, ro_number: str, tech_name: str) -> list[dict]:

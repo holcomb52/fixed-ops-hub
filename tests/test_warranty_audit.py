@@ -510,6 +510,9 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertEqual(len(tray), MAX_CLAIM_PHOTOS)
         self.assertGreaterEqual(MAX_CLAIM_PHOTOS, 15)
         self.assertTrue(any("already has" in note for note in warnings))
+        skipped, notes = append_claim_photos([], [("bad.heic", b"not-a-picture")])
+        self.assertEqual(skipped, [])
+        self.assertTrue(any("not added" in note for note in notes))
 
 
 class LlmTransportTests(unittest.TestCase):

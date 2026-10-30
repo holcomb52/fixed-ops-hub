@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
+from lib.claim_camera import claim_camera
 from lib.page_ui import page_hero, section_title, stat_card, status_banner
 from lib.warranty_audit_llm import (
     LlmError,
@@ -208,22 +209,18 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     )
     st.caption(
         f"Add up to {MAX_CLAIM_PHOTOS} pictures for one claim. "
-        "Each new photo is kept. On your phone, take a picture, wait until it appears below, then take the next one. "
-        "You can also drag several pictures onto the box."
+        "Tap Open camera, snap every page, then tap Add these pictures. "
+        "The camera stays open between pages. You can also choose photos you already took, or drag pictures onto the box."
     )
+    snapped = claim_camera(MAX_CLAIM_PHOTOS - len(tray))
     upload = st.file_uploader(
         "Drag pictures here",
         type=["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"],
         accept_multiple_files=True,
         key="warranty_audit_ro_file",
-        help="Drag pictures onto this box. On a phone, Take Photo adds one picture. Take the next picture after it shows up below.",
+        help="Drag pictures onto this box. On a phone, use Open camera above to snap every page before adding them.",
     )
-    camera = st.camera_input(
-        "Take the next picture",
-        key="warranty_audit_camera",
-        help="On a phone, allow the camera. Each picture is added to this claim. Take another after the count goes up.",
-    )
-    incoming = _incoming_photos(upload, camera)
+    incoming = _incoming_photos(upload) + list(snapped or [])
     if incoming:
         updated, warnings = append_claim_photos(tray, incoming)
         added = len(updated) > len(tray)
@@ -685,15 +682,13 @@ def _show_sql(message: str):
         st.code(sql, language="sql")
 
 
-def _incoming_photos(upload, camera) -> list[tuple[str, bytes]]:
+def _incoming_photos(upload) -> list[tuple[str, bytes]]:
     photos: list[tuple[str, bytes]] = []
     uploads = upload if isinstance(upload, list) else ([] if upload is None else [upload])
     for index, item in enumerate(uploads, start=1):
         if item is None:
             continue
         photos.append((item.name or f"phone-photo-{index}.jpg", item.getvalue()))
-    if camera is not None:
-        photos.append(("phone-camera.jpg", camera.getvalue()))
     return photos
 
 

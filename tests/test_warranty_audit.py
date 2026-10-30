@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
@@ -513,6 +514,13 @@ class AuditPipelineTests(unittest.TestCase):
         skipped, notes = append_claim_photos([], [("bad.heic", b"not-a-picture")])
         self.assertEqual(skipped, [])
         self.assertTrue(any("not added" in note for note in notes))
+
+    def test_camera_data_urls_become_picture_files(self):
+        from lib.claim_camera import data_urls_to_files
+
+        encoded = base64.b64encode(b"jpeg-bytes").decode("ascii")
+        files = data_urls_to_files([f"data:image/jpeg;base64,{encoded}", "not-a-url"])
+        self.assertEqual(files, [("phone-page-1.jpg", b"jpeg-bytes")])
 
 
 class LlmTransportTests(unittest.TestCase):

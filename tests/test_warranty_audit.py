@@ -485,6 +485,32 @@ class AuditPipelineTests(unittest.TestCase):
         prepared = prepare_documents(files)
         self.assertEqual(len(prepared["images"]), 2)
 
+    def test_phone_pictures_accumulate_up_to_the_claim_limit(self):
+        from PIL import Image
+
+        from lib.warranty_audit_llm import MAX_CLAIM_PHOTOS, append_claim_photos
+
+        def jpeg(mark: str) -> bytes:
+            image = Image.new("RGB", (90, 40), "white")
+            from PIL import ImageDraw
+
+            ImageDraw.Draw(image).text((4, 8), mark, fill=(0, 0, 0))
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=95)
+            return buffer.getvalue()
+
+        first, warnings = append_claim_photos([], [("page-1.jpg", jpeg("one"))])
+        self.assertEqual(len(first), 1)
+        self.assertEqual(warnings, [])
+        again, warnings = append_claim_photos(first, [("page-1-again.jpg", jpeg("one"))])
+        self.assertEqual(len(again), 1)
+        tray = []
+        for index in range(MAX_CLAIM_PHOTOS + 2):
+            tray, warnings = append_claim_photos(tray, [(f"page-{index}.jpg", jpeg(f"page {index}"))])
+        self.assertEqual(len(tray), MAX_CLAIM_PHOTOS)
+        self.assertGreaterEqual(MAX_CLAIM_PHOTOS, 15)
+        self.assertTrue(any("already has" in note for note in warnings))
+
 
 class LlmTransportTests(unittest.TestCase):
     def test_api_key_stays_in_the_header(self):

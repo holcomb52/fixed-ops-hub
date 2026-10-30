@@ -27,8 +27,8 @@ def render():
     else:
         st.markdown(
             status_banner(
-                "Saved reports on this site need Supabase secrets. "
-                "Warranty Audit can still read a photo. Open it below, or use the menu at the top left.",
+                "To save reports here, paste SUPABASE_URL and SUPABASE_KEY into this app's secrets. "
+                "Copy them from the original Fixed Ops Hub app. The database tables are already created.",
                 "warn",
             ),
             unsafe_allow_html=True,

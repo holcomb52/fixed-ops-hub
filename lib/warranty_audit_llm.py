@@ -7,6 +7,7 @@ match stored text are marked unsupported by warranty_audit_manual.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -417,6 +418,54 @@ def default_complete(messages: list) -> str:
     return complete_chat(messages, api_key=key, model=model)
 
 
+MAX_CLAIM_PHOTOS = 20
+
+
+def append_claim_photos(
+    tray: list[dict],
+    incoming: list[tuple[str, bytes]],
+    *,
+    limit: int = MAX_CLAIM_PHOTOS,
+) -> tuple[list[dict], list[str]]:
+    """Add pictures to a claim. The same shot is not added twice, and the tray stops at the limit."""
+    warnings: list[str] = []
+    updated = list(tray)
+    seen = set()
+    for item in updated:
+        seen.add(item.get("sha") or "")
+        seen.add(item.get("raw_sha") or "")
+    for name, raw in incoming:
+        if not raw:
+            continue
+        raw_sha = hashlib.sha256(raw).hexdigest()
+        if raw_sha in seen:
+            continue
+        if len(updated) >= limit:
+            warnings.append(
+                f"This claim already has {limit} pictures. Remove one before adding another."
+            )
+            break
+        try:
+            jpeg, _mime = shrink_image(raw)
+        except Exception as exc:
+            warnings.append(f"{name or 'Picture'} was not added. {exc}")
+            continue
+        sha = hashlib.sha256(jpeg).hexdigest()
+        if sha in seen:
+            continue
+        seen.add(raw_sha)
+        seen.add(sha)
+        updated.append(
+            {
+                "name": name or f"photo-{len(updated) + 1}.jpg",
+                "sha": sha,
+                "raw_sha": raw_sha,
+                "data": jpeg,
+            }
+        )
+    return updated, warnings
+
+
 def shrink_image(data: bytes, *, max_edge: int = 1600) -> tuple[bytes, str]:
     """Turn a phone photo into an upright JPEG the vision model can read."""
     from PIL import Image, ImageOps
@@ -431,7 +480,7 @@ def shrink_image(data: bytes, *, max_edge: int = 1600) -> tuple[bytes, str]:
         return buf.getvalue(), "image/jpeg"
 
 
-def prepare_documents(files: list[tuple[str, bytes]], *, max_pages: int = 10) -> dict:
+def prepare_documents(files: list[tuple[str, bytes]], *, max_pages: int = MAX_CLAIM_PHOTOS) -> dict:
     """Prepare one or more phone photos, scans, or PDFs."""
     images: list[tuple[bytes, str]] = []
     texts: list[str] = []
@@ -450,7 +499,7 @@ def prepare_documents(files: list[tuple[str, bytes]], *, max_pages: int = 10) ->
     return {"images": images, "document_text": "\n\n".join(texts), "warnings": warnings}
 
 
-def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = 10) -> dict:
+def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = MAX_CLAIM_PHOTOS) -> dict:
     """Turn a camera photo, image upload, or PDF into model inputs."""
     name = (filename or "").lower()
     warnings: list[str] = []

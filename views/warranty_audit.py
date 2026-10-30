@@ -11,6 +11,8 @@ import streamlit as st
 from lib.page_ui import page_hero, section_title, stat_card, status_banner
 from lib.warranty_audit_llm import (
     LlmError,
+    MAX_CLAIM_PHOTOS,
+    append_claim_photos,
     extract_repair_order,
     llm_configured,
     prepare_documents,
@@ -186,6 +188,10 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     )
     if not manual:
         st.caption("Store a warranty manual before running an audit. You can still read a photo.")
+    if st.session_state.pop("warranty_audit_reset_inputs", False):
+        st.session_state["warranty_audit_camera"] = None
+        st.session_state.pop("warranty_audit_ro_file", None)
+    tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
     st.markdown(
         """
         <style>
@@ -201,29 +207,44 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         unsafe_allow_html=True,
     )
     st.caption(
-        "Drag pictures from your computer onto the box below. "
-        "On your phone, tap the box, then Take Photo or Photo Library. "
-        "Add one picture per page. JPG, PNG, HEIC, and PDF all work."
+        f"Add up to {MAX_CLAIM_PHOTOS} pictures for one claim. "
+        "Each new photo is kept. On your phone, take a picture, wait until it appears below, then take the next one. "
+        "You can also drag several pictures onto the box."
     )
     upload = st.file_uploader(
         "Drag pictures here",
         type=["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"],
         accept_multiple_files=True,
         key="warranty_audit_ro_file",
-        help="Drag pictures onto this box, or browse for them. On a phone, Take Photo uses the camera and Photo Library uses a picture you already took.",
+        help="Drag pictures onto this box. On a phone, Take Photo adds one picture. Take the next picture after it shows up below.",
     )
     camera = st.camera_input(
-        "Or take a photo in this browser",
+        "Take the next picture",
         key="warranty_audit_camera",
-        help="On a phone, allow the camera when the browser asks. This uses the camera on the device that has this page open.",
+        help="On a phone, allow the camera. Each picture is added to this claim. Take another after the count goes up.",
     )
-    photos = _selected_photos(upload, camera)
-    if not photos:
+    incoming = _incoming_photos(upload, camera)
+    if incoming:
+        updated, warnings = append_claim_photos(tray, incoming)
+        added = len(updated) > len(tray)
+        st.session_state.warranty_audit_photo_tray = updated
+        st.session_state.warranty_audit_photo_warnings = warnings
+        if added:
+            st.session_state.warranty_audit_reset_inputs = True
+            st.rerun()
+        tray = updated
+    for warning in st.session_state.get("warranty_audit_photo_warnings") or []:
+        st.warning(warning)
+    if not tray:
+        st.caption(f"No pictures yet. You can add {MAX_CLAIM_PHOTOS}.")
         return
-    _show_photo_preview(photos)
-    if upload and camera is not None:
-        st.caption("The uploaded pictures and the browser photo will all be read.")
-    digest = hashlib.sha256(b"".join(data for _name, data in photos)).hexdigest()[:16]
+    photos = [(item["name"], item["data"]) for item in tray]
+    _show_photo_tray(tray)
+    if len(tray) >= MAX_CLAIM_PHOTOS:
+        st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
+    else:
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Take or add the next page, or read them now.")
+    digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
         with st.spinner("Reading the photo..."):
@@ -664,7 +685,7 @@ def _show_sql(message: str):
         st.code(sql, language="sql")
 
 
-def _selected_photos(upload, camera) -> list[tuple[str, bytes]]:
+def _incoming_photos(upload, camera) -> list[tuple[str, bytes]]:
     photos: list[tuple[str, bytes]] = []
     uploads = upload if isinstance(upload, list) else ([] if upload is None else [upload])
     for index, item in enumerate(uploads, start=1):
@@ -672,27 +693,24 @@ def _selected_photos(upload, camera) -> list[tuple[str, bytes]]:
             continue
         photos.append((item.name or f"phone-photo-{index}.jpg", item.getvalue()))
     if camera is not None:
-        photos.append(("camera-repair-order.jpg", camera.getvalue()))
+        photos.append(("phone-camera.jpg", camera.getvalue()))
     return photos
 
 
-def _show_photo_preview(photos: list[tuple[str, bytes]]) -> None:
-    images = [(name, data) for name, data in photos if not _is_pdf(name, data)]
-    pdfs = [name for name, data in photos if _is_pdf(name, data)]
-    if images:
-        st.image(
-            [data for _name, data in images[:6]],
-            caption=[name for name, _data in images[:6]],
-            width=240,
-        )
-    count = len(photos)
-    label = "photo" if count == 1 else "photos"
-    extra = f" Plus {len(pdfs)} PDF." if pdfs else ""
-    st.caption(f"{count} {label} ready.{extra} Click Read repair order when the picture looks right.")
-
-
-def _is_pdf(name: str, data: bytes) -> bool:
-    return name.lower().endswith(".pdf") or data[:4] == b"%PDF"
+def _show_photo_tray(tray: list[dict]) -> None:
+    st.caption("Pictures on this claim")
+    columns = st.columns(3)
+    for index, item in enumerate(tray):
+        with columns[index % 3]:
+            st.image(item["data"], caption=f"{index + 1}. {item['name']}", width=180)
+            if st.button("Remove", key=f"warranty_audit_remove_{item['sha'][:12]}", use_container_width=True):
+                kept = [photo for photo in tray if photo["sha"] != item["sha"]]
+                st.session_state.warranty_audit_photo_tray = kept
+                st.rerun()
+    if st.button("Remove all pictures", key="warranty_audit_clear_photos"):
+        st.session_state.warranty_audit_photo_tray = []
+        st.session_state.warranty_audit_photo_warnings = []
+        st.rerun()
 
 
 def _repair_blocks(labor_rows, part_rows, totals, ro_number: str, tech_name: str) -> list[dict]:

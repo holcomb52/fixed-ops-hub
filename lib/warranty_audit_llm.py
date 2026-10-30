@@ -14,7 +14,9 @@ import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
+from lib.warranty_audit_claim import check_claim_criteria
 from lib.warranty_audit_manual import (
+    SEVERITIES,
     build_summary,
     format_excerpts,
     retrieve_for_repair_order,
@@ -24,23 +26,41 @@ from lib.warranty_audit_manual import (
 API_URL = "https://api.openai.com/v1/chat/completions"
 DEFAULT_MODEL = "gpt-4o"
 
-EXTRACT_SYSTEM_PROMPT = """You read dealership repair-order photos and scans.
+EXTRACT_SYSTEM_PROMPT = """You read dealership repair orders and Reynolds Ignite printouts.
+Reynolds Ignite also prints the FCA US LLC Global Claim Acknowledgement.
 Extract only text that is visible. Use null for anything you cannot read.
-Never guess VIN characters, dates, mileage, technician numbers, or whether a signature is present.
+Never guess VIN characters, dates, mileage, technician numbers, labor operation codes,
+failure codes, part numbers, amounts, or whether a signature or Failed Part mark is present.
 If a signature line is visible and blank, set that signature to false.
 If the signature area is not in the image, use null.
+If Failed Part has no X or other mark, set failed to null. If it is marked, set failed to true.
 Return JSON only."""
 
-EXTRACT_USER_PROMPT = """Read this repair order and return JSON with exactly these keys:
+EXTRACT_USER_PROMPT = """Read this Reynolds Ignite repair order or FCA Global Claim Acknowledgement.
+Return JSON with exactly these keys:
+document_type ("claim_acknowledgement" when the page is a Global Claim Acknowledgement, otherwise "repair_order"),
+dms ("reynolds_ignite" when the printout is from Reynolds Ignite, otherwise ""),
 ro_number, open_date, close_date, repair_date, vin, mileage,
+claim_number, claim_status, dealer_code, in_service_date, warranty_coverage,
+claim_type, submission_type, continuation, date_received, date_completed, process_date,
+authorization, owner_name, vehicle_description, service_advisor,
+list_number, reference_number, prior_claim, technician_name,
 customer_concern, cause, correction,
-labor_operations (list of objects with op_code, description, hours, tech_number),
+labor_operations (list of objects with ro_number, op_code, description, failure_code, hours, tech_number),
 tech_numbers (list of strings),
 time_punches (list of objects with tech_number, on, off, hours),
-parts (list of objects with part_number, description, quantity, failed),
+parts (list of objects with ro_number, part_number, description, quantity, failed),
+repair_orders (list of objects with ro_number, technician_id, technician_name,
+total_parts, total_labor, total_special_service, pre_tax_total,
+labor_lines, part_lines),
 signatures (object with customer, advisor, technician; each true, false, or null),
 other_visible_notes (string),
 unreadable (list of field names you could not read).
+
+On a claim acknowledgement, split Customer Narrative into customer_concern (what the customer stated),
+cause (what was found), and correction (the repair performed, including any labor operation and hours the narrative states).
+Copy LOP into op_code, Failure Code into failure_code, and Hours into hours.
+A claim can contain more than one repair order. Keep each RO's lines and totals together in repair_orders.
 Do not invent values that are not on the page."""
 
 AUDIT_SYSTEM_PROMPT = """You are a warranty-audit checker for an automobile dealership.
@@ -158,14 +178,15 @@ def normalize_repair_order(data: dict) -> dict:
     """Coerce model output into a stable repair-order dict. Missing stays null or empty."""
     if not isinstance(data, dict):
         data = {}
+    data = _flatten_repair_orders(data)
     signatures = data.get("signatures") if isinstance(data.get("signatures"), dict) else {}
     labor = _rows(
         data.get("labor_operations"),
-        ("op_code", "description", "hours", "tech_number"),
+        ("ro_number", "op_code", "description", "failure_code", "hours", "tech_number"),
     )
     punches = _rows(data.get("time_punches"), ("tech_number", "on", "off", "hours"))
     parts = []
-    for row in _rows(data.get("parts"), ("part_number", "description", "quantity")):
+    for row in _rows(data.get("parts"), ("ro_number", "part_number", "description", "quantity")):
         source = row.pop("_source", {})
         row["failed"] = _boolish(source.get("failed"))
         parts.append(row)
@@ -185,13 +206,40 @@ def normalize_repair_order(data: dict) -> dict:
         text = _text(value)
         if text and text not in unreadable:
             unreadable.append(text)
+    kind = _text(data.get("document_type")).casefold().replace("-", " ").replace("_", " ")
+    if "claim acknowledgement" in kind or kind == "claim":
+        document_type = "claim_acknowledgement"
+    else:
+        document_type = "repair_order"
+    dms = _text(data.get("dms")).casefold().replace("-", " ").replace("_", " ")
     return {
+        "document_type": document_type,
+        "dms": "reynolds_ignite" if "reynolds" in dms else "",
         "ro_number": _text(data.get("ro_number")),
         "open_date": _text(data.get("open_date")),
         "close_date": _text(data.get("close_date")),
         "repair_date": _text(data.get("repair_date")),
         "vin": _text(data.get("vin")),
         "mileage": _text(data.get("mileage")),
+        "claim_number": _text(data.get("claim_number")),
+        "claim_status": _text(data.get("claim_status")),
+        "dealer_code": _text(data.get("dealer_code")),
+        "in_service_date": _text(data.get("in_service_date")),
+        "warranty_coverage": _text(data.get("warranty_coverage")),
+        "claim_type": _text(data.get("claim_type")),
+        "submission_type": _text(data.get("submission_type")),
+        "continuation": _text(data.get("continuation")),
+        "date_received": _text(data.get("date_received")),
+        "date_completed": _text(data.get("date_completed")),
+        "process_date": _text(data.get("process_date")),
+        "authorization": _text(data.get("authorization")),
+        "owner_name": _text(data.get("owner_name")),
+        "vehicle_description": _text(data.get("vehicle_description")),
+        "service_advisor": _text(data.get("service_advisor")),
+        "list_number": _text(data.get("list_number")),
+        "reference_number": _text(data.get("reference_number")),
+        "prior_claim": _text(data.get("prior_claim")),
+        "technician_name": _text(data.get("technician_name")),
         "customer_concern": _text(data.get("customer_concern")),
         "cause": _text(data.get("cause")),
         "correction": _text(data.get("correction")),
@@ -199,6 +247,11 @@ def normalize_repair_order(data: dict) -> dict:
         "tech_numbers": tech_numbers,
         "time_punches": punches,
         "parts": parts,
+        "repair_orders": _normalize_repair_blocks(data.get("repair_orders"), labor, parts),
+        "total_parts": _text(data.get("total_parts")),
+        "total_labor": _text(data.get("total_labor")),
+        "total_special_service": _text(data.get("total_special_service")),
+        "pre_tax_total": _text(data.get("pre_tax_total")),
         "signatures": {
             "customer": _boolish(signatures.get("customer")),
             "advisor": _boolish(signatures.get("advisor")),
@@ -241,30 +294,30 @@ def run_audit(
     *,
     complete: Optional[CompleteFn] = None,
 ) -> dict:
-    """Compare a repair order to stored chunks. Empty retrieval does not call the model."""
+    """Compare a repair order to stored chunks and to the claim-acknowledgement checklist.
+
+    Empty manual retrieval does not call the model. The Reynolds Ignite checklist still runs.
+    """
     order = normalize_repair_order(repair_order)
+    checklist = check_claim_criteria(order)
     retrieved = retrieve_for_repair_order(order, chunks)
+    manual_findings: list[dict] = []
+    if retrieved:
+        messages = build_audit_messages(order, retrieved)
+        raw = (complete or default_complete)(messages)
+        parsed = parse_json_object(raw)
+        manual_findings = validate_findings(parsed.get("findings"), retrieved)
+    findings = _sort_findings(checklist + manual_findings)
+    summary = build_summary(order.get("ro_number") or "", findings)
     if not retrieved:
-        summary = build_summary(order.get("ro_number") or "", [])
         summary = (
-            "No stored manual section matched this repair order, so nothing was flagged. "
+            "No stored manual section matched this document, so no manual policy was added. "
             + summary
         )
-        return {
-            "ro": order,
-            "findings": [],
-            "summary": summary,
-            "retrieved": [],
-            "manual_excerpt_count": 0,
-        }
-    messages = build_audit_messages(order, retrieved)
-    raw = (complete or default_complete)(messages)
-    parsed = parse_json_object(raw)
-    findings = validate_findings(parsed.get("findings"), retrieved)
     return {
         "ro": order,
         "findings": findings,
-        "summary": build_summary(order.get("ro_number") or "", findings),
+        "summary": summary,
         "retrieved": [
             {
                 "chunk_id": chunk.get("chunk_id"),
@@ -276,6 +329,83 @@ def run_audit(
         ],
         "manual_excerpt_count": len(retrieved),
     }
+
+
+def _sort_findings(findings: list[dict]) -> list[dict]:
+    return sorted(
+        findings,
+        key=lambda item: (
+            0 if item.get("counts_as_required_correction") else 1,
+            SEVERITIES.index(item["severity"]) if item.get("severity") in SEVERITIES else 9,
+            str(item.get("ro_field") or ""),
+        ),
+    )
+
+
+def _flatten_repair_orders(data: dict) -> dict:
+    """Copy per-RO lines onto the top-level lists when the model only filled repair_orders."""
+    blocks = data.get("repair_orders")
+    if not isinstance(blocks, list):
+        return data
+    labor: list[dict] = []
+    parts: list[dict] = []
+    techs: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        ro_number = block.get("ro_number") or ""
+        tech = block.get("technician_id") or ""
+        if tech:
+            techs.append(str(tech))
+        for line in block.get("labor_lines") or block.get("labor_operations") or []:
+            if isinstance(line, dict):
+                labor.append({**line, "ro_number": line.get("ro_number") or ro_number, "tech_number": line.get("tech_number") or tech})
+        for line in block.get("part_lines") or block.get("parts") or []:
+            if isinstance(line, dict):
+                parts.append({**line, "ro_number": line.get("ro_number") or ro_number})
+    if labor:
+        data["labor_operations"] = labor
+    if parts:
+        data["parts"] = parts
+    if techs:
+        data["tech_numbers"] = techs
+    if not data.get("technician_name"):
+        for block in blocks:
+            if isinstance(block, dict) and block.get("technician_name"):
+                data["technician_name"] = block.get("technician_name")
+                break
+    return data
+
+
+def _normalize_repair_blocks(raw: object, labor: list[dict], parts: list[dict]) -> list[dict]:
+    blocks = []
+    if isinstance(raw, list):
+        for block in raw:
+            if not isinstance(block, dict):
+                continue
+            ro_number = _text(block.get("ro_number"))
+            blocks.append({
+                "ro_number": ro_number,
+                "technician_id": _text(block.get("technician_id")),
+                "technician_name": _text(block.get("technician_name")),
+                "total_parts": _text(block.get("total_parts")),
+                "total_labor": _text(block.get("total_labor")),
+                "total_special_service": _text(block.get("total_special_service")),
+                "pre_tax_total": _text(block.get("pre_tax_total")),
+                "labor_lines": [
+                    row for row in labor if not ro_number or _text(row.get("ro_number")) in {"", ro_number}
+                ] if labor else _copy_lines(block.get("labor_lines") or block.get("labor_operations")),
+                "part_lines": [
+                    row for row in parts if not ro_number or _text(row.get("ro_number")) in {"", ro_number}
+                ] if parts else _copy_lines(block.get("part_lines") or block.get("parts")),
+            })
+    return blocks
+
+
+def _copy_lines(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [dict(row) for row in value if isinstance(row, dict)]
 
 
 def default_complete(messages: list) -> str:
@@ -299,7 +429,7 @@ def shrink_image(data: bytes, *, max_edge: int = 1600) -> tuple[bytes, str]:
         return buf.getvalue(), "image/jpeg"
 
 
-def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = 6) -> dict:
+def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = 10) -> dict:
     """Turn a camera photo, image upload, or PDF into model inputs."""
     name = (filename or "").lower()
     warnings: list[str] = []

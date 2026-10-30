@@ -28,10 +28,20 @@ from lib.warranty_audit_storage import (
     save_manual_record,
 )
 
-_LABOR_COLUMNS = ["op_code", "description", "hours", "tech_number"]
+_LABOR_COLUMNS = ["ro_number", "op_code", "description", "failure_code", "hours", "tech_number"]
 _PUNCH_COLUMNS = ["tech_number", "on", "off", "hours"]
-_PART_COLUMNS = ["part_number", "description", "quantity", "failed"]
+_PART_COLUMNS = ["ro_number", "part_number", "description", "quantity", "failed"]
+_TOTAL_COLUMNS = [
+    "ro_number",
+    "technician_id",
+    "technician_name",
+    "total_parts",
+    "total_labor",
+    "total_special_service",
+    "pre_tax_total",
+]
 _SIG_OPTIONS = ["Not visible", "Yes", "No"]
+_DOC_OPTIONS = ["Repair order", "FCA claim acknowledgement"]
 
 
 def render():
@@ -39,8 +49,8 @@ def render():
     st.markdown(
         page_hero(
             "Warranty Audit",
-            "Store the Stellantis warranty manual once. Photograph a repair order "
-            "and get a list of what to correct before the audit.",
+            "Store the Stellantis warranty manual once. Photograph a Reynolds Ignite "
+            "repair order or FCA claim acknowledgement and get a list of what to correct.",
             tag="Ready" if ready else "API key required",
             tag_style="live" if ready else "warn",
         ),
@@ -170,7 +180,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     st.markdown(
         section_title(
             "Repair order",
-            "Take a photo or upload a JPG, PNG, or PDF. Correct anything that was read wrong, then run the audit.",
+            "Take a photo or upload a Reynolds Ignite repair order or a paid claim acknowledgement (JPG, PNG, or PDF).",
         ),
         unsafe_allow_html=True,
     )
@@ -227,16 +237,15 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if extracted.get("unreadable"):
         st.warning("Could not read: " + ", ".join(str(item) for item in extracted["unreadable"]))
     edited = _repair_order_form(extracted)
-    audit_disabled = not llm_ready or not manual or not (manual.get("chunks") or [])
+    has_manual = bool(manual and manual.get("chunks"))
     if st.button(
-        "Audit against the manual",
+        "Check this document",
         type="primary",
-        disabled=audit_disabled,
         key="warranty_audit_run",
     ):
-        with st.spinner("Comparing the repair order to the stored manual..."):
+        with st.spinner("Checking the claim acknowledgement and the stored manual..."):
             try:
-                result = run_audit(edited, list(manual.get("chunks") or []))
+                result = run_audit(edited, list((manual or {}).get("chunks") or []))
             except LlmError as exc:
                 st.error(str(exc))
                 return
@@ -244,15 +253,23 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
                 st.error(f"The audit could not be completed. {exc}")
                 return
         result["source_name"] = st.session_state.get("warranty_audit_extract_name") or name
-        result["manual_id"] = manual.get("id")
-        result["manual_filename"] = manual.get("filename")
+        result["manual_id"] = (manual or {}).get("id")
+        result["manual_filename"] = (manual or {}).get("filename") or ""
         result["audited_at"] = datetime.now(timezone.utc).isoformat()
         st.session_state.warranty_audit_result = result
         st.session_state.pop("warranty_audit_active_run_id", None)
         st.session_state.pop("warranty_audit_saved_label", None)
         st.rerun()
-    if manual and not audit_disabled:
-        st.caption("The checker can only flag a requirement it can quote from the stored manual.")
+    if has_manual:
+        st.caption(
+            "Reynolds Ignite claim-acknowledgement fields are always checked. "
+            "A manual finding is added only when the stored manual contains the quoted sentence."
+        )
+    else:
+        st.caption(
+            "This checks the Reynolds Ignite claim-acknowledgement fields. "
+            "Store a warranty manual to also compare against manual text."
+        )
 
 
 def _repair_order_form(extracted: dict) -> dict:
@@ -269,6 +286,7 @@ def _repair_order_form(extracted: dict) -> dict:
     with c:
         mileage = st.text_input("Mileage", value=extracted.get("mileage") or "", key=f"{token}_miles")
         repair_date = st.text_input("Repair date", value=extracted.get("repair_date") or "", key=f"{token}_repair")
+    claim = _claim_acknowledgement_fields(extracted, token)
     concern = st.text_area("Concern", value=extracted.get("customer_concern") or "", key=f"{token}_concern")
     cause = st.text_area("Cause", value=extracted.get("cause") or "", key=f"{token}_cause")
     correction = st.text_area("Correction", value=extracted.get("correction") or "", key=f"{token}_correction")
@@ -281,8 +299,10 @@ def _repair_order_form(extracted: dict) -> dict:
         hide_index=True,
         key=f"{token}_labor",
         column_config={
-            "op_code": "Op code",
+            "ro_number": "RO #",
+            "op_code": "LOP",
             "description": "Description",
+            "failure_code": "Failure code",
             "hours": "Hours",
             "tech_number": "Tech #",
         },
@@ -309,6 +329,7 @@ def _repair_order_form(extracted: dict) -> dict:
         hide_index=True,
         key=f"{token}_parts",
         column_config={
+            "ro_number": "RO #",
             "part_number": "Part #",
             "description": "Description",
             "quantity": "Qty",
@@ -343,6 +364,9 @@ def _repair_order_form(extracted: dict) -> dict:
         value=extracted.get("other_visible_notes") or "",
         key=f"{token}_notes",
     )
+    labor_rows = _records(labor, _LABOR_COLUMNS)
+    part_rows = _records(parts, _PART_COLUMNS)
+    totals = claim.pop("_totals", [])
     return {
         "ro_number": ro_number,
         "open_date": open_date,
@@ -353,9 +377,10 @@ def _repair_order_form(extracted: dict) -> dict:
         "customer_concern": concern,
         "cause": cause,
         "correction": correction,
-        "labor_operations": _records(labor, _LABOR_COLUMNS),
+        "labor_operations": labor_rows,
         "time_punches": _records(punches, _PUNCH_COLUMNS),
-        "parts": _records(parts, _PART_COLUMNS),
+        "parts": part_rows,
+        "repair_orders": _repair_blocks(labor_rows, part_rows, totals, ro_number, claim.get("technician_name") or ""),
         "signatures": {
             "customer": customer_sig,
             "advisor": advisor_sig,
@@ -363,6 +388,86 @@ def _repair_order_form(extracted: dict) -> dict:
         },
         "other_visible_notes": notes,
         "unreadable": extracted.get("unreadable") or [],
+        **claim,
+    }
+
+
+def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
+    """Fields printed on an FCA Global Claim Acknowledgement from Reynolds Ignite."""
+    expanded = extracted.get("document_type") == "claim_acknowledgement"
+    with st.expander("Claim acknowledgement fields", expanded=expanded):
+        st.caption("These are the boxes on a paid FCA claim acknowledgement. Leave them blank on a plain repair order.")
+        doc_label = st.selectbox(
+            "Document",
+            _DOC_OPTIONS,
+            index=1 if expanded else 0,
+            key=f"{token}_doc",
+        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            claim_number = st.text_input("Claim number", value=extracted.get("claim_number") or "", key=f"{token}_claim")
+            dealer_code = st.text_input("Dealer", value=extracted.get("dealer_code") or "", key=f"{token}_dealer")
+            claim_status = st.text_input("Status", value=extracted.get("claim_status") or "", key=f"{token}_status")
+            authorization = st.text_input("Authorization", value=extracted.get("authorization") or "", key=f"{token}_auth")
+        with c2:
+            coverage = st.text_input("Warranty coverage", value=extracted.get("warranty_coverage") or "", key=f"{token}_cov")
+            claim_type = st.text_input("Claim type", value=extracted.get("claim_type") or "", key=f"{token}_ctype")
+            submission = st.text_input("Submission type", value=extracted.get("submission_type") or "", key=f"{token}_sub")
+            continuation = st.text_input("Continuation", value=extracted.get("continuation") or "", key=f"{token}_cont")
+        with c3:
+            in_service = st.text_input("In service date", value=extracted.get("in_service_date") or "", key=f"{token}_insvc")
+            received = st.text_input("Date received", value=extracted.get("date_received") or "", key=f"{token}_recv")
+            completed = st.text_input("Date completed", value=extracted.get("date_completed") or "", key=f"{token}_done")
+            advisor = st.text_input("Service advisor", value=extracted.get("service_advisor") or "", key=f"{token}_advisor")
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            owner = st.text_input("Owner's name", value=extracted.get("owner_name") or "", key=f"{token}_owner")
+            vehicle = st.text_input("Vehicle description", value=extracted.get("vehicle_description") or "", key=f"{token}_vehicle")
+        with d2:
+            list_number = st.text_input("List number", value=extracted.get("list_number") or "", key=f"{token}_list")
+            reference = st.text_input("Reference number", value=extracted.get("reference_number") or "", key=f"{token}_ref")
+        with d3:
+            process_date = st.text_input("Process date", value=extracted.get("process_date") or "", key=f"{token}_process")
+            tech_name = st.text_input("Technician name", value=extracted.get("technician_name") or "", key=f"{token}_techname")
+        totals = st.data_editor(
+            _frame(extracted.get("repair_orders") or [], _TOTAL_COLUMNS),
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key=f"{token}_totals",
+            column_config={
+                "ro_number": "RO #",
+                "technician_id": "Tech #",
+                "technician_name": "Tech name",
+                "total_parts": "Total parts",
+                "total_labor": "Total labor",
+                "total_special_service": "Special service",
+                "pre_tax_total": "Pre-tax total",
+            },
+        )
+    return {
+        "document_type": "claim_acknowledgement" if doc_label == "FCA claim acknowledgement" else "repair_order",
+        "dms": extracted.get("dms") or "",
+        "claim_number": claim_number,
+        "claim_status": claim_status,
+        "dealer_code": dealer_code,
+        "in_service_date": in_service,
+        "warranty_coverage": coverage,
+        "claim_type": claim_type,
+        "submission_type": submission,
+        "continuation": continuation,
+        "date_received": received,
+        "date_completed": completed,
+        "process_date": process_date,
+        "authorization": authorization,
+        "owner_name": owner,
+        "vehicle_description": vehicle,
+        "service_advisor": advisor,
+        "list_number": list_number,
+        "reference_number": reference,
+        "prior_claim": extracted.get("prior_claim") or "",
+        "technician_name": tech_name,
+        "_totals": _records(totals, _TOTAL_COLUMNS),
     }
 
 
@@ -376,7 +481,7 @@ def _render_result(result: dict):
     st.markdown(
         section_title(
             "What to correct",
-            "A correction is listed only when the stored manual contains the quoted sentence.",
+            "Claim-acknowledgement fields come from the Reynolds Ignite printout. Manual items also quote the stored manual.",
         ),
         unsafe_allow_html=True,
     )
@@ -543,6 +648,33 @@ def _selected_file(upload, camera):
     return "", b""
 
 
+def _repair_blocks(labor_rows, part_rows, totals, ro_number: str, tech_name: str) -> list[dict]:
+    if not totals:
+        return []
+    single = len(totals) == 1
+
+    def take(lines, number: str) -> list[dict]:
+        if single:
+            return lines
+        return [line for line in lines if (line.get("ro_number") or "") == number]
+
+    blocks = []
+    for row in totals:
+        number = row.get("ro_number") or (ro_number if single else "")
+        blocks.append({
+            "ro_number": number,
+            "technician_id": row.get("technician_id") or "",
+            "technician_name": row.get("technician_name") or tech_name,
+            "total_parts": row.get("total_parts") or "",
+            "total_labor": row.get("total_labor") or "",
+            "total_special_service": row.get("total_special_service") or "",
+            "pre_tax_total": row.get("pre_tax_total") or "",
+            "labor_lines": take(labor_rows, row.get("ro_number") or ""),
+            "part_lines": take(part_rows, row.get("ro_number") or ""),
+        })
+    return blocks
+
+
 def _frame(rows, columns: list[str]) -> pd.DataFrame:
     frame = pd.DataFrame(list(rows or []), columns=columns)
     return frame.fillna("")
@@ -562,6 +694,7 @@ def _parts_for_editor(parts) -> list[dict]:
             label = ""
         rows.append(
             {
+                "ro_number": part.get("ro_number") or "",
                 "part_number": part.get("part_number") or "",
                 "description": part.get("description") or "",
                 "quantity": part.get("quantity") or "",

@@ -12,6 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from lib.warranty_audit_claim import check_claim_criteria
 from lib.warranty_audit_llm import (
     AUDIT_SYSTEM_PROMPT,
     LlmError,
@@ -95,6 +96,7 @@ def _brake_ro() -> dict:
             {
                 "op_code": "05-01",
                 "description": "Replace front pads",
+                "failure_code": "68",
                 "hours": "1.2",
                 "tech_number": "441",
             }
@@ -619,6 +621,119 @@ class RepoWiringTests(unittest.TestCase):
         examples = (ROOT / ".env.example").read_text() + (ROOT / "streamlit-cloud-secrets.example.toml").read_text()
         self.assertNotIn("sk-live", examples)
         self.assertNotIn("sk-proj", examples)
+
+
+class ClaimAcknowledgementTests(unittest.TestCase):
+    def test_complete_paid_claim_has_no_checklist_findings(self):
+        findings = check_claim_criteria(_paid_claim())
+        self.assertEqual(findings, [])
+
+    def test_prior_claim_may_be_blank(self):
+        claim = _paid_claim()
+        claim["submission_type"] = "R-Resubmission"
+        claim["prior_claim"] = ""
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertNotIn("Prior claim", fields)
+
+    def test_hours_mismatch_and_bad_total_are_flagged(self):
+        claim = _paid_claim()
+        claim["repair_orders"][0]["labor_lines"][0]["hours"] = "0.9"
+        claim["repair_orders"][0]["labor_lines"][0]["failure_code"] = ""
+        claim["repair_orders"][0]["part_lines"][0]["failed"] = None
+        claim["repair_orders"][0]["pre_tax_total"] = "50.00"
+        claim["authorization"] = ""
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertIn("RO 1 labor hours", fields)
+        self.assertIn("RO 1 failure code", fields)
+        self.assertIn("RO 1 failed part", fields)
+        self.assertIn("RO 1 pre-tax total", fields)
+        self.assertIn("Authorization", fields)
+        hours = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "RO 1 labor hours")
+        self.assertIn("0.3", hours["whats_wrong"])
+        self.assertIn("0.9", hours["whats_wrong"])
+        self.assertEqual(hours["manual_section"], "FCA US LLC Global Claim Acknowledgement")
+        self.assertNotIn("manual", hours["citation_quote"].lower())
+
+    def test_unrelated_time_in_the_narrative_is_not_a_mismatch(self):
+        claim = _paid_claim()
+        claim["correction"] += " SAME LABOR TIME FOR R&R 0.9HR."
+        self.assertEqual(check_claim_criteria(claim), [])
+
+    def test_plain_repair_order_does_not_require_authorization(self):
+        order = _brake_ro()
+        fields = {item["ro_field"] for item in check_claim_criteria(order)}
+        self.assertNotIn("Authorization", fields)
+        self.assertNotIn("Claim number", fields)
+
+    def test_checklist_runs_when_no_manual_section_matches(self):
+        called = {"count": 0}
+
+        def complete(_messages):
+            called["count"] += 1
+            return "{}"
+
+        claim = _paid_claim()
+        claim["repair_orders"][0]["labor_lines"][0]["failure_code"] = ""
+        result = run_audit(claim, [], complete=complete)
+        self.assertEqual(called["count"], 0)
+        self.assertTrue(any(item["ro_field"] == "RO 1 failure code" for item in result["findings"]))
+        self.assertIn("No stored manual section matched", result["summary"])
+
+
+def _paid_claim() -> dict:
+    return {
+        "document_type": "claim_acknowledgement",
+        "dms": "reynolds_ignite",
+        "claim_number": "A10001",
+        "claim_status": "Paid",
+        "dealer_code": "00001",
+        "vin": "1C4RJFBG5LC000001",
+        "in_service_date": "Jun 1, 2016",
+        "warranty_coverage": "560",
+        "claim_type": "W-Warranty",
+        "submission_type": "O-Original",
+        "continuation": "NO",
+        "date_received": "Jan 2, 2026",
+        "date_completed": "Jan 10, 2026",
+        "process_date": "Jan 21, 2026",
+        "authorization": "AUTH123",
+        "owner_name": "SAMPLE",
+        "vehicle_description": "2016 DODGE JOURNEY",
+        "service_advisor": "10001",
+        "list_number": "1000",
+        "reference_number": "2000",
+        "customer_concern": "CUSTOMER STATES REAR VIEW CAMERA INOPERATIVE.",
+        "cause": "FOUND BROKEN WIRING IN THE CAMERA HARNESS.",
+        "correction": "REPLACED THE REAR VIEW CAMERA. LABOR OP 08200170. TOTAL TIME 0.3HR.",
+        "repair_orders": [
+            {
+                "ro_number": "1",
+                "technician_id": "20001",
+                "technician_name": "Tech Sample",
+                "total_parts": "100.00",
+                "total_labor": "81.59",
+                "total_special_service": "0.00",
+                "pre_tax_total": "181.59",
+                "labor_lines": [
+                    {
+                        "op_code": "08200170",
+                        "description": "Park view backup assist",
+                        "failure_code": "58",
+                        "hours": "0.3",
+                        "tech_number": "20001",
+                    }
+                ],
+                "part_lines": [
+                    {
+                        "part_number": "56054158AG",
+                        "description": "CAMERA",
+                        "quantity": "1",
+                        "failed": True,
+                    }
+                ],
+            }
+        ],
+    }
 
 
 if __name__ == "__main__":

@@ -17,9 +17,12 @@ create table if not exists warranty_manuals (
     updated_at timestamptz default now()
 );
 
--- Only one manual is active. Replacing a manual deactivates the previous row.
-create unique index if not exists warranty_manuals_one_active_idx
-    on warranty_manuals (is_active)
+-- One active warranty manual and one active audit guide.
+alter table warranty_manuals add column if not exists document_kind text not null default 'warranty_manual';
+
+drop index if exists warranty_manuals_one_active_idx;
+create unique index if not exists warranty_manuals_one_active_per_kind_idx
+    on warranty_manuals (document_kind)
     where is_active;
 
 create index if not exists warranty_manuals_uploaded_idx

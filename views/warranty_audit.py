@@ -19,9 +19,17 @@ from lib.warranty_audit_llm import (
     normalize_repair_order,
     prepare_documents,
     run_audit,
+    transcribe_reference_pdf,
 )
-from lib.warranty_audit_manual import ManualExtractError, csv_download_name, findings_to_csv
+from lib.warranty_audit_manual import (
+    ManualExtractError,
+    build_manual_record_from_pages,
+    csv_download_name,
+    findings_to_csv,
+)
 from lib.warranty_audit_storage import (
+    GUIDE_KIND,
+    MANUAL_KIND,
     apply_warranty_audit_snapshot_to_session,
     audit_tables_sql,
     clear_live_photos,
@@ -57,8 +65,8 @@ def render():
     st.markdown(
         page_hero(
             "Warranty Audit",
-            "Store the Stellantis warranty manual once. Photograph a Reynolds Ignite "
-            "repair order or FCA claim acknowledgement and get a list of what to correct.",
+            "Store the warranty manual and the dealer audit guide. Every repair order "
+            "is checked against both.",
             tag="Ready" if ready else "API key required",
             tag_style="live" if ready else "warn",
         ),
@@ -76,9 +84,9 @@ def render():
     else:
         st.caption("Repair orders are read with the vision model named in OPENAI_MODEL, or gpt-4o if that secret is unset.")
 
-    manual = _render_manual()
+    manual, guide = _render_reference_documents()
     st.markdown("<hr>", unsafe_allow_html=True)
-    _render_repair_order(manual, ready)
+    _render_repair_order(manual, guide, ready)
     result = st.session_state.get("warranty_audit_result")
     if result:
         st.markdown("<hr>", unsafe_allow_html=True)
@@ -86,70 +94,130 @@ def render():
     _render_recent()
 
 
-def _render_manual():
+def _render_reference_documents():
     st.markdown(
         section_title(
-            "Warranty manual",
-            "Upload the text-based warranty manual PDF once. Later audits reuse the stored sections.",
+            "Reference documents",
+            "Every repair order is checked against the warranty manual and the dealer audit guide.",
         ),
         unsafe_allow_html=True,
     )
-    current = load_active_manual()
-    flash = st.session_state.pop("warranty_audit_manual_flash", None)
+    manual_col, guide_col = st.columns(2)
+    with manual_col:
+        manual = _render_one_document(
+            kind=MANUAL_KIND,
+            heading="Warranty manual",
+            empty="No warranty manual is stored yet.",
+            uploader="Warranty manual PDF",
+            help_text="Upload the Stellantis warranty manual. A text PDF is stored directly. A scan is read once.",
+            store_label="Store warranty manual",
+            replace_label="Replace warranty manual",
+        )
+    with guide_col:
+        guide = _render_one_document(
+            kind=GUIDE_KIND,
+            heading="Audit guide",
+            empty="No audit guide is stored yet. Upload the dealer audit reason-code guide.",
+            uploader="Audit guide PDF",
+            help_text="This is the other document. A photo scan is read once, then every repair order is checked against it.",
+            store_label="Store audit guide",
+            replace_label="Replace audit guide",
+        )
+    return manual, guide
+
+
+def _render_one_document(
+    *,
+    kind: str,
+    heading: str,
+    empty: str,
+    uploader: str,
+    help_text: str,
+    store_label: str,
+    replace_label: str,
+):
+    st.markdown(f"##### {heading}")
+    current = load_active_manual(kind)
+    flash = st.session_state.pop(f"warranty_audit_{kind}_flash", None)
     if flash == "stored":
-        st.success(st.session_state.pop("warranty_audit_manual_detail", "Manual stored."))
+        st.success(st.session_state.pop(f"warranty_audit_{kind}_detail", f"{heading} stored."))
     elif flash:
         st.warning(flash)
         _show_sql(str(flash))
     if current:
         _render_manual_status(current)
         replace = st.checkbox(
-            "Replace the stored manual",
+            f"Replace the stored {heading.lower()}",
             value=False,
-            key="warranty_audit_replace_manual",
+            key=f"warranty_audit_replace_{kind}",
         )
     else:
-        st.markdown(
-            status_banner("No warranty manual is stored yet. Upload the PDF to start.", "info"),
-            unsafe_allow_html=True,
-        )
+        st.markdown(status_banner(empty, "info"), unsafe_allow_html=True)
         replace = True
-
     if not replace:
         return current
-
     upload = st.file_uploader(
-        "Warranty manual PDF",
+        uploader,
         type=["pdf"],
-        key="warranty_audit_manual_file",
-        help="Use the text warranty manual, not a photo scan. Scanned pages have no text to cite.",
+        key=f"warranty_audit_file_{kind}",
+        help=help_text,
     )
     if upload is not None and st.button(
-        "Replace stored manual" if current else "Store manual",
+        replace_label if current else store_label,
         type="primary",
-        key="warranty_audit_store_manual",
+        key=f"warranty_audit_store_{kind}",
     ):
-        with st.spinner("Reading the manual and storing sections..."):
+        with st.spinner(f"Reading {heading.lower()} and storing sections..."):
             try:
-                record = new_manual_record(upload.name, upload.getvalue())
-                saved, err = save_manual_record(record)
+                record = _record_from_upload(upload.name, upload.getvalue(), kind)
+                saved, err = save_manual_record(record, kind=kind)
             except ManualExtractError as exc:
                 st.error(str(exc))
                 return current
+            except LlmError as exc:
+                st.error(str(exc))
+                return current
             except Exception as exc:
-                st.error(f"Could not store the manual. {exc}")
+                st.error(f"Could not store {heading.lower()}. {exc}")
                 return current
         where = "Supabase and this computer" if saved.get("storage_source") == "supabase" else "this computer"
         if err:
-            st.session_state.warranty_audit_manual_flash = err
+            st.session_state[f"warranty_audit_{kind}_flash"] = err
         else:
-            st.session_state.warranty_audit_manual_flash = "stored"
-            st.session_state.warranty_audit_manual_detail = (
+            st.session_state[f"warranty_audit_{kind}_flash"] = "stored"
+            st.session_state[f"warranty_audit_{kind}_detail"] = (
                 f"Stored {saved.get('filename')} "
                 f"({saved.get('page_count')} pages, {saved.get('chunk_count')} sections) on {where}."
             )
         st.rerun()
     return current
+
+
+def _record_from_upload(filename: str, data: bytes, kind: str) -> dict:
+    """Store a text PDF, or read a scan into text so later audits can cite it."""
+    try:
+        record = new_manual_record(filename, data)
+    except ManualExtractError:
+        if not llm_configured():
+            raise ManualExtractError(
+                "This PDF is a scan with no text to cite. Add OPENAI_API_KEY, then store it again. "
+                "The pages are read once."
+            ) from None
+        pages = transcribe_reference_pdf(data)
+        from datetime import datetime, timezone
+        import uuid
+
+        record = build_manual_record_from_pages(
+            filename,
+            pages,
+            manual_id=str(uuid.uuid4()),
+            uploaded_at=datetime.now(timezone.utc).isoformat(),
+        )
+        record["warnings"] = list(record.get("warnings") or []) + [
+            "This PDF was a scan. The stored text was read from the page images."
+        ]
+    record["document_kind"] = kind
+    return record
 
 
 def _render_manual_status(current: dict):
@@ -184,7 +252,7 @@ def _render_manual_status(current: dict):
         _show_sql(str(current["storage_warning"]))
 
 
-def _render_repair_order(manual: dict | None, llm_ready: bool):
+def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: bool):
     st.markdown(
         section_title(
             "Repair order",
@@ -192,8 +260,17 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         ),
         unsafe_allow_html=True,
     )
-    if not manual:
-        st.caption("Store a warranty manual before running an audit. You can still read a photo.")
+    missing = []
+    if not (manual and manual.get("chunks")):
+        missing.append("the warranty manual")
+    if not (guide and guide.get("chunks")):
+        missing.append("the audit guide")
+    if missing:
+        st.caption(
+            "Store "
+            + " and ".join(missing)
+            + " so every repair order is checked against both. You can still read a photo."
+        )
     tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
     _watch_phone_photos()
     st.markdown(
@@ -250,7 +327,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 10. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 11. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -310,14 +387,21 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if isinstance(st.session_state.get("warranty_audit_carry"), dict):
         st.session_state.warranty_audit_carry = carried_claim_identity(edited)
     has_manual = bool(manual and manual.get("chunks"))
+    has_guide = bool(guide and guide.get("chunks"))
     if st.button(
         "Check this document",
         type="primary",
         key="warranty_audit_run",
     ):
-        with st.spinner("Checking the claim acknowledgement and the stored manual..."):
+        with st.spinner("Checking this repair order against the warranty manual and the audit guide..."):
             try:
-                result = run_audit(edited, list((manual or {}).get("chunks") or []))
+                result = run_audit(
+                    edited,
+                    list((manual or {}).get("chunks") or []),
+                    guide_chunks=list((guide or {}).get("chunks") or []),
+                    manual_name=(manual or {}).get("filename") or "",
+                    guide_name=(guide or {}).get("filename") or "",
+                )
             except LlmError as exc:
                 st.warning(str(exc))
                 result = {
@@ -333,20 +417,22 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         result["source_name"] = st.session_state.get("warranty_audit_extract_name") or names
         result["manual_id"] = (manual or {}).get("id")
         result["manual_filename"] = (manual or {}).get("filename") or ""
+        result["guide_id"] = (guide or {}).get("id")
+        result["guide_filename"] = (guide or {}).get("filename") or ""
         result["audited_at"] = datetime.now(timezone.utc).isoformat()
         st.session_state.warranty_audit_result = result
         st.session_state.pop("warranty_audit_active_run_id", None)
         st.session_state.pop("warranty_audit_saved_label", None)
         st.rerun()
-    if has_manual:
+    if has_manual or has_guide:
         st.caption(
-            "Reynolds Ignite claim-acknowledgement fields are always checked. "
-            "A manual finding is added only when the stored manual contains the quoted sentence."
+            "Reynolds Ignite claim fields are always checked. "
+            "A manual or audit-guide finding is added only when that stored document contains the quoted sentence."
         )
     else:
         st.caption(
-            "This checks the Reynolds Ignite claim-acknowledgement fields. "
-            "Store a warranty manual to also compare against manual text."
+            "This checks the Reynolds Ignite claim fields. "
+            "Store the warranty manual and the audit guide to check the repair order against both."
         )
 
 
@@ -640,9 +726,11 @@ def _render_result(result: dict):
 
     kind = "warn" if required else "success"
     st.markdown(status_banner(summary, kind), unsafe_allow_html=True)
-    manual_name = result.get("manual_filename") or "stored manual"
+    manual_name = result.get("manual_filename") or "warranty manual"
+    guide_name = result.get("guide_filename") or "audit guide"
     st.caption(
-        f"Compared with {int(result.get('manual_excerpt_count') or 0)} section(s) from {manual_name}."
+        f"Warranty manual: {int(result.get('manual_excerpt_count') or 0)} section(s) from {manual_name}. "
+        f"Audit guide: {int(result.get('guide_excerpt_count') or 0)} section(s) from {guide_name}."
     )
     counts = {name: 0 for name in ("critical", "major", "minor")}
     for item in required:
@@ -675,10 +763,11 @@ def _render_result(result: dict):
 
     retrieved = result.get("retrieved") or []
     if retrieved:
-        with st.expander("Manual sections used"):
+        with st.expander("Sections used"):
             for chunk in retrieved:
+                document = chunk.get("document_name") or ""
                 st.text(
-                    f"PDF page {chunk.get('page_number')} · {chunk.get('section_label') or ''}"
+                    f"{document + ' · ' if document else ''}PDF page {chunk.get('page_number')} · {chunk.get('section_label') or ''}"
                 )
                 st.text(chunk.get("text") or "")
 

@@ -65,6 +65,9 @@ DOCUMENTATION_PROBES = (
     "mileage vehicle identification",
     "cause correction complaint narrative",
     "labor operation hours",
+    "tech notes documenting cause complaint",
+    "add on operation service manager signature",
+    "time documentation chargeback",
 )
 
 
@@ -261,6 +264,7 @@ def repair_order_query_text(repair_order: dict) -> str:
         "customer_concern",
         "cause",
         "correction",
+        "tech_notes",
         "other_visible_notes",
         "vin",
         "mileage",

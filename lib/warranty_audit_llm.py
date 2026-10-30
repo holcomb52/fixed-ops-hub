@@ -93,11 +93,12 @@ A claim can contain more than one repair order. Keep each RO's lines and totals 
 Do not invent values that are not on the page."""
 
 AUDIT_SYSTEM_PROMPT = """You are a warranty-audit checker for an automobile dealership.
-You compare one repair order to excerpts from a warranty manual the dealership stored.
+You compare one repair order to excerpts from the documents the dealership stored.
+Those documents are the warranty manual and the dealer audit guide.
 You have no other policy source.
 
 Rules:
-- Use only the manual excerpts in the user message. Do not use outside knowledge of Stellantis, FCA, OEM, or dealer policy. If a requirement is not written in those excerpts, do not flag it.
+- Use only the excerpts in the user message. Do not use outside knowledge of Stellantis, FCA, OEM, or dealer policy. If a requirement is not written in those excerpts, do not flag it.
 - Every finding must include citation_quote: a contiguous verbatim copy of the excerpt sentence or sentences that state the requirement. Do not paraphrase, shorten with ellipses, or merge text from different excerpts.
 - manual_page must be the pdf_page number on the excerpt you quoted. manual_section must be the section label on that excerpt.
 - If the repair order already satisfies the excerpt, do not file a finding.
@@ -565,31 +566,42 @@ def run_audit(
     repair_order: dict,
     chunks: list[dict],
     *,
+    guide_chunks: Optional[list[dict]] = None,
+    manual_name: str = "",
+    guide_name: str = "",
     complete: Optional[CompleteFn] = None,
 ) -> dict:
-    """Compare a repair order to stored chunks and to the claim-acknowledgement checklist.
+    """Check one repair order against the warranty manual and the audit guide.
 
-    Empty manual retrieval does not call the model. The Reynolds Ignite checklist still runs.
+    Empty retrieval for a document does not call the model for that document.
+    The Reynolds Ignite checklist still runs.
     """
     order = normalize_repair_order(repair_order)
     checklist = check_claim_criteria(order)
-    retrieved = retrieve_for_repair_order(order, chunks)
-    manual_findings: list[dict] = []
-    if retrieved:
-        messages = build_audit_messages(order, retrieved)
-        try:
-            raw = (complete or default_complete)(messages)
-            parsed = parse_json_object(raw)
-            manual_findings = validate_findings(parsed.get("findings"), retrieved)
-        except LlmError:
-            manual_findings = []
-    findings = _sort_findings(checklist + manual_findings)
-    summary = build_summary(order.get("ro_number") or "", findings)
-    if not retrieved:
-        summary = (
-            "No stored manual section matched this document, so no manual policy was added. "
-            + summary
-        )
+    manual_findings, manual_hits = _audit_document(
+        order,
+        chunks,
+        document_name=manual_name or "Warranty manual",
+        complete=complete,
+    )
+    guide_findings, guide_hits = _audit_document(
+        order,
+        list(guide_chunks or []),
+        document_name=guide_name or "Audit guide",
+        complete=complete,
+    )
+    findings = _sort_findings(checklist + manual_findings + guide_findings)
+    summary = _audit_summary(
+        order.get("ro_number") or "",
+        findings,
+        manual_stored=bool(chunks),
+        manual_hits=len(manual_hits),
+        manual_name=manual_name or "the warranty manual",
+        guide_stored=guide_chunks is not None and bool(guide_chunks),
+        guide_hits=len(guide_hits),
+        guide_name=guide_name or "the audit guide",
+    )
+    retrieved = manual_hits + guide_hits
     return {
         "ro": order,
         "findings": findings,
@@ -599,12 +611,133 @@ def run_audit(
                 "chunk_id": chunk.get("chunk_id"),
                 "page_number": chunk.get("page_number"),
                 "section_label": chunk.get("section_label"),
+                "document_name": chunk.get("document_name") or "",
                 "text": chunk.get("text"),
             }
             for chunk in retrieved
         ],
-        "manual_excerpt_count": len(retrieved),
+        "manual_excerpt_count": len(manual_hits),
+        "guide_excerpt_count": len(guide_hits),
     }
+
+
+def _audit_document(
+    order: dict,
+    chunks: list[dict],
+    *,
+    document_name: str,
+    complete: Optional[CompleteFn],
+) -> tuple[list[dict], list[dict]]:
+    if not chunks:
+        return [], []
+    retrieved = [
+        {**chunk, "document_name": document_name}
+        for chunk in retrieve_for_repair_order(order, chunks)
+    ]
+    if not retrieved:
+        return [], []
+    messages = build_audit_messages(order, retrieved)
+    try:
+        raw = (complete or default_complete)(messages)
+        parsed = parse_json_object(raw)
+        findings = validate_findings(parsed.get("findings"), retrieved)
+    except LlmError:
+        findings = []
+    return findings, retrieved
+
+
+def _audit_summary(
+    ro_number: str,
+    findings: list[dict],
+    *,
+    manual_stored: bool,
+    manual_hits: int,
+    manual_name: str,
+    guide_stored: bool,
+    guide_hits: int,
+    guide_name: str,
+) -> str:
+    notes = []
+    if not manual_stored:
+        notes.append("No warranty manual is stored, so this repair order was not checked against one.")
+    elif not manual_hits:
+        notes.append(
+            "No stored manual section matched this document, so no manual policy was added."
+        )
+    else:
+        notes.append(f"Checked {manual_hits} section(s) of {manual_name}.")
+    if not guide_stored:
+        notes.append("No audit guide is stored, so this repair order was not checked against that document.")
+    elif not guide_hits:
+        notes.append(f"No section of {guide_name} matched this repair order.")
+    else:
+        notes.append(f"Checked {guide_hits} section(s) of {guide_name}.")
+    return " ".join(notes) + " " + build_summary(ro_number, findings)
+
+
+REFERENCE_PAGE_LIMIT = 40
+REFERENCE_TRANSCRIBE_PROMPT = """Copy this page of a warranty manual or dealer audit guide exactly.
+Keep headings, reason codes, and bullet points. Do not summarize. Plain text only."""
+
+
+def transcribe_reference_pdf(data: bytes, *, on_progress: Optional[Callable[[int, int], None]] = None) -> list[dict]:
+    """Read a scanned reference PDF into page text that can be cited later."""
+    from lib.warranty_audit_manual import ManualExtractError, render_pdf_page_images
+
+    images = render_pdf_page_images(data, max_pages=REFERENCE_PAGE_LIMIT, resolution=120)
+    if not images:
+        raise ManualExtractError(
+            "This PDF has no text layer and its pages could not be read. Upload a text PDF or a clearer scan."
+        )
+    complete_fn = _bound_complete(json_mode=False, max_tokens=4096)
+    prepared = []
+    for blob in images:
+        try:
+            prepared.append(shrink_image(blob, max_edge=1600))
+        except Exception:
+            prepared.append((blob, "image/png"))
+
+    def copy_page(index: int, image: tuple[bytes, str]) -> str:
+        blob, mime = image
+        encoded = base64.b64encode(blob).decode("ascii")
+        messages = [
+            {"role": "system", "content": "You copy printed manual pages exactly. Plain text only."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"Page {index}.\n{REFERENCE_TRANSCRIBE_PROMPT}"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
+                    },
+                ],
+            },
+        ]
+        try:
+            return complete_fn(messages).strip()
+        except LlmError as exc:
+            return f"[Page {index} could not be read. {exc}]"
+
+    pages: list[str] = [""] * len(prepared)
+    if len(prepared) == 1:
+        pages[0] = copy_page(1, prepared[0])
+        if on_progress:
+            on_progress(1, 1)
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {
+                pool.submit(copy_page, index, image): index - 1
+                for index, image in enumerate(prepared, start=1)
+            }
+            finished = 0
+            for future in as_completed(futures):
+                pages[futures[future]] = future.result()
+                finished += 1
+                if on_progress:
+                    on_progress(finished, len(prepared))
+    return [{"page_number": index, "text": text} for index, text in enumerate(pages, start=1) if text.strip()]
 
 
 def _sort_findings(findings: list[dict]) -> list[dict]:

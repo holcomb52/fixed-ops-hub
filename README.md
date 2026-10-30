@@ -126,7 +126,7 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 | Payroll | Live — technician, advisor, and receptionist pay |
 | Flag Sheet | Live — technician flag hours |
 | Warranty | Live — warranty ELR analysis |
-| Warranty Audit | Live — repair order vs stored Stellantis manual |
+| Warranty Audit | Live — every repair order vs the warranty manual and the audit guide |
 | Warranty Admin Bonus | Live |
 | CSI Bonus | Live |
 | Advisor Training | Live — daily training logs |
@@ -139,8 +139,8 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 
 1. On an existing Supabase project, run `supabase/warranty_audit_tables.sql` in the SQL Editor. A brand-new project that already ran `supabase/schema.sql` can skip this.
 2. Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) as shown above.
-3. Open **Warranty Audit**, upload the text-based Stellantis warranty manual PDF once, and click **Store manual**. Later audits reuse it until you replace it. A photo scan of the manual cannot be cited.
+3. Open **Warranty Audit**. Store the warranty manual and the dealer audit guide. A text PDF is stored directly. A photo scan is read once, then every repair order is checked against both documents.
 4. On your phone, tap **Open camera**, snap every page, then tap **Add these pictures to the claim**. The camera stays open between pages. You can add up to 20. Click **Read repair order**, fix anything that was read wrong, then **Check this document**. To save the audit, this app's secrets need `SUPABASE_URL` and `SUPABASE_KEY` copied from the original Fixed Ops Hub app. The warranty audit tables are already in that Supabase project.
 5. Download the findings CSV, or click **Save audit to history** to keep it on this page and under Reports.
 
-The claim-acknowledgement checklist looks at the fields printed on a paid FCA claim acknowledgement: VIN, customer narrative, technician, LOP, failure code, hours, failed part, and list number. Pre-tax total and the owner's name are left blank on these acknowledgements. A plus sign next to a job number is a warranty add-on and needs your signature. Tech notes must state the cause and match the complaint, the labor, and the failed parts. A manual finding is added only when it quotes a sentence from the stored manual. The checker does not fill in Stellantis policy from memory.
+The claim-acknowledgement checklist looks at the fields printed on a paid FCA claim acknowledgement: VIN, customer narrative, technician, LOP, failure code, hours, failed part, and list number. Pre-tax total and the owner's name are left blank on these acknowledgements. A plus sign next to a job number is a warranty add-on and needs your signature. Tech notes must state the cause and match the complaint, the labor, and the failed parts. A finding from the warranty manual or the audit guide is added only when it quotes a sentence from that stored document. The checker does not fill in Stellantis policy from memory.

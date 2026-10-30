@@ -224,7 +224,8 @@ create index if not exists idx_advisor_training_logs_completed
 create index if not exists idx_advisor_training_logs_employee
     on advisor_training_logs (employee_name);
 
--- Stellantis warranty audit manual (one active) and optional RO audit history.
+-- Stellantis warranty audit: one active warranty manual, one active audit guide,
+-- and optional RO audit history.
 -- Existing projects can run supabase/warranty_audit_tables.sql instead.
 create table if not exists warranty_manuals (
     id uuid primary key,
@@ -234,14 +235,15 @@ create table if not exists warranty_manuals (
     chunk_count integer not null default 0,
     text_characters integer not null default 0,
     is_active boolean not null default true,
+    document_kind text not null default 'warranty_manual',
     warnings jsonb not null default '[]'::jsonb,
     chunks jsonb not null default '[]'::jsonb,
     uploaded_at timestamptz not null default now(),
     updated_at timestamptz default now()
 );
 
-create unique index if not exists warranty_manuals_one_active_idx
-    on warranty_manuals (is_active)
+create unique index if not exists warranty_manuals_one_active_per_kind_idx
+    on warranty_manuals (document_kind)
     where is_active;
 
 create index if not exists warranty_manuals_uploaded_idx

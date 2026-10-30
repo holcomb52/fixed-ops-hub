@@ -390,6 +390,56 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertIsNone(result["ro"]["signatures"]["technician"])
         self.assertTrue(result["ro"]["parts"][0]["failed"])
 
+    def test_repair_order_is_checked_against_the_manual_and_the_guide(self):
+        guide_sentence = (
+            "Service technicians must document the cause of the complaint "
+            "and the corrective repair in the tech notes."
+        )
+        calls = []
+
+        def complete(messages):
+            text = messages[-1]["content"]
+            calls.append(text)
+            if guide_sentence in text:
+                return json.dumps({
+                    "findings": [{
+                        "severity": "major",
+                        "ro_field": "Tech notes",
+                        "whats_wrong": "Tech notes do not document the cause.",
+                        "how_to_fix": "Document the cause and the corrective repair.",
+                        "manual_page": 10,
+                        "citation_quote": guide_sentence,
+                    }]
+                })
+            return json.dumps({"findings": []})
+
+        guide = [{
+            "chunk_id": "g-10",
+            "chunk_index": 0,
+            "page_number": 10,
+            "section_label": "M Tech notes",
+            "text": "M Tech notes\n\n" + guide_sentence,
+        }]
+        result = run_audit(
+            _brake_ro(),
+            _sample_chunks(),
+            guide_chunks=guide,
+            manual_name="warranty.pdf",
+            guide_name="reason-codes.pdf",
+            complete=complete,
+        )
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertTrue(any(guide_sentence in text for text in calls))
+        self.assertTrue(any(TIME_SENTENCE in text for text in calls))
+        self.assertTrue(any(
+            item["ro_field"] == "Tech notes" and item["counts_as_required_correction"]
+            for item in result["findings"]
+        ))
+        self.assertIn("warranty.pdf", result["summary"])
+        self.assertIn("reason-codes.pdf", result["summary"])
+        self.assertGreater(result["manual_excerpt_count"], 0)
+        self.assertGreater(result["guide_excerpt_count"], 0)
+
     def test_unmatched_manual_does_not_call_the_model(self):
         called = {"count": 0}
 
@@ -824,6 +874,24 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(active[0]["filename"], "second.pdf")
         self.assertEqual(len(active[0]["chunks"]), 3)
 
+    def test_manual_and_audit_guide_can_both_stay_active(self):
+        from lib.warranty_audit_storage import GUIDE_KIND
+
+        client = _MemorySupabase()
+        guide = self._record("guide")
+        guide["uploaded_at"] = "2026-01-03T00:00:00+00:00"
+        with patch("lib.warranty_audit_storage.get_supabase", return_value=client):
+            save_manual_record(self._record("manual"))
+            saved, err = save_manual_record(guide, kind=GUIDE_KIND)
+            manual = load_active_manual()
+            loaded_guide = load_active_manual(GUIDE_KIND)
+        self.assertEqual(err, "")
+        self.assertEqual(saved["storage_source"], "supabase")
+        self.assertEqual(manual["filename"], "manual.pdf")
+        self.assertEqual(loaded_guide["filename"], "guide.pdf")
+        active = [row for row in client.rows["warranty_manuals"] if row.get("is_active") is True]
+        self.assertEqual(len(active), 2)
+
     def test_missing_table_message_points_at_the_sql_file(self):
         message = cloud_error_message("Could not find the table public.warranty_manuals")
         self.assertIn("warranty_audit_tables.sql", message)
@@ -1038,7 +1106,7 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         result = run_audit(claim, [], complete=complete)
         self.assertEqual(called["count"], 0)
         self.assertTrue(any(item["ro_field"] == "RO 1 failure code" for item in result["findings"]))
-        self.assertIn("No stored manual section matched", result["summary"])
+        self.assertIn("No warranty manual is stored", result["summary"])
 
 
 def _paid_claim() -> dict:

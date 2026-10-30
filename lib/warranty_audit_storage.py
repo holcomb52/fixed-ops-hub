@@ -24,6 +24,8 @@ AUDIT_DIR = Path(__file__).resolve().parent.parent / "data" / "warranty_audit_ar
 MANUAL_TABLE = "warranty_manuals"
 AUDIT_TABLE = "warranty_audit_runs"
 SQL_FILE = Path(__file__).resolve().parent.parent / "supabase" / "warranty_audit_tables.sql"
+MANUAL_KIND = "warranty_manual"
+GUIDE_KIND = "audit_guide"
 
 
 def _now_iso() -> str:
@@ -55,9 +57,10 @@ def new_manual_record(filename: str, pdf_bytes: bytes) -> dict:
     )
 
 
-def save_manual_record(record: dict) -> Tuple[dict, str]:
-    """Replace the stored manual. Local save succeeds even when cloud sync fails."""
+def save_manual_record(record: dict, *, kind: str = "") -> Tuple[dict, str]:
+    """Replace one stored reference document. Local save succeeds even when cloud sync fails."""
     stored = dict(record)
+    stored["document_kind"] = kind or stored.get("document_kind") or MANUAL_KIND
     stored["is_active"] = True
     _save_local_manual(stored)
     client = get_supabase()
@@ -73,14 +76,14 @@ def save_manual_record(record: dict) -> Tuple[dict, str]:
     return stored, ""
 
 
-def load_active_manual() -> Optional[dict]:
-    local = _load_local_manual()
+def load_active_manual(kind: str = MANUAL_KIND) -> Optional[dict]:
+    local = _load_local_manual(kind)
     remote = None
     warning = ""
     client = get_supabase()
     if client:
         try:
-            remote = _load_remote_manual(client)
+            remote = _load_remote_manual(client, kind)
         except Exception as exc:
             warning = cloud_error_message(str(exc))
     chosen, source = _pick_newer(local, remote)
@@ -219,30 +222,39 @@ def _timestamp(record: dict) -> str:
     return str(value)
 
 
-def _manual_path() -> Path:
-    return MANUAL_DIR / "active" / "record.json"
+def _manual_path(kind: str = MANUAL_KIND) -> Path:
+    return MANUAL_DIR / (kind or MANUAL_KIND) / "record.json"
 
 
 def _save_local_manual(record: dict) -> None:
-    path = _manual_path()
+    path = _manual_path(str(record.get("document_kind") or MANUAL_KIND))
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".json.tmp")
     temp.write_text(json.dumps(json_safe(record), indent=2))
     temp.replace(path)
 
 
-def _load_local_manual() -> Optional[dict]:
-    path = _manual_path()
+def _load_local_manual(kind: str = MANUAL_KIND) -> Optional[dict]:
+    path = _manual_path(kind)
+    if not path.exists() and kind == MANUAL_KIND:
+        path = MANUAL_DIR / "active" / "record.json"
     if not path.exists():
         return None
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    if kind == MANUAL_KIND and not data.get("document_kind"):
+        data["document_kind"] = MANUAL_KIND
+    if data.get("document_kind") not in {None, "", kind}:
+        return None
+    return data
 
 
 def _replace_remote_manual(client, record: dict) -> None:
+    kind = record.get("document_kind") or MANUAL_KIND
     row = {
         "id": record["id"],
         "filename": record.get("filename") or "",
@@ -251,13 +263,14 @@ def _replace_remote_manual(client, record: dict) -> None:
         "chunk_count": int(record.get("chunk_count") or 0),
         "text_characters": int(record.get("text_characters") or 0),
         "is_active": False,
+        "document_kind": kind,
         "warnings": record.get("warnings") or [],
         "chunks": record.get("chunks") or [],
         "uploaded_at": record.get("uploaded_at") or _now_iso(),
         "updated_at": record.get("uploaded_at") or _now_iso(),
     }
     client.table(MANUAL_TABLE).insert(json_safe(row)).execute()
-    client.table(MANUAL_TABLE).update({"is_active": False}).eq("is_active", True).execute()
+    client.table(MANUAL_TABLE).update({"is_active": False}).eq("is_active", True).eq("document_kind", kind).execute()
     client.table(MANUAL_TABLE).update({"is_active": True}).eq("id", record["id"]).execute()
     check = (
         client.table(MANUAL_TABLE)
@@ -272,14 +285,15 @@ def _replace_remote_manual(client, record: dict) -> None:
         raise RuntimeError(
             "The manual was stored on this computer but could not be marked active in Supabase."
         )
-    client.table(MANUAL_TABLE).delete().eq("is_active", False).execute()
+    client.table(MANUAL_TABLE).delete().eq("is_active", False).eq("document_kind", kind).execute()
 
 
-def _load_remote_manual(client) -> Optional[dict]:
+def _load_remote_manual(client, kind: str = MANUAL_KIND) -> Optional[dict]:
     result = (
         client.table(MANUAL_TABLE)
         .select("*")
         .eq("is_active", True)
+        .eq("document_kind", kind)
         .limit(1)
         .execute()
     )

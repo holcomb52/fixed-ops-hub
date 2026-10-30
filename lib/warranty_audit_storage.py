@@ -6,6 +6,7 @@ service_role client, same as the other Fixed Ops Hub archives.
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import uuid
@@ -318,3 +319,110 @@ def _list_local_audits() -> List[dict]:
             except (OSError, json.JSONDecodeError):
                 continue
     return records
+
+
+LIVE_PHOTO_TABLE = "warranty_claim_live_photos"
+
+
+def publish_live_photos(tray: list[dict]) -> str:
+    """Upload any pictures the other device does not have yet."""
+    client = get_supabase()
+    if not client or not tray:
+        return ""
+    try:
+        existing = _live_photo_index(client)
+        position = max((row["position"] for row in existing.values()), default=0)
+        for item in tray:
+            sha = item.get("sha") or ""
+            if not sha or sha in existing:
+                continue
+            position += 1
+            client.table(LIVE_PHOTO_TABLE).insert(
+                {
+                    "sha": sha,
+                    "name": item.get("name") or "photo.jpg",
+                    "position": position,
+                    "jpeg_b64": base64.b64encode(item["data"]).decode("ascii"),
+                }
+            ).execute()
+    except Exception as exc:
+        return cloud_error_message(str(exc))
+    return ""
+
+
+def fetch_live_photos(tray: list[dict]) -> tuple[list[dict], str]:
+    """Return this device's pictures plus any new pictures saved from the other device."""
+    client = get_supabase()
+    if not client:
+        return list(tray), ""
+    try:
+        remote = _live_photo_index(client)
+    except Exception as exc:
+        return list(tray), cloud_error_message(str(exc))
+    by_sha = {item.get("sha"): item for item in tray if item.get("sha")}
+    ordered = sorted(remote.values(), key=lambda row: row.get("position") or 0)
+    merged: list[dict] = []
+    for row in ordered:
+        sha = row["sha"]
+        if sha in by_sha:
+            merged.append(by_sha[sha])
+            continue
+        try:
+            loaded = (
+                client.table(LIVE_PHOTO_TABLE)
+                .select("jpeg_b64")
+                .eq("sha", sha)
+                .limit(1)
+                .execute()
+            )
+            payload = (loaded.data or [{}])[0].get("jpeg_b64") or ""
+            data = base64.b64decode(payload) if payload else b""
+        except Exception as exc:
+            return list(tray), cloud_error_message(str(exc))
+        if not data:
+            continue
+        merged.append(
+            {
+                "name": row.get("name") or "photo.jpg",
+                "sha": sha,
+                "raw_sha": sha,
+                "data": data,
+            }
+        )
+    known = {item["sha"] for item in merged}
+    for item in tray:
+        if item.get("sha") not in known:
+            merged.append(item)
+    return merged, ""
+
+
+def delete_live_photo(sha: str) -> str:
+    client = get_supabase()
+    if not client or not sha:
+        return ""
+    try:
+        client.table(LIVE_PHOTO_TABLE).delete().eq("sha", sha).execute()
+    except Exception as exc:
+        return cloud_error_message(str(exc))
+    return ""
+
+
+def clear_live_photos() -> str:
+    client = get_supabase()
+    if not client:
+        return ""
+    try:
+        client.table(LIVE_PHOTO_TABLE).delete().neq("sha", "").execute()
+    except Exception as exc:
+        return cloud_error_message(str(exc))
+    return ""
+
+
+def _live_photo_index(client) -> dict:
+    result = (
+        client.table(LIVE_PHOTO_TABLE)
+        .select("sha,name,position")
+        .order("position")
+        .execute()
+    )
+    return {row["sha"]: row for row in (result.data or []) if row.get("sha")}

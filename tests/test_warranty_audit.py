@@ -522,6 +522,24 @@ class AuditPipelineTests(unittest.TestCase):
         files = data_urls_to_files([f"data:image/jpeg;base64,{encoded}", "not-a-url"])
         self.assertEqual(files, [("phone-page-1.jpg", b"jpeg-bytes")])
 
+    def test_picture_batches_merge_into_one_claim(self):
+        from lib.warranty_audit_llm import _merge_extracted
+
+        merged = _merge_extracted(
+            [
+                {"vin": "1C4RJFBG5LC000001", "customer_concern": "Camera is dead."},
+                {
+                    "customer_concern": "Camera is dead.",
+                    "cause": "Broken wire.",
+                    "labor_operations": [{"op_code": "08200170"}],
+                },
+            ]
+        )
+        self.assertEqual(merged["vin"], "1C4RJFBG5LC000001")
+        self.assertIn("Camera is dead.", merged["customer_concern"])
+        self.assertEqual(merged["cause"], "Broken wire.")
+        self.assertEqual(merged["labor_operations"], [{"op_code": "08200170"}])
+
 
 class LlmTransportTests(unittest.TestCase):
     def test_api_key_stays_in_the_header(self):

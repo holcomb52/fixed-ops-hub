@@ -166,7 +166,7 @@ def build_extract_messages(*, images: list[tuple[bytes, str]], document_text: st
         content.append(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
+                "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "auto"},
             }
         )
     return [
@@ -268,12 +268,64 @@ def extract_repair_order(
     images: list[tuple[bytes, str]],
     document_text: str = "",
     complete: Optional[CompleteFn] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> dict:
     if not images and not str(document_text or "").strip():
         raise LlmError("No readable repair-order image or text was provided.")
-    messages = build_extract_messages(images=images, document_text=document_text)
-    raw = (complete or default_complete)(messages)
-    return normalize_repair_order(parse_json_object(raw))
+    prepared = [_smaller_for_model(image) for image in images]
+    batches = [prepared[index:index + 4] for index in range(0, len(prepared), 4)] or [[]]
+    complete_fn = complete or _bound_complete()
+    if len(batches) == 1:
+        if on_progress:
+            on_progress(1, 1)
+        messages = build_extract_messages(images=batches[0], document_text=document_text)
+        return normalize_repair_order(parse_json_object(complete_fn(messages)))
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    results: list[dict | None] = [None] * len(batches)
+
+    def read_batch(batch: list[tuple[bytes, str]]) -> dict:
+        messages = build_extract_messages(images=batch, document_text="")
+        return parse_json_object(complete_fn(messages))
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(read_batch, batch): index for index, batch in enumerate(batches)}
+        finished = 0
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+            finished += 1
+            if on_progress:
+                on_progress(finished, len(batches))
+    return normalize_repair_order(_merge_extracted([item for item in results if item]))
+
+
+def _smaller_for_model(image: tuple[bytes, str]) -> tuple[bytes, str]:
+    blob, mime = image
+    try:
+        return shrink_image(blob, max_edge=1024)
+    except Exception:
+        return blob, mime
+
+
+def _merge_extracted(parts: list[dict]) -> dict:
+    merged: dict = {}
+    list_keys = ("labor_operations", "parts", "repair_orders", "time_punches", "tech_numbers", "unreadable")
+    for part in parts:
+        for key, value in part.items():
+            if key in list_keys and isinstance(value, list):
+                merged.setdefault(key, [])
+                merged[key].extend(value)
+                continue
+            if key in ("customer_concern", "cause", "correction", "other_visible_notes"):
+                current = str(merged.get(key) or "")
+                extra = str(value or "")
+                if extra and extra not in current:
+                    merged[key] = (current + "\n" + extra).strip()
+                continue
+            if not merged.get(key) and value not in (None, "", [], {}):
+                merged[key] = value
+    return merged
 
 
 def build_audit_messages(repair_order: dict, excerpts: list[dict]) -> list:
@@ -409,13 +461,22 @@ def _copy_lines(value: object) -> list[dict]:
     return [dict(row) for row in value if isinstance(row, dict)]
 
 
-def default_complete(messages: list) -> str:
+def _bound_complete() -> CompleteFn:
+    """Read the API key on the main thread, then allow batch workers to call the model."""
     key, model = read_llm_settings()
-    if not key:
-        raise LlmError(
-            "OPENAI_API_KEY is not set. Add it to .env or Streamlit secrets to check repair orders."
-        )
-    return complete_chat(messages, api_key=key, model=model)
+
+    def complete_fn(messages: list) -> str:
+        if not key:
+            raise LlmError(
+                "OPENAI_API_KEY is not set. Add it to .env or Streamlit secrets to check repair orders."
+            )
+        return complete_chat(messages, api_key=key, model=model)
+
+    return complete_fn
+
+
+def default_complete(messages: list) -> str:
+    return _bound_complete()(messages)
 
 
 MAX_CLAIM_PHOTOS = 20

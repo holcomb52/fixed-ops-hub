@@ -42,5 +42,19 @@ create table if not exists warranty_audit_runs (
 create index if not exists idx_warranty_audit_runs_completed
     on warranty_audit_runs (completed_at desc);
 
+-- Pictures for the claim currently being collected. The phone inserts a row
+-- as each picture is added so a desktop session can show it immediately.
+create table if not exists warranty_claim_live_photos (
+    sha text primary key,
+    name text not null,
+    position integer not null,
+    jpeg_b64 text not null,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_warranty_claim_live_photos_position
+    on warranty_claim_live_photos (position);
+
 alter table warranty_manuals enable row level security;
 alter table warranty_audit_runs enable row level security;
+alter table warranty_claim_live_photos enable row level security;

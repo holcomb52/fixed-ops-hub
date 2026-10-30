@@ -18,3 +18,4 @@ alter table if exists csi_bonus_runs enable row level security;
 alter table if exists advisor_training_logs enable row level security;
 alter table if exists warranty_manuals enable row level security;
 alter table if exists warranty_audit_runs enable row level security;
+alter table if exists warranty_claim_live_photos enable row level security;

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import streamlit as st
@@ -23,10 +23,14 @@ from lib.warranty_audit_manual import ManualExtractError, csv_download_name, fin
 from lib.warranty_audit_storage import (
     apply_warranty_audit_snapshot_to_session,
     audit_tables_sql,
+    clear_live_photos,
+    delete_live_photo,
+    fetch_live_photos,
     list_warranty_audit_runs,
     load_active_manual,
     load_warranty_audit_run,
     new_manual_record,
+    publish_live_photos,
     save_audit_run,
     save_manual_record,
 )
@@ -190,6 +194,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if not manual:
         st.caption("Store a warranty manual before running an audit. You can still read a photo.")
     tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
+    _watch_phone_photos()
     st.markdown(
         """
         <style>
@@ -223,6 +228,9 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         added = len(updated) > len(tray)
         st.session_state.warranty_audit_photo_tray = updated
         st.session_state.warranty_audit_photo_warnings = warnings
+        sync_error = publish_live_photos(updated)
+        if sync_error:
+            st.session_state.warranty_audit_photo_warnings = warnings + [sync_error]
         if added:
             st.rerun()
         tray = updated
@@ -240,12 +248,18 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
-        with st.spinner("Reading the photo..."):
+        with st.spinner("Reading the pictures. A long claim is split into small groups so it can finish faster."):
+            progress = st.progress(0, text="Starting to read the pictures...")
+
+            def _on_progress(done: int, total: int) -> None:
+                progress.progress(done / total, text=f"Reading pictures, group {done} of {total}")
+
             try:
                 prepared = prepare_documents(photos)
                 extracted = extract_repair_order(
                     images=prepared["images"],
                     document_text=prepared["document_text"],
+                    on_progress=_on_progress,
                 )
             except LlmError as exc:
                 st.error(str(exc))
@@ -253,6 +267,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
             except Exception as exc:
                 st.error(f"Could not read the repair order. {exc}")
                 return
+            progress.empty()
         st.session_state.warranty_audit_extract = extracted
         st.session_state.warranty_audit_extract_digest = digest
         st.session_state.warranty_audit_extract_name = names
@@ -698,11 +713,26 @@ def _show_photo_tray(tray: list[dict]) -> None:
             if st.button("Remove", key=f"warranty_audit_remove_{item['sha'][:12]}", use_container_width=True):
                 kept = [photo for photo in tray if photo["sha"] != item["sha"]]
                 st.session_state.warranty_audit_photo_tray = kept
+                delete_live_photo(item["sha"])
                 st.rerun()
     if st.button("Remove all pictures", key="warranty_audit_clear_photos"):
         st.session_state.warranty_audit_photo_tray = []
         st.session_state.warranty_audit_photo_warnings = []
+        clear_live_photos()
         st.rerun()
+
+
+@st.fragment(run_every=timedelta(seconds=2))
+def _watch_phone_photos() -> None:
+    """Pull pictures the phone just saved so the desktop shows them without a refresh."""
+    tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
+    merged, err = fetch_live_photos(tray)
+    if err:
+        st.caption(err)
+        return
+    if [item.get("sha") for item in merged] != [item.get("sha") for item in tray]:
+        st.session_state.warranty_audit_photo_tray = merged
+        st.rerun(scope="app")
 
 
 def _show_one_photo(data: bytes, caption: str) -> bool:

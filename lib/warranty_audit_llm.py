@@ -46,7 +46,7 @@ The customer narrative and the time punches are required. Copy them in full."""
 TRANSCRIBE_USER_PROMPT = """Copy this page exactly. Do not summarize.
 
 Include every one of these when it is on the page:
-- The top section of an FCA Global Claim Acknowledgement: claim number, RO number, in service date, date completed, date received, service advisor number, list number, VIN, coverage, claim type, submission type, continuation, and authorization. The RO number and the claim number are the same number.
+- The top section of an FCA Global Claim Acknowledgement: claim number, RO number, in service date, date completed, date received, service advisor number, list number, VIN, coverage, claim type, submission type, and continuation. The RO number and the claim number are the same number. Authorization is usually blank. Do not fill it in.
 - The technician name printed with the technician identification. It is on the claim acknowledgement, not in that top section.
 - The full customer narrative and the technician notes, word for word: concern, cause, correction, tests, and what was found. If the word Goodwill appears, copy it.
 - Time punches are on the invoice whose bottom says Warranty Copy. Copy every punch: technician, time on, time off, and hours.
@@ -92,6 +92,7 @@ job_number is the job number on the Warranty Copy invoice. add_on is true only w
 time_punches come from the invoice whose bottom says Warranty Copy. Copy every punch.
 list_number is the List Number in the top section. Copy every digit, such as 2025123.
 owner_name must be blank. Do not copy an owner name.
+authorization is usually blank on the claim acknowledgement. Leave it blank. Do not invent a number.
 dealer_code is 68888.
 pre_tax_total is usually blank. Leave it blank. Do not calculate it.
 signatures.service_manager is true when your signature or initials are on the Warranty Copy next to a job that has a plus sign, or next to a Goodwill job. It is false when that spot is visible and unsigned, and null when the Warranty Copy is not in the pictures.

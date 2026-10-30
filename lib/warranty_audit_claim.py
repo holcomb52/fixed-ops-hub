@@ -225,7 +225,6 @@ def _header_findings(order: dict) -> list[dict]:
         ("major", "date_received", "Date received", "Date Received", "Enter the date the claim was received."),
         ("major", "date_completed", "Date completed", "Date Completed", "Enter the date the repair was completed."),
         ("minor", "process_date", "Process date", "Process Date", "Enter the process date."),
-        ("critical", "authorization", "Authorization", "Authorization", "Enter the authorization number."),
         ("minor", "vehicle_description", "Vehicle description", "Vehicle Description", "Enter the vehicle description."),
         ("major", "service_advisor", "Service advisor", "Service Advisor", "Enter the service advisor number."),
         ("minor", "list_number", "List number", "List Number", "Enter the list number from the claim acknowledgement."),

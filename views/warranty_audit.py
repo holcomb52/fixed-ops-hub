@@ -328,7 +328,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 12. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 13. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -619,7 +619,6 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
                 help="This store's dealer code is 68888.",
             )
             claim_status = st.text_input("Status", value=extracted.get("claim_status") or "", key=f"{token}_status")
-            authorization = st.text_input("Authorization", value=extracted.get("authorization") or "", key=f"{token}_auth")
         with c2:
             coverage = st.text_input("Warranty coverage", value=extracted.get("warranty_coverage") or "", key=f"{token}_cov")
             claim_type = st.text_input("Claim type", value=extracted.get("claim_type") or "", key=f"{token}_ctype")
@@ -697,7 +696,7 @@ def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
         "date_received": received,
         "date_completed": completed,
         "process_date": process_date,
-        "authorization": authorization,
+        "authorization": "",
         "owner_name": "",
         "vehicle_description": vehicle,
         "service_advisor": advisor,

@@ -932,6 +932,13 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         findings = check_claim_criteria(_paid_claim())
         self.assertEqual(findings, [])
 
+    def test_blank_authorization_is_normal(self):
+        claim = _paid_claim()
+        claim["authorization"] = ""
+        fields = {item["ro_field"] for item in check_claim_criteria(claim)}
+        self.assertNotIn("Authorization", fields)
+        self.assertEqual(check_claim_criteria(claim), [])
+
     def test_prior_claim_may_be_blank(self):
         claim = _paid_claim()
         claim["submission_type"] = "R-Resubmission"
@@ -950,7 +957,7 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertIn("RO 1 failure code", fields)
         self.assertIn("RO 1 failed part", fields)
         self.assertNotIn("RO 1 pre-tax total", fields)
-        self.assertIn("Authorization", fields)
+        self.assertNotIn("Authorization", fields)
         hours = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "RO 1 labor hours")
         self.assertIn("0.3", hours["whats_wrong"])
         self.assertIn("0.9", hours["whats_wrong"])

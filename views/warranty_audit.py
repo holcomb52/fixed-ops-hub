@@ -16,6 +16,7 @@ from lib.warranty_audit_llm import (
     append_claim_photos,
     extract_repair_order,
     llm_configured,
+    normalize_repair_order,
     prepare_documents,
     run_audit,
 )
@@ -261,9 +262,11 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
                     document_text=prepared["document_text"],
                     on_progress=_on_progress,
                 )
-            except LlmError as exc:
-                st.error(str(exc))
-                return
+            except LlmError:
+                prepared = {"warnings": [
+                    "The pictures could not be read automatically. Fill in the fields below, then check the document."
+                ]}
+                extracted = normalize_repair_order({"unreadable": ["the pictures"]})
             except Exception as exc:
                 st.error(f"Could not read the repair order. {exc}")
                 return

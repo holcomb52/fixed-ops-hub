@@ -106,7 +106,7 @@ def parse_json_object(text: str) -> dict:
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1, flags=re.IGNORECASE)
         raw = re.sub(r"\s*```$", "", raw, count=1)
-    for candidate in (raw, _json_slice(raw)):
+    for candidate in (raw, _json_slice(raw), _repair_json(raw)):
         if not candidate:
             continue
         try:
@@ -116,6 +116,37 @@ def parse_json_object(text: str) -> dict:
         if isinstance(data, dict):
             return data
     raise LlmError("The model did not return valid JSON.")
+
+
+def _repair_json(text: str) -> str:
+    """Close a JSON object that was cut off at the end of the model reply."""
+    start = text.find("{")
+    if start < 0:
+        return ""
+    chunk = text[start:].rstrip().rstrip(",")
+    opens = 0
+    in_string = False
+    escaped = False
+    for char in chunk:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            opens += 1
+        elif char == "}":
+            opens -= 1
+    if in_string:
+        chunk += '"'
+    if opens > 0:
+        chunk += "}" * opens
+    return chunk if opens > 0 or in_string else ""
 
 
 def _json_slice(text: str) -> str:
@@ -386,9 +417,12 @@ def run_audit(
     manual_findings: list[dict] = []
     if retrieved:
         messages = build_audit_messages(order, retrieved)
-        raw = (complete or default_complete)(messages)
-        parsed = parse_json_object(raw)
-        manual_findings = validate_findings(parsed.get("findings"), retrieved)
+        try:
+            raw = (complete or default_complete)(messages)
+            parsed = parse_json_object(raw)
+            manual_findings = validate_findings(parsed.get("findings"), retrieved)
+        except LlmError:
+            manual_findings = []
     findings = _sort_findings(checklist + manual_findings)
     summary = build_summary(order.get("ro_number") or "", findings)
     if not retrieved:

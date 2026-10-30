@@ -438,6 +438,7 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertFalse(order["parts"][0]["failed"])
         self.assertEqual(parse_json_object("```json\n{\"a\": 1}\n```"), {"a": 1})
         self.assertEqual(parse_json_object('Sure {"vin": "ABC"} thanks'), {"vin": "ABC"})
+        self.assertEqual(parse_json_object('{"vin": "ABC", "customer_concern": "noise"'), {"vin": "ABC", "customer_concern": "noise"})
 
     def test_unreadable_group_is_read_one_picture_at_a_time(self):
         from PIL import Image

@@ -26,9 +26,17 @@ def render():
         )
     else:
         st.markdown(
-            status_banner("Connect Supabase to unlock live data. See Payroll tab for steps.", "warn"),
+            status_banner(
+                "Saved reports on this site need Supabase secrets. "
+                "Warranty Audit can still read a photo. Open it below, or use the menu at the top left.",
+                "warn",
+            ),
             unsafe_allow_html=True,
         )
+
+    if st.button("Open Warranty Audit", type="primary", use_container_width=True):
+        st.session_state.pending_nav = "Warranty Audit"
+        st.rerun()
 
     c1, c2, c3, c4 = st.columns(4)
     stats = [

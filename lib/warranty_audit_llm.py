@@ -37,6 +37,24 @@ If the signature area is not in the image, use null.
 If Failed Part has no X or other mark, set failed to null. If it is marked, set failed to true.
 Return JSON only."""
 
+TRANSCRIBE_SYSTEM_PROMPT = """You copy dealership paperwork exactly as printed.
+Copy every word you can read. Do not summarize, shorten, or skip lines.
+Do not return JSON. Return plain text only.
+Never guess a character you cannot see. Mark a hard word as [unclear] and keep going.
+The customer narrative and the time punches are required. Copy them in full."""
+
+TRANSCRIBE_USER_PROMPT = """Copy this page exactly. Do not summarize.
+
+Include every one of these when it is on the page:
+- The full customer narrative, word for word: concern, cause, and correction
+- Every time punch: technician, time on, time off, and hours
+- Every labor line: LOP, description, failure code, hours, and technician
+- Every part: part number, description, quantity, and whether Failed Part is marked
+- Header fields that are visible: VIN, dates, mileage, claim number, dealer, coverage, claim type, submission type, continuation, prior claim, owner, vehicle, advisor, technician name and id, authorization, and totals
+
+Keep the narrative as a paragraph, not a short label. Keep every time punch on its own line.
+If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the notes or the time punches out."""
+
 EXTRACT_USER_PROMPT = """Read this Reynolds Ignite repair order or FCA Global Claim Acknowledgement.
 Return JSON with exactly these keys:
 document_type ("claim_acknowledgement" when the page is a Global Claim Acknowledgement, otherwise "repair_order"),
@@ -157,16 +175,31 @@ def _json_slice(text: str) -> str:
     return ""
 
 
-def complete_chat(messages: list, *, api_key: str, model: str, timeout: int = 120) -> str:
-    """Call the OpenAI chat API. The key is sent only in the Authorization header."""
+def complete_chat(
+    messages: list,
+    *,
+    api_key: str,
+    model: str,
+    timeout: int = 180,
+    json_mode: bool = True,
+    max_tokens: int | None = None,
+) -> str:
+    """Call the OpenAI chat API. The key is sent only in the Authorization header.
+
+    json_mode is for the field-organizing step. Page transcription leaves it off
+    so a long narrative is not forced into a JSON object that gets cut off.
+    """
     if not api_key:
         raise LlmError("OPENAI_API_KEY is not set.")
     payload = {
         "model": model or DEFAULT_MODEL,
         "temperature": 0,
-        "response_format": {"type": "json_object"},
         "messages": messages,
     }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     request = urllib.request.Request(
         API_URL,
         data=json.dumps(payload).encode("utf-8"),
@@ -199,7 +232,40 @@ def complete_chat(messages: list, *, api_key: str, model: str, timeout: int = 12
     return content
 
 
+def build_transcribe_messages(*, image: tuple[bytes, str], page_number: int) -> list:
+    blob, mime = image
+    encoded = base64.b64encode(blob).decode("ascii")
+    content: list[dict] = [
+        {"type": "text", "text": f"Page {page_number}.\n{TRANSCRIBE_USER_PROMPT}"},
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
+        },
+    ]
+    return [
+        {"role": "system", "content": TRANSCRIBE_SYSTEM_PROMPT},
+        {"role": "user", "content": content},
+    ]
+
+
+def build_structure_messages(transcript: str) -> list:
+    user = (
+        EXTRACT_USER_PROMPT
+        + "\n\nThe page text below was copied from the pictures. Use only that text.\n"
+        + "Copy the full customer narrative into customer_concern, cause, and correction. Do not shorten it.\n"
+        + "Copy every time punch into time_punches. Copy every labor line and every part.\n"
+        + "If the page text contains the notes or the punches, those fields are readable. Do not leave them blank.\n\n"
+        + "PAGE TEXT\n"
+        + transcript.strip()[:100000]
+    )
+    return [
+        {"role": "system", "content": EXTRACT_SYSTEM_PROMPT},
+        {"role": "user", "content": user},
+    ]
+
+
 def build_extract_messages(*, images: list[tuple[bytes, str]], document_text: str = "") -> list:
+    """Kept for callers that still build one vision request. New reads transcribe first."""
     content: list[dict] = [{"type": "text", "text": EXTRACT_USER_PROMPT}]
     if document_text.strip():
         content.append({"type": "text", "text": "DOCUMENT TEXT\n" + document_text.strip()[:20000]})
@@ -208,7 +274,7 @@ def build_extract_messages(*, images: list[tuple[bytes, str]], document_text: st
         content.append(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "auto"},
+                "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
             }
         )
     return [
@@ -332,56 +398,116 @@ def _extract_prepared(
     complete: Optional[CompleteFn],
     on_progress: Optional[Callable[[int, int], None]],
 ) -> dict:
+    """Copy each page as text, then turn that text into claim fields.
+
+    Asking the vision model for the full JSON schema is what cut off the notes
+    and the time punches. Plain-text copies do not have that limit.
+    """
     prepared = [_smaller_for_model(image) for image in images]
-    batches = [prepared[index:index + 3] for index in range(0, len(prepared), 3)] or [[]]
-    complete_fn = complete or _bound_complete()
-    if len(batches) == 1:
+    structure_fn = complete or _bound_complete(json_mode=True, max_tokens=16384)
+    transcribe_fn = complete or _bound_complete(json_mode=False, max_tokens=4096)
+    pages = _transcribe_pages(prepared, transcribe_fn, on_progress)
+    transcript = _join_transcript(pages, document_text)
+    if on_progress:
+        page_count = max(len(prepared), 1)
+        on_progress(page_count + 1, page_count)
+    return normalize_repair_order(_structure_transcript(transcript, structure_fn))
+
+
+def _transcribe_pages(
+    images: list[tuple[bytes, str]],
+    transcribe_fn: CompleteFn,
+    on_progress: Optional[Callable[[int, int], None]],
+) -> list[str]:
+    if not images:
+        return []
+
+    def copy_page(index: int, image: tuple[bytes, str]) -> str:
+        messages = build_transcribe_messages(image=image, page_number=index + 1)
+        try:
+            text = transcribe_fn(messages).strip()
+        except LlmError as exc:
+            return f"[Page {index + 1} could not be read. {exc}]"
+        return text or f"[Page {index + 1} came back blank.]"
+
+    if len(images) == 1:
         if on_progress:
             on_progress(1, 1)
-        return normalize_repair_order(
-            _read_images(batches[0], document_text, complete_fn)
-        )
+        return [copy_page(0, images[0])]
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    results: list[dict | None] = [None] * len(batches)
-
-    def read_batch(batch: list[tuple[bytes, str]]) -> dict:
-        return _read_images(batch, "", complete_fn)
-
+    pages: list[str] = [""] * len(images)
     with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(read_batch, batch): index for index, batch in enumerate(batches)}
+        futures = {
+            pool.submit(copy_page, index, image): index for index, image in enumerate(images)
+        }
         finished = 0
         for future in as_completed(futures):
-            results[futures[future]] = future.result()
+            pages[futures[future]] = future.result()
             finished += 1
             if on_progress:
-                on_progress(finished, len(batches))
-    return normalize_repair_order(_merge_extracted([item for item in results if item]))
+                on_progress(finished, len(images))
+    return pages
 
 
-def _read_images(images: list[tuple[bytes, str]], document_text: str, complete_fn: CompleteFn) -> dict:
-    """Read one group of pictures. If the reply is unusable, try each picture alone."""
-    messages = build_extract_messages(images=images, document_text=document_text)
+def _join_transcript(pages: list[str], document_text: str) -> str:
+    chunks = []
+    for index, page in enumerate(pages, start=1):
+        text = (page or "").strip()
+        if text:
+            chunks.append(f"PAGE {index}\n{text}")
+    extra = (document_text or "").strip()
+    if extra:
+        chunks.append("DOCUMENT TEXT\n" + extra[:20000])
+    return "\n\n".join(chunks).strip()
+
+
+def _structure_transcript(transcript: str, complete_fn: CompleteFn) -> dict:
+    if not transcript:
+        return {"unreadable": ["the pictures"]}
+    messages = build_structure_messages(transcript)
     try:
-        return parse_json_object(complete_fn(messages))
+        data = parse_json_object(complete_fn(messages))
     except LlmError:
-        if len(images) <= 1:
-            return {"unreadable": ["one picture"]}
-    parts = []
-    for image in images:
-        alone = build_extract_messages(images=[image], document_text="")
-        try:
-            parts.append(parse_json_object(complete_fn(alone)))
-        except LlmError:
-            parts.append({"unreadable": ["one picture"]})
-    return _merge_extracted(parts)
+        return _transcript_fallback(transcript)
+    return _keep_unread_narrative(data, transcript)
+
+
+def _transcript_fallback(transcript: str) -> dict:
+    """Keep the copied notes when the field list cannot be built."""
+    text = transcript.strip()
+    return {
+        "customer_concern": text[:12000],
+        "other_visible_notes": text[:20000],
+        "unreadable": ["some fields still need a glance"],
+    }
+
+
+def _keep_unread_narrative(data: dict, transcript: str) -> dict:
+    if not isinstance(data, dict):
+        return _transcript_fallback(transcript)
+    concern = str(data.get("customer_concern") or "").strip()
+    cause = str(data.get("cause") or "").strip()
+    correction = str(data.get("correction") or "").strip()
+    if concern or cause or correction:
+        return data
+    data["customer_concern"] = transcript.strip()[:12000]
+    data["other_visible_notes"] = transcript.strip()[:20000]
+    unreadable = data.get("unreadable")
+    if not isinstance(unreadable, list):
+        unreadable = []
+    note = "notes were copied in full; check the fields"
+    if note not in unreadable:
+        unreadable.append(note)
+    data["unreadable"] = unreadable
+    return data
 
 
 def _smaller_for_model(image: tuple[bytes, str]) -> tuple[bytes, str]:
     blob, mime = image
     try:
-        return shrink_image(blob, max_edge=1024)
+        return shrink_image(blob, max_edge=1600)
     except Exception:
         return blob, mime
 
@@ -542,7 +668,7 @@ def _copy_lines(value: object) -> list[dict]:
     return [dict(row) for row in value if isinstance(row, dict)]
 
 
-def _bound_complete() -> CompleteFn:
+def _bound_complete(*, json_mode: bool = True, max_tokens: int | None = None) -> CompleteFn:
     """Read the API key on the main thread, then allow batch workers to call the model."""
     key, model = read_llm_settings()
 
@@ -551,7 +677,13 @@ def _bound_complete() -> CompleteFn:
             raise LlmError(
                 "OPENAI_API_KEY is not set. Add it to .env or Streamlit secrets to check repair orders."
             )
-        return complete_chat(messages, api_key=key, model=model)
+        return complete_chat(
+            messages,
+            api_key=key,
+            model=model,
+            json_mode=json_mode,
+            max_tokens=max_tokens,
+        )
 
     return complete_fn
 

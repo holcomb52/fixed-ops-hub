@@ -484,6 +484,83 @@ class AuditPipelineTests(unittest.TestCase):
         image.save(buffer, format="JPEG")
         order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
         self.assertTrue(order["unreadable"])
+        self.assertIn("this is not json", order["customer_concern"])
+        self.assertIn("this is not json", order["other_visible_notes"])
+
+    def test_notes_and_time_punches_are_copied_before_fields_are_filled(self):
+        from PIL import Image, ImageDraw
+
+        transcript = (
+            "Customer concern: Camera is dead and will not power on.\n"
+            "Cause: Broken wire at the connector.\n"
+            "Correction: Replaced the camera and checked operation.\n"
+            "Time punch tech 441 on 8:00 off 9:30 hours 1.5\n"
+            "LOP 08200170 hours 1.5 failure code 11\n"
+        )
+        seen = []
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                seen.append("picture")
+                prompt = content[0]["text"]
+                self.assertIn("Do not summarize", prompt)
+                self.assertIn("time punch", prompt.lower())
+                image = next(part for part in content if part.get("type") == "image_url")
+                self.assertEqual(image["image_url"]["detail"], "high")
+                return transcript
+            seen.append("fields")
+            self.assertIsInstance(content, str)
+            self.assertIn("Camera is dead", content)
+            self.assertIn("Time punch tech 441", content)
+            return json.dumps({
+                "customer_concern": "Camera is dead and will not power on.",
+                "cause": "Broken wire at the connector.",
+                "correction": "Replaced the camera and checked operation.",
+                "time_punches": [{"tech_number": "441", "on": "8:00", "off": "9:30", "hours": "1.5"}],
+                "labor_operations": [{"op_code": "08200170", "hours": "1.5", "failure_code": "11"}],
+            })
+
+        image = Image.new("RGB", (40, 30), "white")
+        ImageDraw.Draw(image).text((2, 2), "notes", fill=(0, 0, 0))
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        self.assertEqual(seen, ["picture", "fields"])
+        self.assertEqual(order["customer_concern"], "Camera is dead and will not power on.")
+        self.assertEqual(order["cause"], "Broken wire at the connector.")
+        self.assertEqual(order["correction"], "Replaced the camera and checked operation.")
+        self.assertEqual(order["time_punches"][0]["tech_number"], "441")
+        self.assertEqual(order["time_punches"][0]["on"], "8:00")
+        self.assertEqual(order["time_punches"][0]["off"], "9:30")
+        self.assertEqual(order["labor_operations"][0]["op_code"], "08200170")
+
+    def test_blank_fields_keep_the_copied_notes(self):
+        from PIL import Image
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                return "Concern: radio pops. Punch tech 12 on 1:00 off 2:00 hours 1.0"
+            return json.dumps({"vin": "1C4RJFBG5LC000001", "customer_concern": "", "time_punches": []})
+
+        image = Image.new("RGB", (20, 20), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        self.assertIn("radio pops", order["customer_concern"])
+        self.assertIn("Punch tech 12", order["other_visible_notes"])
+        self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
+
+    def test_time_punches_do_not_drop_the_copied_notes(self):
+        from lib.warranty_audit_llm import _keep_unread_narrative
+
+        data = _keep_unread_narrative(
+            {"time_punches": [{"tech_number": "441", "on": "8:00", "off": "9:30", "hours": "1.5"}]},
+            "Customer concern: Camera is dead.",
+        )
+        self.assertIn("Camera is dead", data["customer_concern"])
+        self.assertEqual(data["time_punches"][0]["tech_number"], "441")
 
     def test_sample_pdf_round_trip_keeps_page_and_sentence(self):
         record = build_manual_record(
@@ -618,6 +695,37 @@ class LlmTransportTests(unittest.TestCase):
         self.assertEqual(seen["auth"], "Bearer super-secret-key")
         self.assertNotIn("super-secret-key", seen["body"])
         self.assertEqual(seen["url"], "https://api.openai.com/v1/chat/completions")
+        self.assertEqual(json.loads(seen["body"])["response_format"], {"type": "json_object"})
+
+    def test_page_copy_does_not_force_json(self):
+        seen = {}
+
+        class _Resp:
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": "Time punch tech 12 on 1:00 off 2:00"}}]}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def fake_urlopen(request, timeout=0):
+            seen["body"] = json.loads(request.data.decode())
+            return _Resp()
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            content = complete_chat(
+                [{"role": "user", "content": "Copy the page"}],
+                api_key="super-secret-key",
+                model="gpt-4o",
+                json_mode=False,
+                max_tokens=4096,
+            )
+        self.assertIn("Time punch", content)
+        self.assertNotIn("response_format", seen["body"])
+        self.assertEqual(seen["body"]["max_tokens"], 4096)
+        self.assertNotIn("super-secret-key", json.dumps(seen["body"]))
 
     def test_rejected_key_does_not_echo_the_secret(self):
         def fake_urlopen(request, timeout=0):

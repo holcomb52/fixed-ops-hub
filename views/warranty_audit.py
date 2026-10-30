@@ -245,15 +245,20 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 6. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 7. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
-        with st.spinner("Reading the pictures. A long claim is split into small groups so it can finish faster."):
+        with st.spinner("Reading every page, including the notes and the time punches."):
             progress = st.progress(0, text="Starting to read the pictures...")
 
             def _on_progress(done: int, total: int) -> None:
-                progress.progress(done / total, text=f"Reading pictures, group {done} of {total}")
+                if total <= 0:
+                    return
+                if done > total:
+                    progress.progress(1.0, text="Organizing notes and time punches")
+                else:
+                    progress.progress(done / total, text=f"Reading picture {done} of {total}")
 
             try:
                 prepared = prepare_documents(photos)
@@ -284,7 +289,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         if not llm_ready:
             st.caption("Set OPENAI_API_KEY before reading this repair order.")
         else:
-            st.caption("Click Read repair order. The audit uses the fields below, so you can fix a bad read first.")
+            st.caption("Click Read repair order. Notes, time punches, labor, and parts are filled in for you. Change only a field that does not match the paper.")
         return
 
     for warning in st.session_state.get("warranty_audit_read_warnings") or []:
@@ -334,6 +339,15 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         )
 
 
+def _note_height(value: object) -> int:
+    """Give a copied narrative enough room to read without typing it again."""
+    text = str(value or "")
+    lines = text.count("\n") + 1
+    if len(text) > 180:
+        lines = max(lines, min(18, len(text) // 90))
+    return max(96, min(420, lines * 24))
+
+
 def _repair_order_form(extracted: dict) -> dict:
     token = st.session_state.get("warranty_audit_form_token") or "ro"
     st.markdown("##### What was read")
@@ -349,9 +363,24 @@ def _repair_order_form(extracted: dict) -> dict:
         mileage = st.text_input("Mileage", value=extracted.get("mileage") or "", key=f"{token}_miles")
         repair_date = st.text_input("Repair date", value=extracted.get("repair_date") or "", key=f"{token}_repair")
     claim = _claim_acknowledgement_fields(extracted, token)
-    concern = st.text_area("Concern", value=extracted.get("customer_concern") or "", key=f"{token}_concern")
-    cause = st.text_area("Cause", value=extracted.get("cause") or "", key=f"{token}_cause")
-    correction = st.text_area("Correction", value=extracted.get("correction") or "", key=f"{token}_correction")
+    concern = st.text_area(
+        "Concern",
+        value=extracted.get("customer_concern") or "",
+        height=_note_height(extracted.get("customer_concern")),
+        key=f"{token}_concern",
+    )
+    cause = st.text_area(
+        "Cause",
+        value=extracted.get("cause") or "",
+        height=_note_height(extracted.get("cause")),
+        key=f"{token}_cause",
+    )
+    correction = st.text_area(
+        "Correction",
+        value=extracted.get("correction") or "",
+        height=_note_height(extracted.get("correction")),
+        key=f"{token}_correction",
+    )
 
     st.markdown("##### Labor operations")
     labor = st.data_editor(
@@ -424,6 +453,7 @@ def _repair_order_form(extracted: dict) -> dict:
     notes = st.text_area(
         "Other notes visible on the RO",
         value=extracted.get("other_visible_notes") or "",
+        height=_note_height(extracted.get("other_visible_notes")),
         key=f"{token}_notes",
     )
     labor_rows = _records(labor, _LABOR_COLUMNS)

@@ -245,7 +245,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Take or add the next page, or read them now.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 6. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -303,8 +303,14 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
             try:
                 result = run_audit(edited, list((manual or {}).get("chunks") or []))
             except LlmError as exc:
-                st.error(str(exc))
-                return
+                st.warning(str(exc))
+                result = {
+                    "ro": edited,
+                    "findings": [],
+                    "summary": "The manual comparison did not finish. Fill in any blank fields and try the check again.",
+                    "retrieved": [],
+                    "manual_excerpt_count": 0,
+                }
             except Exception as exc:
                 st.error(f"The audit could not be completed. {exc}")
                 return

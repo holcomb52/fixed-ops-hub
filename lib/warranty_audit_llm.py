@@ -115,7 +115,7 @@ def parse_json_object(text: str) -> dict:
             continue
         if isinstance(data, dict):
             return data
-    raise LlmError("The model did not return valid JSON.")
+    raise LlmError("One picture could not be read. The other pages will still be used.")
 
 
 def _repair_json(text: str) -> str:
@@ -314,6 +314,24 @@ def extract_repair_order(
 ) -> dict:
     if not images and not str(document_text or "").strip():
         raise LlmError("No readable repair-order image or text was provided.")
+    try:
+        return _extract_prepared(
+            images=images,
+            document_text=document_text,
+            complete=complete,
+            on_progress=on_progress,
+        )
+    except LlmError:
+        return normalize_repair_order({"unreadable": ["the pictures"]})
+
+
+def _extract_prepared(
+    *,
+    images: list[tuple[bytes, str]],
+    document_text: str,
+    complete: Optional[CompleteFn],
+    on_progress: Optional[Callable[[int, int], None]],
+) -> dict:
     prepared = [_smaller_for_model(image) for image in images]
     batches = [prepared[index:index + 3] for index in range(0, len(prepared), 3)] or [[]]
     complete_fn = complete or _bound_complete()

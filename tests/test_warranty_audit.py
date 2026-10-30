@@ -473,6 +473,18 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
         self.assertGreaterEqual(calls["count"], 3)
 
+    def test_unreadable_model_reply_does_not_stop_the_read(self):
+        from PIL import Image
+
+        def complete(_messages):
+            return "this is not json"
+
+        image = Image.new("RGB", (20, 20), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        self.assertTrue(order["unreadable"])
+
     def test_sample_pdf_round_trip_keeps_page_and_sentence(self):
         record = build_manual_record(
             "sample-warranty-guide.pdf",

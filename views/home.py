@@ -55,6 +55,7 @@ def render():
     cards = [
         ("💰 Payroll", "Technician flag sheets + service advisor pay plans", "Live", "cyan"),
         ("🛡️ Warranty", "Customer-pay ELR analysis for rate submissions.", "Live", "green"),
+        ("🔎 Warranty Audit", "Check a repair order against the stored Stellantis warranty manual.", "Live", "orange"),
         ("📈 Labor Rate", "Build a customer-pay grid from target ELR + hour mix.", "Live", "violet"),
         ("🔩 Parts", "MNS returns and 6MS stocking planner.", "Live", "orange"),
     ]

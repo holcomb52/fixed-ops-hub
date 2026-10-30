@@ -51,7 +51,9 @@ class AppAuthTests(unittest.TestCase):
         self.assertEqual(allowed_pages(ROLE_PARTS_MANAGER), PARTS_MANAGER_PAGES)
         self.assertEqual(default_page_for_role(ROLE_PARTS_MANAGER), "Parts")
         self.assertIn("Payroll", allowed_pages(ROLE_ADMIN))
+        self.assertIn("Warranty Audit", allowed_pages(ROLE_ADMIN))
         self.assertNotIn("Payroll", allowed_pages(ROLE_PARTS_MANAGER))
+        self.assertNotIn("Warranty Audit", allowed_pages(ROLE_PARTS_MANAGER))
 
     def test_env_secret_wins_over_empty_streamlit_secrets(self):
         with patch.dict(os.environ, {"APP_PASSWORD": "env-boss"}, clear=False):

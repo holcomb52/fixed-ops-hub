@@ -86,7 +86,15 @@ APP_PASSWORD = "choose-a-strong-password"
 
 4. Bookmark your `https://something.streamlit.app` URL in Chrome
 
-No AI runs in this app — it is payroll and warranty spreadsheet math only.
+Payroll, ELR, and parts math do not call an AI service. **Warranty Audit** does: it reads a repair-order photo with a vision model and compares it to the warranty manual you stored. Add this secret only if you use that page:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+# Optional. Must be a vision-capable chat model. Defaults to gpt-4o.
+OPENAI_MODEL = "gpt-4o"
+```
+
+`OPENAI_API_KEY` is read from the environment or Streamlit secrets, same as `SUPABASE_KEY`. Never commit the real key.
 
 ## Payroll (every pay period)
 
@@ -118,6 +126,7 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 | Payroll | Live — technician, advisor, and receptionist pay |
 | Flag Sheet | Live — technician flag hours |
 | Warranty | Live — warranty ELR analysis |
+| Warranty Audit | Live — repair order vs stored Stellantis manual |
 | Warranty Admin Bonus | Live |
 | CSI Bonus | Live |
 | Advisor Training | Live — daily training logs |
@@ -125,3 +134,13 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 | Labor Rate | Live — customer-pay rate grid |
 | Parts | Live — returns and stocking |
 | Reports | Live — saved runs, reopen / PDF / delete |
+
+## Warranty Audit
+
+1. On an existing Supabase project, run `supabase/warranty_audit_tables.sql` in the SQL Editor. A brand-new project that already ran `supabase/schema.sql` can skip this.
+2. Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) as shown above.
+3. Open **Warranty Audit**, upload the text-based Stellantis warranty manual PDF once, and click **Store manual**. Later audits reuse it until you replace it. A photo scan of the manual cannot be cited.
+4. Take a photo or upload a JPG, PNG, or PDF of the repair order. Click **Read repair order**, fix anything that was read wrong, then **Audit against the manual**.
+5. Download the findings CSV, or click **Save audit to history** to keep it on this page and under Reports.
+
+The audit lists a correction only when it can quote a sentence from the stored manual. It does not fill in Stellantis policy from memory.

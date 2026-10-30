@@ -16,6 +16,7 @@ ALL_PAGES = [
     "Payroll",
     "Flag Sheet",
     "Warranty",
+    "Warranty Audit",
     "Warranty Admin Bonus",
     "CSI Bonus",
     "Advisor Training",

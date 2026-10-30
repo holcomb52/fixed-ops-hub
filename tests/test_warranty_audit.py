@@ -626,6 +626,7 @@ class RepoWiringTests(unittest.TestCase):
         auth = (ROOT / "lib" / "app_auth.py").read_text()
         self.assertIn('"Warranty Audit": warranty_audit.render', app)
         self.assertIn('"Warranty Audit"', auth)
+        self.assertIn("Drag pictures here", (ROOT / "views" / "warranty_audit.py").read_text())
         for relative in (
             "README.md",
             ".env.example",

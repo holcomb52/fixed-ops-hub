@@ -186,16 +186,31 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     )
     if not manual:
         st.caption("Store a warranty manual before running an audit. You can still read a photo.")
+    st.markdown(
+        """
+        <style>
+        .st-key-warranty_audit_ro_file [data-testid="stFileUploaderDropzone"],
+        .st-key-warranty_audit_ro_file [data-testid="stFileDropzone"] {
+            min-height: 190px;
+            border: 2px dashed rgba(0, 212, 255, 0.7) !important;
+            border-radius: 16px !important;
+            background: rgba(0, 212, 255, 0.08) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.caption(
-        "On your phone, open this page, tap Upload a photo, then Take Photo or Photo Library. "
-        "Photograph each page. The whole page should be in the picture, in focus, with the text right-side up."
+        "Drag pictures from your computer onto the box below. "
+        "On your phone, tap the box, then Take Photo or Photo Library. "
+        "Add one picture per page. JPG, PNG, HEIC, and PDF all work."
     )
     upload = st.file_uploader(
-        "Upload a photo from your phone",
+        "Drag pictures here",
         type=["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"],
         accept_multiple_files=True,
         key="warranty_audit_ro_file",
-        help="On a phone, Take Photo uses the camera. Photo Library uploads a picture you already took. Add one picture per page.",
+        help="Drag pictures onto this box, or browse for them. On a phone, Take Photo uses the camera and Photo Library uses a picture you already took.",
     )
     camera = st.camera_input(
         "Or take a photo in this browser",

@@ -189,9 +189,6 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     )
     if not manual:
         st.caption("Store a warranty manual before running an audit. You can still read a photo.")
-    if st.session_state.pop("warranty_audit_reset_inputs", False):
-        st.session_state["warranty_audit_camera"] = None
-        st.session_state.pop("warranty_audit_ro_file", None)
     tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
     st.markdown(
         """
@@ -227,7 +224,6 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         st.session_state.warranty_audit_photo_tray = updated
         st.session_state.warranty_audit_photo_warnings = warnings
         if added:
-            st.session_state.warranty_audit_reset_inputs = True
             st.rerun()
         tray = updated
     for warning in st.session_state.get("warranty_audit_photo_warnings") or []:

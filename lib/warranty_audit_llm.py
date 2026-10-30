@@ -418,15 +418,36 @@ def default_complete(messages: list) -> str:
 
 
 def shrink_image(data: bytes, *, max_edge: int = 1600) -> tuple[bytes, str]:
-    """Resize a photo so the vision request stays small. Returns JPEG bytes."""
-    from PIL import Image
+    """Turn a phone photo into an upright JPEG the vision model can read."""
+    from PIL import Image, ImageOps
 
+    _register_heif()
     with Image.open(io_bytes(data)) as image:
-        converted = image.convert("RGB")
+        upright = ImageOps.exif_transpose(image) or image
+        converted = upright.convert("RGB")
         converted.thumbnail((max_edge, max_edge))
         buf = io_bytes()
         converted.save(buf, format="JPEG", quality=80, optimize=True)
         return buf.getvalue(), "image/jpeg"
+
+
+def prepare_documents(files: list[tuple[str, bytes]], *, max_pages: int = 10) -> dict:
+    """Prepare one or more phone photos, scans, or PDFs."""
+    images: list[tuple[bytes, str]] = []
+    texts: list[str] = []
+    warnings: list[str] = []
+    for name, data in files:
+        prepared = prepare_ro_input(name, data, max_pages=max_pages)
+        images.extend(prepared["images"])
+        if prepared.get("document_text"):
+            texts.append(prepared["document_text"])
+        warnings.extend(prepared.get("warnings") or [])
+    if len(images) > max_pages:
+        warnings.append(f"Only the first {max_pages} photos were sent to be read.")
+        images = images[:max_pages]
+    if not images and not any(text.strip() for text in texts):
+        raise LlmError("No readable photo was attached. Take a picture or upload a JPG, PNG, or PDF.")
+    return {"images": images, "document_text": "\n\n".join(texts), "warnings": warnings}
 
 
 def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = 10) -> dict:
@@ -477,8 +498,24 @@ def _safe_shrink(data: bytes) -> tuple[bytes, str]:
     try:
         return shrink_image(data)
     except Exception:
-        mime = _image_mime(data, "") or "image/png"
-        return data, mime
+        mime = _image_mime(data, "")
+        if mime == "image/heic":
+            raise LlmError(
+                "This iPhone photo is in HEIC format. Tap Upload a photo, choose Take Photo, "
+                "or set the iPhone camera to Most Compatible so pictures save as JPG."
+            )
+        if mime in {"image/jpeg", "image/png", "image/webp"}:
+            return data, mime
+        raise LlmError("This picture could not be read. Upload a JPG or PNG.")
+
+
+def _register_heif() -> None:
+    try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except Exception:
+        return
 
 
 def _image_mime(data: bytes, name: str) -> str:
@@ -486,10 +523,25 @@ def _image_mime(data: bytes, name: str) -> str:
         return "image/jpeg"
     if data[:8] == b"\x89PNG\r\n\x1a\n":
         return "image/png"
-    if name.endswith((".jpg", ".jpeg")):
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {
+        b"heic",
+        b"heif",
+        b"mif1",
+        b"heix",
+        b"hevc",
+    }:
+        return "image/heic"
+    lowered = name.lower()
+    if lowered.endswith((".jpg", ".jpeg")):
         return "image/jpeg"
-    if name.endswith(".png"):
+    if lowered.endswith(".png"):
         return "image/png"
+    if lowered.endswith(".webp"):
+        return "image/webp"
+    if lowered.endswith((".heic", ".heif")):
+        return "image/heic"
     return ""
 
 

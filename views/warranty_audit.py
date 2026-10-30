@@ -13,7 +13,7 @@ from lib.warranty_audit_llm import (
     LlmError,
     extract_repair_order,
     llm_configured,
-    prepare_ro_input,
+    prepare_documents,
     run_audit,
 )
 from lib.warranty_audit_manual import ManualExtractError, csv_download_name, findings_to_csv
@@ -180,31 +180,40 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     st.markdown(
         section_title(
             "Repair order",
-            "Take a photo or upload a Reynolds Ignite repair order or a paid claim acknowledgement (JPG, PNG, or PDF).",
+            "Use your phone to photograph the repair order or claim acknowledgement, then upload the pictures here.",
         ),
         unsafe_allow_html=True,
     )
     if not manual:
-        st.caption("Store a warranty manual before running an audit. You can still read a repair order.")
-    left, right = st.columns(2)
-    with left:
-        camera = st.camera_input("Take a photo of the repair order", key="warranty_audit_camera")
-    with right:
-        upload = st.file_uploader(
-            "Or upload a scan",
-            type=["jpg", "jpeg", "png", "pdf"],
-            key="warranty_audit_ro_file",
-        )
-    name, data = _selected_file(upload, camera)
-    if upload is not None and camera is not None:
-        st.caption("Both a photo and an upload are present. The uploaded file is the one that will be checked.")
-    if not data:
+        st.caption("Store a warranty manual before running an audit. You can still read a photo.")
+    st.caption(
+        "On your phone, open this page, tap Upload a photo, then Take Photo or Photo Library. "
+        "Photograph each page. The whole page should be in the picture, in focus, with the text right-side up."
+    )
+    upload = st.file_uploader(
+        "Upload a photo from your phone",
+        type=["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"],
+        accept_multiple_files=True,
+        key="warranty_audit_ro_file",
+        help="On a phone, Take Photo uses the camera. Photo Library uploads a picture you already took. Add one picture per page.",
+    )
+    camera = st.camera_input(
+        "Or take a photo in this browser",
+        key="warranty_audit_camera",
+        help="On a phone, allow the camera when the browser asks. This uses the camera on the device that has this page open.",
+    )
+    photos = _selected_photos(upload, camera)
+    if not photos:
         return
-    digest = hashlib.sha256(data).hexdigest()[:16]
+    _show_photo_preview(photos)
+    if upload and camera is not None:
+        st.caption("The uploaded pictures and the browser photo will all be read.")
+    digest = hashlib.sha256(b"".join(data for _name, data in photos)).hexdigest()[:16]
+    names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
-        with st.spinner("Reading the repair order..."):
+        with st.spinner("Reading the photo..."):
             try:
-                prepared = prepare_ro_input(name, data)
+                prepared = prepare_documents(photos)
                 extracted = extract_repair_order(
                     images=prepared["images"],
                     document_text=prepared["document_text"],
@@ -217,7 +226,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
                 return
         st.session_state.warranty_audit_extract = extracted
         st.session_state.warranty_audit_extract_digest = digest
-        st.session_state.warranty_audit_extract_name = name
+        st.session_state.warranty_audit_extract_name = names
         st.session_state.warranty_audit_read_warnings = prepared["warnings"]
         st.session_state.warranty_audit_form_token = f"{digest}-{_stamp()}"
         st.session_state.pop("warranty_audit_result", None)
@@ -252,7 +261,7 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
             except Exception as exc:
                 st.error(f"The audit could not be completed. {exc}")
                 return
-        result["source_name"] = st.session_state.get("warranty_audit_extract_name") or name
+        result["source_name"] = st.session_state.get("warranty_audit_extract_name") or names
         result["manual_id"] = (manual or {}).get("id")
         result["manual_filename"] = (manual or {}).get("filename") or ""
         result["audited_at"] = datetime.now(timezone.utc).isoformat()
@@ -640,12 +649,35 @@ def _show_sql(message: str):
         st.code(sql, language="sql")
 
 
-def _selected_file(upload, camera):
-    if upload is not None:
-        return upload.name or "repair-order", upload.getvalue()
+def _selected_photos(upload, camera) -> list[tuple[str, bytes]]:
+    photos: list[tuple[str, bytes]] = []
+    uploads = upload if isinstance(upload, list) else ([] if upload is None else [upload])
+    for index, item in enumerate(uploads, start=1):
+        if item is None:
+            continue
+        photos.append((item.name or f"phone-photo-{index}.jpg", item.getvalue()))
     if camera is not None:
-        return "camera-repair-order.jpg", camera.getvalue()
-    return "", b""
+        photos.append(("camera-repair-order.jpg", camera.getvalue()))
+    return photos
+
+
+def _show_photo_preview(photos: list[tuple[str, bytes]]) -> None:
+    images = [(name, data) for name, data in photos if not _is_pdf(name, data)]
+    pdfs = [name for name, data in photos if _is_pdf(name, data)]
+    if images:
+        st.image(
+            [data for _name, data in images[:6]],
+            caption=[name for name, _data in images[:6]],
+            width=240,
+        )
+    count = len(photos)
+    label = "photo" if count == 1 else "photos"
+    extra = f" Plus {len(pdfs)} PDF." if pdfs else ""
+    st.caption(f"{count} {label} ready.{extra} Click Read repair order when the picture looks right.")
+
+
+def _is_pdf(name: str, data: bytes) -> bool:
+    return name.lower().endswith(".pdf") or data[:4] == b"%PDF"
 
 
 def _repair_blocks(labor_rows, part_rows, totals, ro_number: str, tech_name: str) -> list[dict]:

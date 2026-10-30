@@ -21,6 +21,7 @@ from lib.warranty_audit_llm import (
     extract_repair_order,
     normalize_repair_order,
     parse_json_object,
+    prepare_documents,
     prepare_ro_input,
     run_audit,
 )
@@ -460,6 +461,29 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertEqual(len(prepared["images"]), 1)
         image = Image.open(io.BytesIO(prepared["images"][0][0]))
         self.assertLessEqual(max(image.size), 1600)
+
+    def test_phone_photo_is_turned_upright(self):
+        from PIL import Image
+
+        wide = Image.new("RGB", (80, 30), "white")
+        exif = wide.getexif()
+        exif[274] = 6
+        buffer = io.BytesIO()
+        wide.save(buffer, format="JPEG", exif=exif)
+        prepared = prepare_ro_input("phone.jpg", buffer.getvalue())
+        image = Image.open(io.BytesIO(prepared["images"][0][0]))
+        self.assertGreater(image.size[1], image.size[0])
+
+    def test_several_phone_photos_are_all_sent(self):
+        from PIL import Image
+
+        files = []
+        for index, color in enumerate(("red", "blue"), start=1):
+            buffer = io.BytesIO()
+            Image.new("RGB", (40, 40), color).save(buffer, format="JPEG")
+            files.append((f"page-{index}.jpg", buffer.getvalue()))
+        prepared = prepare_documents(files)
+        self.assertEqual(len(prepared["images"]), 2)
 
 
 class LlmTransportTests(unittest.TestCase):

@@ -966,6 +966,33 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertIn("broken wire", order["tech_notes"])
         self.assertTrue(order["signatures"]["service_manager"])
 
+    def test_a_number_where_a_list_belongs_does_not_stop_the_read(self):
+        order = normalize_repair_order({
+            "ro_number": 12345,
+            "claim_number": 2025123,
+            "tech_numbers": 20001,
+            "unreadable": 1,
+            "labor_operations": {"op_code": "08200170", "hours": 0.3, "tech_number": 20001, "description": "Camera"},
+            "time_punches": {"tech_number": 20001, "on": "8:00", "off": "9:00", "hours": 1},
+            "parts": {"part_number": "56054158AG", "description": "CAMERA", "quantity": 1, "failed": True},
+            "repair_orders": {
+                "ro_number": 1,
+                "technician_id": 20001,
+                "labor_lines": 2,
+                "part_lines": 1,
+            },
+        })
+        self.assertEqual(order["ro_number"], "12345")
+        self.assertEqual(order["claim_number"], "2025123")
+        self.assertEqual(order["tech_numbers"], ["20001"])
+        self.assertEqual(order["unreadable"], [])
+        self.assertEqual(order["labor_operations"][0]["op_code"], "08200170")
+        self.assertEqual(order["labor_operations"][0]["hours"], "0.3")
+        self.assertEqual(order["time_punches"][0]["on"], "8:00")
+        self.assertEqual(order["time_punches"][0]["off"], "9:00")
+        self.assertTrue(order["parts"][0]["failed"])
+        self.assertEqual(order["repair_orders"][0]["technician_id"], "20001")
+
     def test_next_repair_order_keeps_the_ro_and_claim_number(self):
         from views.warranty_audit import apply_carried_numbers, carried_claim_identity
 

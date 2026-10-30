@@ -317,7 +317,7 @@ def normalize_repair_order(data: dict) -> dict:
         row.pop("_source", None)
     tech_numbers = []
     seen = set()
-    for value in list(data.get("tech_numbers") or []) + [
+    for value in _as_items(data.get("tech_numbers")) + [
         row.get("tech_number") for row in labor + punches
     ]:
         text = _text(value)
@@ -325,7 +325,7 @@ def normalize_repair_order(data: dict) -> dict:
             seen.add(text.casefold())
             tech_numbers.append(text)
     unreadable = []
-    for value in data.get("unreadable") or []:
+    for value in _as_list(data.get("unreadable")):
         text = _text(value)
         if text and text not in unreadable:
             unreadable.append(text)
@@ -620,8 +620,8 @@ def _sort_findings(findings: list[dict]) -> list[dict]:
 
 def _flatten_repair_orders(data: dict) -> dict:
     """Copy per-RO lines onto the top-level lists when the model only filled repair_orders."""
-    blocks = data.get("repair_orders")
-    if not isinstance(blocks, list):
+    blocks = _as_list(data.get("repair_orders"))
+    if not blocks:
         return data
     labor: list[dict] = []
     parts: list[dict] = []
@@ -633,10 +633,10 @@ def _flatten_repair_orders(data: dict) -> dict:
         tech = block.get("technician_id") or ""
         if tech:
             techs.append(str(tech))
-        for line in block.get("labor_lines") or block.get("labor_operations") or []:
+        for line in _as_list(block.get("labor_lines")) or _as_list(block.get("labor_operations")):
             if isinstance(line, dict):
                 labor.append({**line, "ro_number": line.get("ro_number") or ro_number, "tech_number": line.get("tech_number") or tech})
-        for line in block.get("part_lines") or block.get("parts") or []:
+        for line in _as_list(block.get("part_lines")) or _as_list(block.get("parts")):
             if isinstance(line, dict):
                 parts.append({**line, "ro_number": line.get("ro_number") or ro_number})
     if labor:
@@ -655,36 +655,33 @@ def _flatten_repair_orders(data: dict) -> dict:
 
 def _normalize_repair_blocks(raw: object, labor: list[dict], parts: list[dict]) -> list[dict]:
     blocks = []
-    if isinstance(raw, list):
-        for block in raw:
-            if not isinstance(block, dict):
-                continue
-            ro_number = _text(block.get("ro_number"))
-            job_number = _text(block.get("job_number"))
-            blocks.append({
-                "ro_number": ro_number,
-                "job_number": job_number,
-                "add_on": _add_on_value(block, job_number),
-                "technician_id": _text(block.get("technician_id")),
-                "technician_name": _text(block.get("technician_name")),
-                "total_parts": _text(block.get("total_parts")),
-                "total_labor": _text(block.get("total_labor")),
-                "total_special_service": _text(block.get("total_special_service")),
-                "pre_tax_total": _text(block.get("pre_tax_total")),
-                "labor_lines": [
-                    row for row in labor if not ro_number or _text(row.get("ro_number")) in {"", ro_number}
-                ] if labor else _copy_lines(block.get("labor_lines") or block.get("labor_operations")),
-                "part_lines": [
-                    row for row in parts if not ro_number or _text(row.get("ro_number")) in {"", ro_number}
-                ] if parts else _copy_lines(block.get("part_lines") or block.get("parts")),
-            })
+    for block in _as_list(raw):
+        if not isinstance(block, dict):
+            continue
+        ro_number = _text(block.get("ro_number"))
+        job_number = _text(block.get("job_number"))
+        blocks.append({
+            "ro_number": ro_number,
+            "job_number": job_number,
+            "add_on": _add_on_value(block, job_number),
+            "technician_id": _text(block.get("technician_id")),
+            "technician_name": _text(block.get("technician_name")),
+            "total_parts": _text(block.get("total_parts")),
+            "total_labor": _text(block.get("total_labor")),
+            "total_special_service": _text(block.get("total_special_service")),
+            "pre_tax_total": _text(block.get("pre_tax_total")),
+            "labor_lines": [
+                row for row in labor if not ro_number or _text(row.get("ro_number")) in {"", ro_number}
+            ] if labor else _copy_lines(block.get("labor_lines") or block.get("labor_operations")),
+            "part_lines": [
+                row for row in parts if not ro_number or _text(row.get("ro_number")) in {"", ro_number}
+            ] if parts else _copy_lines(block.get("part_lines") or block.get("parts")),
+        })
     return blocks
 
 
 def _copy_lines(value: object) -> list[dict]:
-    if not isinstance(value, list):
-        return []
-    return [dict(row) for row in value if isinstance(row, dict)]
+    return [dict(row) for row in _as_list(value) if isinstance(row, dict)]
 
 
 def _bound_complete(*, json_mode: bool = True, max_tokens: int | None = None) -> CompleteFn:
@@ -936,11 +933,29 @@ def _boolish(value: object):
     return None
 
 
+def _as_list(value: object) -> list:
+    """Model fields that should be lists sometimes come back as one object or a number."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _as_items(value: object) -> list:
+    """A technician id may arrive as one number instead of a list of numbers."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.strip():
+        return [value]
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return [value]
+    return []
+
+
 def _rows(value: object, fields: tuple[str, ...]) -> list[dict]:
-    if not isinstance(value, list):
-        return []
     rows = []
-    for item in value:
+    for item in _as_list(value):
         if not isinstance(item, dict):
             continue
         row = {field: _text(item.get(field)) for field in fields}

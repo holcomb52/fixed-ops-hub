@@ -13,9 +13,9 @@ _COMPONENT = components.declare_component(
 )
 
 
-def claim_camera(limit: int) -> list[tuple[str, bytes]]:
+def claim_camera(limit: int, *, key: str = "warranty_audit_multishot") -> list[tuple[str, bytes]]:
     """Return newly snapped pictures as (name, jpeg bytes). Empty when nothing new was sent."""
-    value = _COMPONENT(limit=int(limit), default=None, key="warranty_audit_multishot")
+    value = _COMPONENT(limit=int(limit), default=None, key=key)
     if not isinstance(value, list):
         return []
     return data_urls_to_files(value)

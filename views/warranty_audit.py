@@ -199,8 +199,8 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     st.markdown(
         """
         <style>
-        .st-key-warranty_audit_ro_file [data-testid="stFileUploaderDropzone"],
-        .st-key-warranty_audit_ro_file [data-testid="stFileDropzone"] {
+        [class*="st-key-warranty_audit_ro_file"] [data-testid="stFileUploaderDropzone"],
+        [class*="st-key-warranty_audit_ro_file"] [data-testid="stFileDropzone"] {
             min-height: 190px;
             border: 2px dashed rgba(0, 212, 255, 0.7) !important;
             border-radius: 16px !important;
@@ -215,15 +215,19 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         "Tap Open camera, snap every page, then tap Add these pictures. "
         "The camera stays open between pages. You can also choose photos you already took, or drag pictures onto the box."
     )
-    snapped = claim_camera(MAX_CLAIM_PHOTOS - len(tray))
+    photo_generation = int(st.session_state.get("warranty_audit_photo_generation") or 0)
+    snapped = claim_camera(
+        MAX_CLAIM_PHOTOS - len(tray),
+        key=f"warranty_audit_multishot_{photo_generation}",
+    )
     upload = st.file_uploader(
         "Drag pictures here",
         type=["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"],
         accept_multiple_files=True,
-        key="warranty_audit_ro_file",
+        key=f"warranty_audit_ro_file_{photo_generation}",
         help="Drag pictures onto this box. On a phone, use Open camera above to snap every page before adding them.",
     )
-    incoming = _incoming_photos(upload) + list(snapped or [])
+    incoming = _without_ignored(_incoming_photos(upload) + list(snapped or []))
     if incoming:
         updated, warnings = append_claim_photos(tray, incoming)
         added = len(updated) > len(tray)
@@ -239,13 +243,14 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
         st.warning(warning)
     if not tray:
         st.caption(f"No pictures yet. You can add {MAX_CLAIM_PHOTOS}.")
+        _render_carried_numbers()
         return
     photos = [(item["name"], item["data"]) for item in tray]
     _show_photo_tray(tray)
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 8. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 9. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -275,6 +280,10 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
             except Exception as exc:
                 st.error(f"Could not read the repair order. {exc}")
                 return
+            prepared["warnings"] = list(prepared.get("warnings") or []) + apply_carried_numbers(
+                extracted,
+                st.session_state.get("warranty_audit_carry"),
+            )
             progress.empty()
         st.session_state.warranty_audit_extract = extracted
         st.session_state.warranty_audit_extract_digest = digest
@@ -298,6 +307,8 @@ def _render_repair_order(manual: dict | None, llm_ready: bool):
     if extracted.get("unreadable"):
         st.warning("Could not read: " + ", ".join(str(item) for item in extracted["unreadable"]))
     edited = _repair_order_form(extracted)
+    if isinstance(st.session_state.get("warranty_audit_carry"), dict):
+        st.session_state.warranty_audit_carry = carried_claim_identity(edited)
     has_manual = bool(manual and manual.get("chunks"))
     if st.button(
         "Check this document",
@@ -622,7 +633,7 @@ def _render_result(result: dict):
         st.info(f"Viewing saved audit{f' for RO {saved_label}' if saved_label else ''}.")
     flash = st.session_state.pop("warranty_audit_flash", None)
     if flash == "saved":
-        st.success("Audit saved. It is listed below and on Reports.")
+        st.success("Audit saved. It is listed below and on Reports. Use Next repair order when you are ready for the next one.")
     elif flash:
         st.warning(flash)
         _show_sql(str(flash))
@@ -698,6 +709,115 @@ def _render_result(result: dict):
             ):
                 st.session_state.pop(key, None)
             st.rerun()
+    if st.session_state.get("warranty_audit_active_run_id"):
+        st.caption("The next repair order keeps this RO number and claim number. Change them if they are different.")
+        if st.button("Next repair order", type="primary", use_container_width=True, key="warranty_audit_next"):
+            _start_next_repair_order(result)
+            st.rerun()
+
+
+def carried_claim_identity(repair_order: dict | None) -> dict:
+    """RO number and claim number to keep for the next repair order."""
+    order = repair_order if isinstance(repair_order, dict) else {}
+    return {
+        "ro_number": str(order.get("ro_number") or "").strip(),
+        "claim_number": str(order.get("claim_number") or "").strip(),
+    }
+
+
+def apply_carried_numbers(extracted: dict, carry: dict | None) -> list[str]:
+    """Keep the saved RO number and claim number. The new pictures fill everything else."""
+    if not isinstance(extracted, dict) or not isinstance(carry, dict):
+        return []
+    notes = []
+    kept_ro = str(carry.get("ro_number") or "").strip()
+    kept_claim = str(carry.get("claim_number") or "").strip()
+    read_ro = str(extracted.get("ro_number") or "").strip()
+    read_claim = str(extracted.get("claim_number") or "").strip()
+    if kept_ro:
+        if read_ro and read_ro.casefold() != kept_ro.casefold():
+            notes.append(
+                f"The pictures show RO {read_ro}. This form kept RO {kept_ro}. "
+                "Change the RO number if this one is different."
+            )
+        extracted["ro_number"] = kept_ro
+    if kept_claim:
+        if read_claim and read_claim.casefold() != kept_claim.casefold():
+            notes.append(
+                f"The pictures show claim {read_claim}. This form kept claim {kept_claim}. "
+                "Change the claim number if this one is different."
+            )
+        extracted["claim_number"] = kept_claim
+    return notes
+
+
+def _render_carried_numbers() -> None:
+    carry = st.session_state.get("warranty_audit_carry")
+    if not isinstance(carry, dict):
+        return
+    st.success("Ready for the next repair order. The RO number and claim number were kept.")
+    generation = int(st.session_state.get("warranty_audit_photo_generation") or 0)
+    first, second = st.columns(2)
+    with first:
+        ro_number = st.text_input(
+            "RO number",
+            value=str(carry.get("ro_number") or ""),
+            key=f"warranty_audit_carry_ro_{generation}",
+        )
+    with second:
+        claim_number = st.text_input(
+            "Claim number",
+            value=str(carry.get("claim_number") or ""),
+            key=f"warranty_audit_carry_claim_{generation}",
+        )
+    st.caption("These usually stay the same. Change them if this repair order is different, then add the pictures.")
+    st.session_state.warranty_audit_carry = {
+        "ro_number": ro_number.strip(),
+        "claim_number": claim_number.strip(),
+    }
+
+
+def _start_next_repair_order(result: dict) -> None:
+    """Clear the audit that was just saved and keep its RO number and claim number."""
+    ro = (result or {}).get("ro") if isinstance(result, dict) else {}
+    tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
+    ignored = list(st.session_state.get("warranty_audit_ignored_shas") or [])
+    for item in tray:
+        for key in ("sha", "raw_sha"):
+            value = str((item or {}).get(key) or "")
+            if value and value not in ignored:
+                ignored.append(value)
+    st.session_state.warranty_audit_carry = carried_claim_identity(ro)
+    st.session_state.warranty_audit_ignored_shas = ignored
+    st.session_state.warranty_audit_photo_generation = int(
+        st.session_state.get("warranty_audit_photo_generation") or 0
+    ) + 1
+    st.session_state.warranty_audit_photo_tray = []
+    st.session_state.warranty_audit_photo_warnings = []
+    for key in (
+        "warranty_audit_extract",
+        "warranty_audit_extract_digest",
+        "warranty_audit_extract_name",
+        "warranty_audit_read_warnings",
+        "warranty_audit_result",
+        "warranty_audit_active_run_id",
+        "warranty_audit_saved_label",
+        "warranty_audit_form_token",
+    ):
+        st.session_state.pop(key, None)
+    clear_live_photos()
+
+
+def _without_ignored(incoming: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
+    ignored = set(st.session_state.get("warranty_audit_ignored_shas") or [])
+    if not ignored:
+        return incoming
+    kept = []
+    for name, raw in incoming:
+        if hashlib.sha256(raw).hexdigest() in ignored:
+            continue
+        kept.append((name, raw))
+    return kept
 
 
 def _finding_card(finding: dict):

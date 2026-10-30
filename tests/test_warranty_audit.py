@@ -966,6 +966,33 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertIn("broken wire", order["tech_notes"])
         self.assertTrue(order["signatures"]["service_manager"])
 
+    def test_next_repair_order_keeps_the_ro_and_claim_number(self):
+        from views.warranty_audit import apply_carried_numbers, carried_claim_identity
+
+        saved = {"ro_number": "100245", "claim_number": "A10001", "customer_concern": "Noise"}
+        self.assertEqual(
+            carried_claim_identity(saved),
+            {"ro_number": "100245", "claim_number": "A10001"},
+        )
+        extracted = {
+            "ro_number": "100245",
+            "claim_number": "A10001",
+            "customer_concern": "Camera is dead.",
+            "tech_notes": "Found a broken wire.",
+        }
+        self.assertEqual(apply_carried_numbers(extracted, carried_claim_identity(saved)), [])
+        self.assertEqual(extracted["customer_concern"], "Camera is dead.")
+        self.assertEqual(extracted["ro_number"], "100245")
+        self.assertEqual(extracted["claim_number"], "A10001")
+
+        different = {"ro_number": "999", "claim_number": "B2", "cause": "Worn pads"}
+        notes = apply_carried_numbers(different, carried_claim_identity(saved))
+        self.assertEqual(different["ro_number"], "100245")
+        self.assertEqual(different["claim_number"], "A10001")
+        self.assertEqual(different["cause"], "Worn pads")
+        self.assertTrue(any("999" in note for note in notes))
+        self.assertTrue(any("B2" in note for note in notes))
+
     def test_plain_repair_order_does_not_require_authorization(self):
         order = _brake_ro()
         fields = {item["ro_field"] for item in check_claim_criteria(order)}

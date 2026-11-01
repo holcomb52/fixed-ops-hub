@@ -14,6 +14,7 @@ from lib.app_auth import (
     default_page_for_role,
     needs_password_warning,
     resolve_login,
+    session_may_proceed,
     _secret,
 )
 
@@ -58,6 +59,12 @@ class AppAuthTests(unittest.TestCase):
     def test_env_secret_wins_over_empty_streamlit_secrets(self):
         with patch.dict(os.environ, {"APP_PASSWORD": "env-boss"}, clear=False):
             self.assertEqual(_secret("APP_PASSWORD"), "env-boss")
+
+    def test_app_stays_locked_until_a_password_is_set_and_entered(self):
+        self.assertFalse(session_may_proceed(password_configured=False, authenticated=False))
+        self.assertFalse(session_may_proceed(password_configured=False, authenticated=True))
+        self.assertFalse(session_may_proceed(password_configured=True, authenticated=False))
+        self.assertTrue(session_may_proceed(password_configured=True, authenticated=True))
 
     def test_password_warning_when_database_is_public(self):
         self.assertTrue(needs_password_warning(database_configured=True, auth_on=False))

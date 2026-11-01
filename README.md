@@ -84,6 +84,8 @@ SUPABASE_KEY = "your_service_role_key"
 APP_PASSWORD = "choose-a-strong-password"
 ```
 
+The app stays locked until `APP_PASSWORD` is set. Sign in with that password. Without it, payroll and the other pages do not open.
+
 4. Bookmark your `https://something.streamlit.app` URL in Chrome
 
 Payroll, ELR, and parts math do not call an AI service. **Warranty Audit** does: it reads a repair-order photo with a vision model and compares it to the warranty manual you stored. Add this secret only if you use that page:

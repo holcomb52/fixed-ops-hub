@@ -318,7 +318,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 16. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 17. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -491,7 +491,7 @@ def _repair_order_form(extracted: dict) -> dict:
     st.caption(
         "On the Warranty Copy, a plus sign beside the job number is an add-on. "
         "Diagnostic 85-41, actual time ending in 00, wiring, 85-LO-AN-00, 85-33-33-33, "
-        "and 85-85-CG-09 need the time punches checked and a service manager's signature."
+        "and 85-85-CG-09 fail the check without complete time punches and a service manager's signature."
     )
     labor = st.data_editor(
         _frame(_labor_for_editor(extracted.get("labor_operations")), _LABOR_COLUMNS),

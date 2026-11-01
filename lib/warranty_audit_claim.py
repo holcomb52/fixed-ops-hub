@@ -15,6 +15,7 @@ SHOP_SECTION = "Repair order documentation"
 SHOP_NOTE = (
     "Auditor check. A plus sign next to the job number is a warranty add-on and needs your signature. "
     "Goodwill needs your signature. Tech notes must justify the repair. "
+    "Diagnostic, actual-time, and wiring labor need complete time punches and a service manager signature. "
     "This is not a sentence from the warranty manual."
 )
 
@@ -27,7 +28,8 @@ def check_claim_criteria(repair_order: dict) -> list[dict]:
     order = repair_order if isinstance(repair_order, dict) else {}
     findings: list[dict] = []
     findings.extend(_hours_mismatch_findings(order))
-    findings.extend(_special_labor_warnings(order))
+    findings.extend(_time_punch_findings(order))
+    findings.extend(_special_labor_findings(order))
     findings.extend(_add_on_findings(order))
     findings.extend(_goodwill_findings(order))
     findings.extend(_tech_note_findings(order))
@@ -81,33 +83,136 @@ def _special_labor_kind(line: dict) -> str:
     return ""
 
 
-def _special_labor_warnings(order: dict) -> list[dict]:
-    """Warn when diagnostic, actual-time, wiring, or the related 85- LOPs are on the RO."""
+def _time_punch_findings(order: dict) -> list[dict]:
+    """Billed labor needs a real on time and a different off time."""
+    if not any((_hours(line.get("hours")) or 0) > 0 for line in _all_labor(order)):
+        return []
+    defects = _punch_defects(order)
+    if not defects:
+        return []
+    return [_shop_issue(
+        severity="critical",
+        ro_field="Time punches",
+        whats_wrong=" ".join(defects),
+        how_to_fix="Enter a technician, a time on, and a different time off for the labor on the Warranty Copy.",
+        citation="Time punches",
+    )]
+
+
+def _punch_defects(order: dict) -> list[str]:
+    rows = [
+        row for row in _rows(order.get("time_punches"))
+        if any(_clean(row.get(field)) for field in ("on", "off", "hours", "tech_number"))
+    ]
+    if not rows:
+        return ["Time punches are missing for labor that was billed."]
+    defects = []
+    one_sided = []
+    same = []
+    complete = 0
+    for row in rows:
+        on = _clean(row.get("on"))
+        off = _clean(row.get("off"))
+        if on and off and on.casefold() == off.casefold():
+            same.append(row)
+        elif on and off:
+            complete += 1
+        elif on or off:
+            one_sided.append(row)
+    if one_sided:
+        defects.append("A time punch has only one time. On and off are both required.")
+    if same:
+        defects.append("A time punch uses the same time for on and off.")
+    if complete == 0 and not defects:
+        defects.append("Time punches do not show both an on time and a different off time.")
+    return defects
+
+
+def _special_labor_findings(order: dict) -> list[dict]:
+    """Diagnostic, actual-time, and wiring labor fail without punches and a service manager signature."""
     findings = []
     seen: set[str] = set()
-    for line in _all_labor(order):
+    labor = _all_labor(order)
+    signed = _signed((order.get("signatures") or {}).get("service_manager") if isinstance(order.get("signatures"), dict) else None)
+    punch_ok = not _punch_defects(order)
+    kinds = []
+    for line in labor:
         kind = _special_labor_kind(line)
         if not kind:
             continue
+        kinds.append((line, kind))
         code = _clean(line.get("op_code")) or kind
         key = f"{_lop_key(code)}:{kind}"
         if key in seen:
             continue
         seen.add(key)
+        missing = []
+        if not punch_ok:
+            missing.append("complete time punches")
+        if not signed:
+            missing.append("a service manager's signature")
+        hours = _hours(line.get("hours")) or 0
+        review = kind in {
+            "operation diagnostics (85-41)",
+            "actual time (LOP ending in 00)",
+            "wiring repair",
+        } and hours > 0.5
+        if not missing and not review:
+            continue
+        wrong = f"LOP {code} is {kind}."
+        if missing:
+            wrong += " Missing " + " and ".join(missing) + "."
+        if review:
+            wrong += (
+                f" Actual time is {hours:g} hours. Base dealers need Warranty Contact Center review above 0.5 hours, "
+                "Plus above 1.5, and Premium above 2.5."
+            )
         findings.append(_shop_issue(
-            severity="major",
+            severity="critical",
             ro_field=f"LOP {code}",
-            whats_wrong=(
-                f"LOP {code} is {kind}. Check the time punches for this labor "
-                "and make sure a service manager's signature is on it."
-            ),
+            whats_wrong=wrong,
             how_to_fix=(
-                "Confirm the on and off punches support this labor, and that service management "
-                "initialed, dated, and signed it during or at the time of the repair."
+                "Put a time on and a different time off on the Warranty Copy, and have service management "
+                "initial, date, and sign this labor during or at the time of the repair."
             ),
             citation="Service manager signature",
         ))
+    has_wiring = any(kind == "wiring repair" or "wiring" in _clean(line.get("description")).casefold() for line, kind in kinds)
+    has_diag = any(_lop_key(line.get("op_code")).startswith("8541") for line, _kind in kinds)
+    if has_wiring and has_diag:
+        findings.append(_shop_issue(
+            severity="critical",
+            ro_field="Wiring diagnosis",
+            whats_wrong=(
+                "This wiring repair also has an 85-41 diagnostic line. "
+                "Wiring diagnosis stays on the wiring labor operation."
+            ),
+            how_to_fix="Remove the separate 85-41 line and keep the diagnosis time on the wiring labor operation.",
+            citation="Wiring repair",
+        ))
+    if _mentions_goodwill(order) and not any(_lop_key(line.get("op_code")) == "8585CG09" for line in labor):
+        findings.append(_shop_issue(
+            severity="major",
+            ro_field="LOP 85-85-CG-09",
+            whats_wrong="Goodwill is on this repair order, and LOP 85-85-CG-09 is not.",
+            how_to_fix="Add 85-85-CG-09 when this is a consumer goodwill claim.",
+            citation="Consumer goodwill",
+        ))
     return findings
+
+
+def _mentions_goodwill(order: dict) -> bool:
+    pieces = [
+        order.get("customer_concern"),
+        order.get("cause"),
+        order.get("correction"),
+        order.get("tech_notes"),
+        order.get("other_visible_notes"),
+    ]
+    for line in _all_labor(order):
+        pieces.append(line.get("description"))
+        pieces.append(line.get("op_code"))
+    return bool(re.search(r"goodwill", " ".join(_clean(piece) for piece in pieces), re.IGNORECASE))
 
 
 def _add_on_findings(order: dict) -> list[dict]:
@@ -145,17 +250,7 @@ def _add_on_findings(order: dict) -> list[dict]:
 
 def _goodwill_findings(order: dict) -> list[dict]:
     """Goodwill in the labor or the narrative needs your signature."""
-    pieces = [
-        order.get("customer_concern"),
-        order.get("cause"),
-        order.get("correction"),
-        order.get("tech_notes"),
-        order.get("other_visible_notes"),
-    ]
-    for line in _all_labor(order):
-        pieces.append(line.get("description"))
-        pieces.append(line.get("op_code"))
-    if not re.search(r"goodwill", " ".join(_clean(piece) for piece in pieces), re.IGNORECASE):
+    if not _mentions_goodwill(order):
         return []
     signatures = order.get("signatures") if isinstance(order.get("signatures"), dict) else {}
     if _signed(signatures.get("service_manager")):
@@ -171,8 +266,8 @@ def _goodwill_findings(order: dict) -> list[dict]:
 
 _CAUSE_WORDS = re.compile(
     r"\b(?:found|tested|test|scan|scanned|code|dtc|reading|readings|measured|measurement|"
-    r"inspected|confirmed|verified|broken|cracked|leaking|leak|worn|damaged|corroded|"
-    r"seized|shorted|loose|noisy|noise|binding|contaminated|restricted|clogged|torn|"
+    r"inspected|broken|cracked|leaking|leak|worn|damaged|corroded|"
+    r"seized|shorted|binding|contaminated|restricted|clogged|torn|"
     r"failed|failure|diagnosis|diagnostic|spec|specs|voltage|pressure|ohms|"
     r"excessive|play)\b",
     re.IGNORECASE,
@@ -207,6 +302,19 @@ def _tech_note_findings(order: dict) -> list[dict]:
     parts = _all_parts(order)
     zero_hour = [line for line in labor if _hours(line.get("hours")) == 0]
     diagnosed = _CAUSE_WORDS.search(_NO_PROBLEM.sub(" ", story))
+    if any(_lop_key(line.get("op_code")).startswith("8541") for line in labor):
+        if not re.search(
+            r"\b(?:test|tested|scan|scanned|dtc|reading|readings|measured|voltage|pressure|spec|specs|diagnosis|diagnostic)\b",
+            story,
+            re.IGNORECASE,
+        ):
+            findings.append(_shop_issue(
+                severity="critical",
+                ro_field="Tech notes",
+                whats_wrong="Operation diagnostics (85-41) do not state the tests and results.",
+                how_to_fix="Write the diagnostic steps and the result. Trouble Not Found still needs the failure or concern code and a complete narrative.",
+                citation="Operation diagnostics",
+            ))
     if not diagnosed:
         if zero_hour:
             wrong = "Tech notes do not state the diagnosis that supports the 0.0 hour operation."

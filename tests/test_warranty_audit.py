@@ -1009,8 +1009,16 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertIn("LOP 85-85-CG-09", fields)
         self.assertNotIn("LOP 08-20-01-70", fields)
         warning = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "LOP 85-41-02-00")
-        self.assertIn("time punches", warning["whats_wrong"].lower())
         self.assertIn("service manager", warning["whats_wrong"].lower())
+        review = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "LOP 12-34-56-00")
+        self.assertIn("0.5", review["whats_wrong"])
+        claim["signatures"] = {"service_manager": True}
+        claim["repair_orders"][0]["labor_lines"] = [
+            {"op_code": "12-34-56-00", "description": "Buzz", "hours": "0.4", "failure_code": "11"},
+        ]
+        fields = [item["ro_field"] for item in check_claim_criteria(claim)]
+        self.assertNotIn("LOP 12-34-56-00", fields)
+        self.assertNotIn("Time punches", fields)
 
     def test_goodwill_requires_your_signature(self):
         claim = _paid_claim()

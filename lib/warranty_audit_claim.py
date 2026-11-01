@@ -1,256 +1,83 @@
-"""Checklist taken from an FCA Global Claim Acknowledgement printed by Reynolds Ignite.
+"""Auditor checks for a repair order.
 
-These checks only look at fields that are printed on that acknowledgement.
-They do not add Stellantis policy that is not written on the form or in the stored manual.
+These are the items an auditor reviews: tech notes, time punches, hours that
+do not match the narrative, a plus sign next to a job, and Goodwill.
+Blank boxes on the claim acknowledgement are not findings.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
 
 DEALER_CODE = "68888"
-CLAIM_SECTION = "FCA US LLC Global Claim Acknowledgement"
-CLAIM_NOTE = (
-    "Reynolds Ignite paid-claim acknowledgement. "
-    "This checks a field auditors review on that printout. "
-    "It is not a sentence from the warranty manual."
-)
 SHOP_SECTION = "Repair order documentation"
 SHOP_NOTE = (
-    "Dealership rule for this audit. A plus sign next to the job number is a warranty add-on "
-    "and needs your signature. Tech notes must justify the repair. "
+    "Auditor check. A plus sign next to the job number is a warranty add-on and needs your signature. "
+    "Goodwill needs your signature. Tech notes must justify the repair, and time punches must be on the Warranty Copy. "
     "This is not a sentence from the warranty manual."
 )
 
-_VIN = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$", re.IGNORECASE)
 _HOURS = re.compile(r"(\d+(?:\.\d+)?)\s*(?:hr|hrs|hours)\b", re.IGNORECASE)
 _MONEY = re.compile(r"-?\d+(?:\.\d+)?")
-_DATE_FORMATS = ("%b %d, %Y", "%B %d, %Y", "%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d")
 
 
 def check_claim_criteria(repair_order: dict) -> list[dict]:
-    """Return required corrections for a Reynolds Ignite RO or claim acknowledgement."""
+    """Return what an auditor would flag. Blank claim-acknowledgement boxes are ignored."""
     order = repair_order if isinstance(repair_order, dict) else {}
-    claim = _is_claim(order)
     findings: list[dict] = []
-    narrative = _narrative(order)
-
-    vin = _clean(order.get("vin"))
-    if not vin:
-        findings.append(_issue(
-            severity="critical",
-            ro_field="VIN",
-            whats_wrong="VIN is blank.",
-            how_to_fix="Enter the 17-character VIN on the repair order and on the claim acknowledgement.",
-            citation="VIN",
-        ))
-    elif not _VIN.match(vin):
-        findings.append(_issue(
-            severity="critical",
-            ro_field="VIN",
-            whats_wrong=f"VIN {vin} is not 17 characters.",
-            how_to_fix="Correct the VIN so it is 17 characters, with no I, O, or Q.",
-            citation="VIN",
-        ))
-
-    if not narrative:
-        findings.append(_issue(
-            severity="critical",
-            ro_field="Customer narrative",
-            whats_wrong="Customer narrative is blank.",
-            how_to_fix="Write the customer concern, the cause that was found, and the correction.",
-            citation="Customer Narrative",
-        ))
-    else:
-        if not _clean(order.get("customer_concern")):
-            findings.append(_issue(
-                severity="major",
-                ro_field="Customer concern",
-                whats_wrong="The customer concern line is blank.",
-                how_to_fix="Start the narrative with what the customer stated.",
-                citation="Customer Narrative",
-            ))
-        if not _clean(order.get("cause")):
-            findings.append(_issue(
-                severity="major",
-                ro_field="Cause",
-                whats_wrong="The cause is blank.",
-                how_to_fix="State what was found after the concern was verified.",
-                citation="Customer Narrative",
-            ))
-        if not _clean(order.get("correction")):
-            findings.append(_issue(
-                severity="major",
-                ro_field="Correction",
-                whats_wrong="The correction is blank.",
-                how_to_fix="State the repair that was performed and the labor operation.",
-                citation="Customer Narrative",
-            ))
-
-    for block in _repair_blocks(order):
-        label = _ro_label(block)
-        tech_id = _clean(block.get("technician_id"))
-        tech_name = _clean(block.get("technician_name"))
-        if not tech_id:
-            findings.append(_issue(
-                severity="major",
-                ro_field=f"{label} technician",
-                whats_wrong="Technician Identification is blank.",
-                how_to_fix="Enter the technician number printed on the claim acknowledgement.",
-                citation="Technician Identification",
-            ))
-        if claim and not tech_name:
-            findings.append(_issue(
-                severity="major",
-                ro_field=f"{label} technician name",
-                whats_wrong="Technician name is blank.",
-                how_to_fix="Enter the technician name next to Technician Identification.",
-                citation="Technician Identification",
-            ))
-
-        labor_lines = [row for row in _rows(block.get("labor_lines")) if _line_has_text(row)]
-        part_lines = [row for row in _rows(block.get("part_lines")) if _line_has_text(row)]
-        if claim and not labor_lines and not part_lines:
-            findings.append(_issue(
-                severity="critical",
-                ro_field=label,
-                whats_wrong="This repair order has no labor line and no part line.",
-                how_to_fix="Add the LOP line and the part lines that were submitted.",
-                citation="Line",
-            ))
-
-        for line in labor_lines:
-            op_code = _clean(line.get("op_code"))
-            if not op_code:
-                findings.append(_issue(
-                    severity="critical",
-                    ro_field=f"{label} labor operation",
-                    whats_wrong="A labor line has no LOP.",
-                    how_to_fix="Enter the labor operation code on that line.",
-                    citation="LOP",
-                ))
-            if not _clean(line.get("description")):
-                findings.append(_issue(
-                    severity="major",
-                    ro_field=f"{label} labor description",
-                    whats_wrong=f"LOP {op_code or '(blank)'} has no description.",
-                    how_to_fix="Enter the labor operation description.",
-                    citation="Description",
-                ))
-            if not _clean(line.get("failure_code")):
-                findings.append(_issue(
-                    severity="critical",
-                    ro_field=f"{label} failure code",
-                    whats_wrong=f"LOP {op_code or '(blank)'} has no failure code.",
-                    how_to_fix="Enter the failure code shown on that labor line.",
-                    citation="Failure Code",
-                ))
-            if _hours(line.get("hours")) is None:
-                findings.append(_issue(
-                    severity="critical",
-                    ro_field=f"{label} labor hours",
-                    whats_wrong=f"LOP {op_code or '(blank)'} has no hours.",
-                    how_to_fix="Enter the hours on that labor line.",
-                    citation="Hours",
-                ))
-            elif op_code:
-                stated = _hours_for_op(narrative, op_code)
-                billed = _hours(line.get("hours"))
-                if stated is not None and billed is not None and abs(stated - billed) > 0.05:
-                    findings.append(_issue(
-                        severity="critical",
-                        ro_field=f"{label} labor hours",
-                        whats_wrong=(
-                            f"Customer narrative states {stated:g} hours for LOP {op_code}, "
-                            f"and the labor line bills {billed:g} hours."
-                        ),
-                        how_to_fix="Make the hours in the narrative match the hours on that LOP line.",
-                        citation="Hours",
-                    ))
-
-        for line in part_lines:
-            part_number = _clean(line.get("part_number"))
-            if not part_number:
-                findings.append(_issue(
-                    severity="major",
-                    ro_field=f"{label} part",
-                    whats_wrong="A part line has no part number.",
-                    how_to_fix="Enter the part number on that line.",
-                    citation="Part Number",
-                ))
-            if not _clean(line.get("description")):
-                findings.append(_issue(
-                    severity="minor",
-                    ro_field=f"{label} part description",
-                    whats_wrong=f"Part {part_number or '(blank)'} has no description.",
-                    how_to_fix="Enter the part description.",
-                    citation="Description",
-                ))
-            if not _clean(line.get("quantity")):
-                findings.append(_issue(
-                    severity="major",
-                    ro_field=f"{label} part quantity",
-                    whats_wrong=f"Part {part_number or '(blank)'} has no quantity.",
-                    how_to_fix="Enter the quantity on that part line.",
-                    citation="Quantity",
-                ))
-            if line.get("failed") is None:
-                findings.append(_issue(
-                    severity="critical",
-                    ro_field=f"{label} failed part",
-                    whats_wrong=f"Failed Part is blank for part {part_number or '(blank)'}.",
-                    how_to_fix="Mark Failed Part on the claim acknowledgement for each failed part.",
-                    citation="Failed Part",
-                ))
-
-    if claim:
-        findings.extend(_header_findings(order))
+    findings.extend(_hours_mismatch_findings(order))
+    findings.extend(_time_punch_findings(order))
     findings.extend(_add_on_findings(order))
     findings.extend(_goodwill_findings(order))
     findings.extend(_tech_note_findings(order))
-
     return findings
 
 
-def _header_findings(order: dict) -> list[dict]:
-    required = (
-        ("critical", "claim_number", "Claim number", "Claim Number", "Enter the claim number."),
-        ("major", "dealer_code", "Dealer", "Dealer", "Enter the dealer code."),
-        ("major", "in_service_date", "In service date", "In Service Date", "Enter the in-service date."),
-        ("major", "warranty_coverage", "Warranty coverage", "Warranty Coverage", "Enter the warranty coverage code."),
-        ("major", "claim_type", "Claim type", "Claim Type", "Enter the claim type."),
-        ("major", "submission_type", "Submission type", "Submission Type", "Enter the submission type, such as original or resubmission."),
-        ("minor", "continuation", "Continuation", "Continuation", "Enter YES or NO for continuation."),
-        ("major", "date_received", "Date received", "Date Received", "Enter the date the claim was received."),
-        ("major", "date_completed", "Date completed", "Date Completed", "Enter the date the repair was completed."),
-        ("minor", "process_date", "Process date", "Process Date", "Enter the process date."),
-        ("minor", "vehicle_description", "Vehicle description", "Vehicle Description", "Enter the vehicle description."),
-        ("major", "service_advisor", "Service advisor", "Service Advisor", "Enter the service advisor number."),
-        ("minor", "list_number", "List number", "List Number", "Enter the list number from the claim acknowledgement."),
-        ("minor", "reference_number", "Reference number", "Reference Number", "Enter the reference number."),
-    )
+def _hours_mismatch_findings(order: dict) -> list[dict]:
+    narrative = _narrative(order)
     findings = []
-    for severity, key, field, citation, fix in required:
-        if not _clean(order.get(key)):
-            findings.append(_issue(
-                severity=severity,
-                ro_field=field,
-                whats_wrong=f"{citation} is blank on the claim acknowledgement.",
-                how_to_fix=fix,
-                citation=citation,
+    for block in _repair_blocks(order):
+        label = _ro_label(block)
+        for line in [row for row in _rows(block.get("labor_lines")) if _line_has_text(row)]:
+            op_code = _clean(line.get("op_code"))
+            stated = _hours_for_op(narrative, op_code)
+            billed = _hours(line.get("hours"))
+            if not op_code or stated is None or billed is None or abs(stated - billed) <= 0.05:
+                continue
+            findings.append(_shop_issue(
+                severity="critical",
+                ro_field=f"{label} labor hours",
+                whats_wrong=(
+                    f"The notes state {stated:g} hours for LOP {op_code}, "
+                    f"and the labor line bills {billed:g} hours."
+                ),
+                how_to_fix="Make the hours in the notes match the hours on that LOP line.",
+                citation="Labor hours",
             ))
-    received = _parse_date(order.get("date_received"))
-    completed = _parse_date(order.get("date_completed"))
-    if received and completed and completed < received:
-        findings.append(_issue(
-            severity="major",
-            ro_field="Date completed",
-            whats_wrong="Date Completed is before Date Received.",
-            how_to_fix="Correct Date Received and Date Completed.",
-            citation="Date Completed",
-        ))
     return findings
+
+
+def _time_punch_findings(order: dict) -> list[dict]:
+    """Labor on the Warranty Copy needs on and off punches."""
+    billed = [
+        line for line in _all_labor(order)
+        if (_hours(line.get("hours")) or 0) > 0
+    ]
+    if not billed:
+        return []
+    punches = [
+        row for row in _rows(order.get("time_punches"))
+        if _clean(row.get("on")) or _clean(row.get("off")) or _clean(row.get("hours"))
+    ]
+    if punches:
+        return []
+    return [_shop_issue(
+        severity="critical",
+        ro_field="Time punches",
+        whats_wrong="Time punches are missing on the Warranty Copy.",
+        how_to_fix="Add the technician, time on, time off, and hours from the Warranty Copy.",
+        citation="Time punches",
+    )]
 
 
 def _add_on_findings(order: dict) -> list[dict]:
@@ -505,11 +332,6 @@ def _repair_blocks(order: dict) -> list[dict]:
     }]
 
 
-def _is_claim(order: dict) -> bool:
-    kind = _clean(order.get("document_type")).casefold().replace("-", " ").replace("_", " ")
-    return "claim acknowledgement" in kind or kind in {"claim", "global claim acknowledgement"}
-
-
 def _narrative(order: dict) -> str:
     return " ".join(
         piece for piece in (
@@ -545,28 +367,6 @@ def _hours(value: object) -> float | None:
     return float(match.group(0))
 
 
-def _money(value: object) -> float | None:
-    text = _clean(value).replace(",", "").replace("$", "")
-    if not text:
-        return None
-    match = _MONEY.search(text)
-    if not match:
-        return None
-    return float(match.group(0))
-
-
-def _parse_date(value: object) -> datetime | None:
-    text = _clean(value)
-    if not text:
-        return None
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    return None
-
-
 def _rows(value: object) -> list[dict]:
     if not isinstance(value, list):
         return []
@@ -589,19 +389,6 @@ def _clean(value: object) -> str:
     if value is None:
         return ""
     return " ".join(str(value).split())
-
-
-def _issue(*, severity: str, ro_field: str, whats_wrong: str, how_to_fix: str, citation: str) -> dict:
-    return _finding(
-        severity=severity,
-        ro_field=ro_field,
-        whats_wrong=whats_wrong,
-        how_to_fix=how_to_fix,
-        citation=citation,
-        section=CLAIM_SECTION,
-        note=CLAIM_NOTE,
-        source="claim_acknowledgement",
-    )
 
 
 def _shop_issue(*, severity: str, ro_field: str, whats_wrong: str, how_to_fix: str, citation: str) -> dict:

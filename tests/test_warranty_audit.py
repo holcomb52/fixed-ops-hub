@@ -103,7 +103,7 @@ def _brake_ro() -> dict:
                 "tech_number": "441",
             }
         ],
-        "time_punches": [],
+        "time_punches": [{"tech_number": "441", "on": "8:00", "off": "9:12", "hours": "1.2"}],
         "parts": [
             {
                 "part_number": "68000000AA",
@@ -954,32 +954,31 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         claim["authorization"] = ""
         fields = {item["ro_field"] for item in check_claim_criteria(claim)}
         self.assertIn("RO 1 labor hours", fields)
-        self.assertIn("RO 1 failure code", fields)
-        self.assertIn("RO 1 failed part", fields)
-        self.assertNotIn("RO 1 pre-tax total", fields)
+        self.assertNotIn("RO 1 failure code", fields)
+        self.assertNotIn("RO 1 failed part", fields)
+        self.assertNotIn("List number", fields)
+        self.assertNotIn("VIN", fields)
         self.assertNotIn("Authorization", fields)
         hours = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "RO 1 labor hours")
         self.assertIn("0.3", hours["whats_wrong"])
         self.assertIn("0.9", hours["whats_wrong"])
-        self.assertEqual(hours["manual_section"], "FCA US LLC Global Claim Acknowledgement")
-        self.assertNotIn("manual", hours["citation_quote"].lower())
+        self.assertEqual(hours["manual_section"], "Repair order documentation")
 
     def test_unrelated_time_in_the_narrative_is_not_a_mismatch(self):
         claim = _paid_claim()
         claim["correction"] += " SAME LABOR TIME FOR R&R 0.9HR."
         self.assertEqual(check_claim_criteria(claim), [])
 
-    def test_blank_pre_tax_and_owner_are_not_findings_and_list_number_is(self):
+    def test_blank_claim_acknowledgement_boxes_are_not_findings(self):
         claim = _paid_claim()
-        self.assertEqual(claim["list_number"], "2025123")
-        self.assertEqual(claim["owner_name"], "")
-        self.assertEqual(claim["repair_orders"][0]["pre_tax_total"], "")
-        self.assertEqual(check_claim_criteria(claim), [])
         claim["list_number"] = ""
+        claim["vin"] = ""
+        claim["in_service_date"] = ""
+        claim["service_advisor"] = ""
+        claim["warranty_coverage"] = ""
+        claim["repair_orders"][0]["labor_lines"][0]["failure_code"] = ""
         fields = {item["ro_field"] for item in check_claim_criteria(claim)}
-        self.assertIn("List number", fields)
-        self.assertNotIn("Owner name", fields)
-        self.assertNotIn("RO 1 pre-tax total", fields)
+        self.assertEqual(fields, set())
 
     def test_dealer_code_is_68888_and_the_ro_matches_the_claim(self):
         order = normalize_repair_order({
@@ -1136,10 +1135,13 @@ class ClaimAcknowledgementTests(unittest.TestCase):
             return "{}"
 
         claim = _paid_claim()
-        claim["repair_orders"][0]["labor_lines"][0]["failure_code"] = ""
+        claim["time_punches"] = []
+        claim["vin"] = ""
+        claim["list_number"] = ""
         result = run_audit(claim, [], complete=complete)
         self.assertEqual(called["count"], 0)
-        self.assertTrue(any(item["ro_field"] == "RO 1 failure code" for item in result["findings"]))
+        self.assertTrue(any(item["ro_field"] == "Time punches" for item in result["findings"]))
+        self.assertFalse(any(item["ro_field"] in {"VIN", "List number", "Authorization"} for item in result["findings"]))
         self.assertIn("No warranty manual is stored", result["summary"])
 
 
@@ -1168,6 +1170,7 @@ def _paid_claim() -> dict:
         "customer_concern": "CUSTOMER STATES REAR VIEW CAMERA INOPERATIVE.",
         "cause": "FOUND BROKEN WIRING IN THE CAMERA HARNESS.",
         "correction": "REPLACED THE REAR VIEW CAMERA. LABOR OP 08200170. TOTAL TIME 0.3HR.",
+        "time_punches": [{"tech_number": "20001", "on": "8:00", "off": "8:20", "hours": "0.3"}],
         "repair_orders": [
             {
                 "ro_number": "1",

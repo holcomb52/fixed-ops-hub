@@ -48,17 +48,7 @@ from lib.warranty_audit_storage import (
 _LABOR_COLUMNS = ["ro_number", "job_number", "op_code", "description", "failure_code", "hours", "tech_number", "add_on"]
 _PUNCH_COLUMNS = ["tech_number", "on", "off", "hours"]
 _PART_COLUMNS = ["ro_number", "part_number", "description", "quantity", "failed"]
-_TOTAL_COLUMNS = [
-    "ro_number",
-    "technician_id",
-    "technician_name",
-    "total_parts",
-    "total_labor",
-    "total_special_service",
-    "pre_tax_total",
-]
 _SIG_OPTIONS = ["Not visible", "Yes", "No"]
-_DOC_OPTIONS = ["Repair order", "FCA claim acknowledgement"]
 
 
 def render():
@@ -328,7 +318,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 13. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 14. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
@@ -394,7 +384,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
         type="primary",
         key="warranty_audit_run",
     ):
-        with st.spinner("Checking this repair order against the warranty manual and the audit guide..."):
+        with st.spinner("Checking what an auditor would look for, including the warranty manual and the audit guide..."):
             try:
                 result = run_audit(
                     edited,
@@ -427,13 +417,13 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
         st.rerun()
     if has_manual or has_guide:
         st.caption(
-            "Reynolds Ignite claim fields are always checked. "
-            "A manual or audit-guide finding is added only when that stored document contains the quoted sentence."
+            "An auditor item is flagged here, or quoted from the warranty manual or the audit guide. "
+            "Blank boxes on the claim acknowledgement are not flagged."
         )
     else:
         st.caption(
-            "This checks the Reynolds Ignite claim fields. "
-            "Store the warranty manual and the audit guide to check the repair order against both."
+            "This flags what an auditor looks for on the repair order. "
+            "Store the warranty manual and the audit guide to also check those documents."
         )
 
 
@@ -590,121 +580,31 @@ def _repair_order_form(extracted: dict) -> dict:
 
 
 def _claim_acknowledgement_fields(extracted: dict, token: str) -> dict:
-    """Fields printed on an FCA Global Claim Acknowledgement from Reynolds Ignite."""
-    expanded = extracted.get("document_type") == "claim_acknowledgement"
-    with st.expander("Claim acknowledgement fields", expanded=expanded):
-        st.caption(
-            "The top section of the claim acknowledgement has the claim number, in service date, "
-            "date completed, and the service advisor number. The technician name is elsewhere on that form. "
-            "Pre-tax total is left blank."
-        )
-        doc_label = st.selectbox(
-            "Document",
-            _DOC_OPTIONS,
-            index=1 if expanded else 0,
-            key=f"{token}_doc",
-        )
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            claim_number = st.text_input(
-                "Claim number",
-                value=extracted.get("claim_number") or extracted.get("ro_number") or "",
-                key=f"{token}_claim",
-                help="Same number as the RO. It is in the top section of the claim acknowledgement.",
-            )
-            dealer_code = st.text_input(
-                "Dealer",
-                value=extracted.get("dealer_code") or DEALER_CODE,
-                key=f"{token}_dealer",
-                help="This store's dealer code is 68888.",
-            )
-            claim_status = st.text_input("Status", value=extracted.get("claim_status") or "", key=f"{token}_status")
-        with c2:
-            coverage = st.text_input("Warranty coverage", value=extracted.get("warranty_coverage") or "", key=f"{token}_cov")
-            claim_type = st.text_input("Claim type", value=extracted.get("claim_type") or "", key=f"{token}_ctype")
-            submission = st.text_input("Submission type", value=extracted.get("submission_type") or "", key=f"{token}_sub")
-            continuation = st.text_input("Continuation", value=extracted.get("continuation") or "", key=f"{token}_cont")
-        with c3:
-            in_service = st.text_input(
-                "In service date",
-                value=extracted.get("in_service_date") or "",
-                key=f"{token}_insvc",
-                help="In the top section of the claim acknowledgement.",
-            )
-            received = st.text_input("Date received", value=extracted.get("date_received") or "", key=f"{token}_recv")
-            completed = st.text_input(
-                "Date completed",
-                value=extracted.get("date_completed") or "",
-                key=f"{token}_done",
-                help="In the top section of the claim acknowledgement.",
-            )
-            advisor = st.text_input(
-                "Service advisor",
-                value=extracted.get("service_advisor") or "",
-                key=f"{token}_advisor",
-                help="The advisor number in the top section of the claim acknowledgement.",
-            )
-        d1, d2, d3 = st.columns(3)
-        with d1:
-            vehicle = st.text_input("Vehicle description", value=extracted.get("vehicle_description") or "", key=f"{token}_vehicle")
-        with d2:
-            list_number = st.text_input(
-                "List number",
-                value=extracted.get("list_number") or "",
-                key=f"{token}_list",
-                help="Printed on the claim acknowledgement, such as 2025123.",
-            )
-            reference = st.text_input("Reference number", value=extracted.get("reference_number") or "", key=f"{token}_ref")
-        with d3:
-            process_date = st.text_input("Process date", value=extracted.get("process_date") or "", key=f"{token}_process")
-            tech_name = st.text_input(
-                "Technician name",
-                value=extracted.get("technician_name") or "",
-                key=f"{token}_techname",
-                help="On the claim acknowledgement, next to the technician number.",
-            )
-        totals = st.data_editor(
-            _frame(extracted.get("repair_orders") or [], _TOTAL_COLUMNS),
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-            key=f"{token}_totals",
-            column_config={
-                "ro_number": "RO #",
-                "technician_id": "Tech #",
-                "technician_name": "Tech name",
-                "total_parts": "Total parts",
-                "total_labor": "Total labor",
-                "total_special_service": "Special service",
-                "pre_tax_total": st.column_config.TextColumn(
-                    "Pre-tax total",
-                    help="Left blank on these acknowledgements.",
-                ),
-            },
-        )
+    """Keep header values from the read. They are not boxes an auditor flags."""
+    del token
     return {
-        "document_type": "claim_acknowledgement" if doc_label == "FCA claim acknowledgement" else "repair_order",
+        "document_type": extracted.get("document_type") or "repair_order",
         "dms": extracted.get("dms") or "",
-        "claim_number": claim_number,
-        "claim_status": claim_status,
-        "dealer_code": dealer_code,
-        "in_service_date": in_service,
-        "warranty_coverage": coverage,
-        "claim_type": claim_type,
-        "submission_type": submission,
-        "continuation": continuation,
-        "date_received": received,
-        "date_completed": completed,
-        "process_date": process_date,
+        "claim_number": extracted.get("claim_number") or extracted.get("ro_number") or "",
+        "claim_status": extracted.get("claim_status") or "",
+        "dealer_code": extracted.get("dealer_code") or DEALER_CODE,
+        "in_service_date": extracted.get("in_service_date") or "",
+        "warranty_coverage": extracted.get("warranty_coverage") or "",
+        "claim_type": extracted.get("claim_type") or "",
+        "submission_type": extracted.get("submission_type") or "",
+        "continuation": extracted.get("continuation") or "",
+        "date_received": extracted.get("date_received") or "",
+        "date_completed": extracted.get("date_completed") or "",
+        "process_date": extracted.get("process_date") or "",
         "authorization": "",
         "owner_name": "",
-        "vehicle_description": vehicle,
-        "service_advisor": advisor,
-        "list_number": list_number,
-        "reference_number": reference,
+        "vehicle_description": extracted.get("vehicle_description") or "",
+        "service_advisor": extracted.get("service_advisor") or "",
+        "list_number": extracted.get("list_number") or "",
+        "reference_number": extracted.get("reference_number") or "",
         "prior_claim": extracted.get("prior_claim") or "",
-        "technician_name": tech_name,
-        "_totals": _records(totals, _TOTAL_COLUMNS),
+        "technician_name": extracted.get("technician_name") or "",
+        "_totals": list(extracted.get("repair_orders") or []),
     }
 
 
@@ -717,8 +617,8 @@ def _render_result(result: dict):
     summary = str(result.get("summary") or "")
     st.markdown(
         section_title(
-            "What to correct",
-            "Claim-acknowledgement fields come from the Reynolds Ignite printout. Manual items also quote the stored manual.",
+            "What an auditor would flag",
+            "Tech notes, time punches, add-ons, Goodwill, and quotes from the warranty manual and the audit guide.",
         ),
         unsafe_allow_html=True,
     )

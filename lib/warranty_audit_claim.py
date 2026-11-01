@@ -28,6 +28,8 @@ def check_claim_criteria(repair_order: dict) -> list[dict]:
     order = repair_order if isinstance(repair_order, dict) else {}
     findings: list[dict] = []
     findings.extend(_hours_mismatch_findings(order))
+    findings.extend(_date_mismatch_findings(order))
+    findings.extend(_mileage_mismatch_findings(order))
     findings.extend(_time_punch_findings(order))
     findings.extend(_special_labor_findings(order))
     findings.extend(_add_on_findings(order))
@@ -58,6 +60,72 @@ def _hours_mismatch_findings(order: dict) -> list[dict]:
                 citation="Labor hours",
             ))
     return findings
+
+
+def _date_mismatch_findings(order: dict) -> list[dict]:
+    """Flag a completed date that is before the repair was received. Blank dates are ignored."""
+    received = _parse_date(order.get("date_received") or order.get("open_date"))
+    completed = _parse_date(order.get("date_completed") or order.get("close_date"))
+    if not received or not completed or completed >= received:
+        return []
+    return [_shop_issue(
+        severity="major",
+        ro_field="Date completed",
+        whats_wrong="Date completed is before the date the repair was received.",
+        how_to_fix="Correct the received date and the completed date so the repair is not finished before it started.",
+        citation="Repair dates",
+    )]
+
+
+def _mileage_mismatch_findings(order: dict) -> list[dict]:
+    """Flag when the notes state a mileage that does not match the mileage box."""
+    stated_box = _mileage_number(order.get("mileage"))
+    if stated_box is None:
+        return []
+    narrative = _narrative(order)
+    match = re.search(
+        r"(\d{1,3}(?:,\d{3})+|\d{4,6})\s*(?:miles|mileage|odometer)\b",
+        narrative,
+        re.IGNORECASE,
+    )
+    if not match:
+        return []
+    stated_notes = _mileage_number(match.group(1))
+    if stated_notes is None or abs(stated_notes - stated_box) <= 100:
+        return []
+    return [_shop_issue(
+        severity="major",
+        ro_field="Mileage",
+        whats_wrong=(
+            f"The mileage box says {stated_box:,} and the notes say {stated_notes:,} miles."
+        ),
+        how_to_fix="Make the mileage on the repair order match the mileage in the notes.",
+        citation="Mileage",
+    )]
+
+
+def _mileage_number(value: object) -> int | None:
+    text = _clean(value).replace(",", "")
+    if not text or not text.isdigit():
+        return None
+    number = int(text)
+    if number < 100 or number > 999999:
+        return None
+    return number
+
+
+def _parse_date(value: object):
+    from datetime import datetime
+
+    text = _clean(value)
+    if not text:
+        return None
+    for fmt in ("%b %d, %Y", "%B %d, %Y", "%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _lop_key(value: object) -> str:
@@ -448,7 +516,14 @@ def _note_tokens(value: object, *, minimum: int = 4) -> set[str]:
     stops = _NOTE_STOP
     if minimum < 4:
         stops = stops | {"the", "and", "for", "end", "set", "kit", "new", "old"}
-    return {word for word in words if word not in stops}
+    tokens = set()
+    for word in words:
+        if word in stops:
+            continue
+        tokens.add(word)
+        if len(word) >= 5 and word.endswith("s") and word[:-1] not in stops:
+            tokens.add(word[:-1])
+    return tokens
 
 
 def _repair_blocks(order: dict) -> list[dict]:

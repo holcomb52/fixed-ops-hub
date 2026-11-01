@@ -13,6 +13,7 @@ from typing import Iterable, Optional
 
 MIN_MANUAL_CHARS = 200
 MAX_CHUNK_CHARS = 1400
+MAX_MANUAL_PAGES = 400
 CHUNK_OVERLAP = 180
 MIN_CHUNK_CHARS = 20
 MIN_QUOTE_CHARS = 24
@@ -95,9 +96,12 @@ def extract_pdf_pages(data: bytes) -> list[dict]:
     except Exception as exc:
         raise ManualExtractError(f"Could not open this PDF. {exc}") from None
     try:
-        for index, page in enumerate(pdf.pages, start=1):
+        total = len(pdf.pages)
+        for index, page in enumerate(pdf.pages[:MAX_MANUAL_PAGES], start=1):
             text = page.extract_text() or ""
             pages.append({"page_number": index, "text": _clean_text(text)})
+        if pages and total > MAX_MANUAL_PAGES:
+            pages[0]["_pdf_page_total"] = total
     finally:
         pdf.close()
     if not pages:
@@ -197,6 +201,10 @@ def build_manual_record_from_pages(
         }
         for page in pages
     ]
+    page_total = 0
+    for page in pages:
+        if isinstance(page, dict) and page.get("_pdf_page_total"):
+            page_total = int(page["_pdf_page_total"])
     text_characters = sum(len(page["text"]) for page in cleaned_pages)
     if text_characters < MIN_MANUAL_CHARS:
         raise ManualExtractError(
@@ -205,6 +213,11 @@ def build_manual_record_from_pages(
         )
     empty_pages = [page["page_number"] for page in cleaned_pages if not page["text"]]
     warnings: list[str] = []
+    if page_total > MAX_MANUAL_PAGES:
+        warnings.append(
+            f"Only the first {MAX_MANUAL_PAGES} of {page_total} PDF pages were stored. "
+            "Split a larger manual before uploading the rest."
+        )
     if empty_pages:
         shown = ", ".join(str(number) for number in empty_pages[:20])
         extra = "" if len(empty_pages) <= 20 else f" (+{len(empty_pages) - 20} more)"
@@ -376,7 +389,7 @@ def validate_findings(raw_findings: object, retrieved: list[dict]) -> list[dict]
         matches = [
             chunk
             for chunk, text in indexed
-            if len(normalized_quote) >= MIN_QUOTE_CHARS and normalized_quote in text
+            if _quote_is_substantive(normalized_quote) and normalized_quote in text
         ]
         requested_page = _as_int(raw.get("manual_page"))
         finding = {
@@ -593,6 +606,34 @@ def _phrases(terms: list[str]) -> list[str]:
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip().casefold()
+
+
+def _quote_is_substantive(normalized_quote: str) -> bool:
+    """A heading or a short fragment must not count as a policy quote."""
+    if len(normalized_quote) < MIN_QUOTE_CHARS:
+        return False
+    words = [word for word in re.findall(r"[a-z0-9']+", normalized_quote) if word]
+    if len(words) < 6:
+        return False
+    return True
+
+
+def redact_secrets(text: str, *extra: str) -> str:
+    """Strip API keys and tokens before an error is shown or logged."""
+    cleaned = "" if text is None else str(text)
+    for secret in extra:
+        if secret and len(secret) >= 6:
+            cleaned = cleaned.replace(secret, "[redacted]")
+    patterns = (
+        r"sk-[A-Za-z0-9_\-]{8,}",
+        r"sb_secret_[A-Za-z0-9_\-]+",
+        r"sb_publishable_[A-Za-z0-9_\-]+",
+        r"Bearer\s+\S+",
+        r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]+",
+    )
+    for pattern in patterns:
+        cleaned = re.sub(pattern, "[redacted]", cleaned, flags=re.IGNORECASE)
+    return cleaned
 
 
 def _collapse(value: object, limit: int = 1200) -> str:

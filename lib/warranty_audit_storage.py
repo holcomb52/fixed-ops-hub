@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple
 from lib.json_safe import json_safe
 from lib.payroll_supabase_sync import delete_remote_run, load_remote_run, merge_run_records, upsert_payroll_run
 from lib.supabase_client import get_supabase
-from lib.warranty_audit_manual import build_manual_record
+from lib.warranty_audit_manual import build_manual_record, redact_secrets
 
 MANUAL_DIR = Path(__file__).resolve().parent.parent / "data" / "warranty_manual_archive"
 AUDIT_DIR = Path(__file__).resolve().parent.parent / "data" / "warranty_audit_archive"
@@ -45,7 +45,7 @@ def cloud_error_message(raw: str) -> str:
             "Saved on this computer, but Supabase is missing the warranty audit tables. "
             "Open Supabase → SQL Editor, run supabase/warranty_audit_tables.sql, then save again."
         )
-    return f"Saved on this computer. Cloud sync failed: {text[:500]}"
+    return f"Saved on this computer. Cloud sync failed: {redact_secrets(text[:500])}"
 
 
 def new_manual_record(filename: str, pdf_bytes: bytes) -> dict:
@@ -98,6 +98,16 @@ def load_active_manual(kind: str = MANUAL_KIND) -> Optional[dict]:
     return chosen
 
 
+def _uuid_or_none(value: object) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return str(uuid.UUID(text))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
 def save_audit_run(snapshot: dict, *, run_id: Optional[str] = None) -> Tuple[str, str]:
     run_id = run_id or str(uuid.uuid4())
     now = _now_iso()
@@ -112,7 +122,7 @@ def save_audit_run(snapshot: dict, *, run_id: Optional[str] = None) -> Tuple[str
         "snapshot": snapshot,
         "finding_count": len(required),
         "critical_count": sum(1 for item in required if item.get("severity") == "critical"),
-        "manual_id": snapshot.get("manual_id") or None,
+        "manual_id": _uuid_or_none(snapshot.get("manual_id")),
         "completed_at": now,
         "updated_at": now,
     }

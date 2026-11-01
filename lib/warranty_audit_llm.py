@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import urllib.error
 import urllib.request
 from typing import Callable, Optional
@@ -20,6 +21,7 @@ from lib.warranty_audit_manual import (
     SEVERITIES,
     build_summary,
     format_excerpts,
+    redact_secrets,
     retrieve_for_repair_order,
     validate_findings,
 )
@@ -201,6 +203,7 @@ def complete_chat(
     timeout: int = 180,
     json_mode: bool = True,
     max_tokens: int | None = None,
+    _allow_retry: bool = True,
 ) -> str:
     """Call the OpenAI chat API. The key is sent only in the Authorization header.
 
@@ -231,15 +234,35 @@ def complete_chat(
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:400].replace(api_key, "[redacted]")
+        detail = redact_secrets(exc.read().decode("utf-8", errors="replace")[:400], api_key)
+        if exc.code == 429:
+            if _allow_retry:
+                import time
+                time.sleep(1)
+                return complete_chat(
+                    messages,
+                    api_key=api_key,
+                    model=model,
+                    timeout=timeout,
+                    json_mode=json_mode,
+                    max_tokens=max_tokens,
+                    _allow_retry=False,
+                )
+            raise LlmError(
+                "The model is busy because of a rate limit. Wait a moment and read the repair order again."
+            ) from None
+        if exc.code in {408, 500, 502, 503, 504}:
+            raise LlmError(
+                f"The model request failed ({exc.code}). Try the repair order again in a moment."
+            ) from None
         if exc.code == 401:
             raise LlmError(
                 "OPENAI_API_KEY was rejected. Check the key in Streamlit secrets or .env."
             ) from None
         raise LlmError(f"The model request failed ({exc.code}). {detail}") from None
     except urllib.error.URLError as exc:
-        raise LlmError(f"Could not reach the model API. {exc.reason}") from None
-    except TimeoutError:
+        raise LlmError(f"Could not reach the model API. {redact_secrets(str(exc.reason), api_key)}") from None
+    except (TimeoutError, socket.timeout):
         raise LlmError("The model request timed out. Try a clearer photo or fewer pages.") from None
     try:
         content = body["choices"][0]["message"]["content"]
@@ -454,7 +477,10 @@ def _transcribe_pages(
             text = transcribe_fn(messages).strip()
         except LlmError as exc:
             return f"[Page {index + 1} could not be read. {exc}]"
-        return text or f"[Page {index + 1} came back blank.]"
+        words = text.split()
+        if len(text) < 12 or (len(text) < 40 and len(words) < 4) or text.count("[unclear]") >= 4:
+            return f"[Page {index + 1} is too blurry to read. Take that page again.]"
+        return text
 
     if len(images) == 1:
         if on_progress:

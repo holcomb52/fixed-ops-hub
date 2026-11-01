@@ -45,6 +45,9 @@ create table if not exists warranty_audit_runs (
 create index if not exists idx_warranty_audit_runs_completed
     on warranty_audit_runs (completed_at desc);
 
+create index if not exists idx_warranty_audit_runs_ro_number
+    on warranty_audit_runs (ro_number);
+
 -- Pictures for the claim currently being collected. The phone inserts a row
 -- as each picture is added so a desktop session can show it immediately.
 create table if not exists warranty_claim_live_photos (
@@ -61,3 +64,8 @@ create index if not exists idx_warranty_claim_live_photos_position
 alter table warranty_manuals enable row level security;
 alter table warranty_audit_runs enable row level security;
 alter table warranty_claim_live_photos enable row level security;
+
+-- No anon or authenticated access. The app uses the secret key, which bypasses RLS.
+revoke all on table warranty_manuals from anon, authenticated;
+revoke all on table warranty_audit_runs from anon, authenticated;
+revoke all on table warranty_claim_live_photos from anon, authenticated;

@@ -266,6 +266,9 @@ create table if not exists warranty_audit_runs (
 create index if not exists idx_warranty_audit_runs_completed
     on warranty_audit_runs (completed_at desc);
 
+create index if not exists idx_warranty_audit_runs_ro_number
+    on warranty_audit_runs (ro_number);
+
 create table if not exists warranty_claim_live_photos (
     sha text primary key,
     name text not null,
@@ -298,3 +301,7 @@ alter table advisor_training_logs enable row level security;
 alter table warranty_manuals enable row level security;
 alter table warranty_audit_runs enable row level security;
 alter table warranty_claim_live_photos enable row level security;
+
+revoke all on table warranty_manuals from anon, authenticated;
+revoke all on table warranty_audit_runs from anon, authenticated;
+revoke all on table warranty_claim_live_photos from anon, authenticated;

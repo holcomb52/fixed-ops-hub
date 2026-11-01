@@ -1,7 +1,8 @@
 """Auditor checks for a repair order.
 
-These are the items an auditor reviews: tech notes, time punches, hours that
-do not match the narrative, a plus sign next to a job, and Goodwill.
+These are the items an auditor reviews on the repair order: tech notes, hours
+that do not match the narrative, a plus sign next to a job, and Goodwill.
+Time-punch rules come from the stored warranty manual and audit guide.
 Blank boxes on the claim acknowledgement are not findings.
 """
 
@@ -13,7 +14,7 @@ DEALER_CODE = "68888"
 SHOP_SECTION = "Repair order documentation"
 SHOP_NOTE = (
     "Auditor check. A plus sign next to the job number is a warranty add-on and needs your signature. "
-    "Goodwill needs your signature. Tech notes must justify the repair, and time punches must be on the Warranty Copy. "
+    "Goodwill needs your signature. Tech notes must justify the repair. "
     "This is not a sentence from the warranty manual."
 )
 
@@ -26,7 +27,6 @@ def check_claim_criteria(repair_order: dict) -> list[dict]:
     order = repair_order if isinstance(repair_order, dict) else {}
     findings: list[dict] = []
     findings.extend(_hours_mismatch_findings(order))
-    findings.extend(_time_punch_findings(order))
     findings.extend(_add_on_findings(order))
     findings.extend(_goodwill_findings(order))
     findings.extend(_tech_note_findings(order))
@@ -55,29 +55,6 @@ def _hours_mismatch_findings(order: dict) -> list[dict]:
                 citation="Labor hours",
             ))
     return findings
-
-
-def _time_punch_findings(order: dict) -> list[dict]:
-    """Labor on the Warranty Copy needs on and off punches."""
-    billed = [
-        line for line in _all_labor(order)
-        if (_hours(line.get("hours")) or 0) > 0
-    ]
-    if not billed:
-        return []
-    punches = [
-        row for row in _rows(order.get("time_punches"))
-        if _clean(row.get("on")) or _clean(row.get("off")) or _clean(row.get("hours"))
-    ]
-    if punches:
-        return []
-    return [_shop_issue(
-        severity="critical",
-        ro_field="Time punches",
-        whats_wrong="Time punches are missing on the Warranty Copy.",
-        how_to_fix="Add the technician, time on, time off, and hours from the Warranty Copy.",
-        citation="Time punches",
-    )]
 
 
 def _add_on_findings(order: dict) -> list[dict]:

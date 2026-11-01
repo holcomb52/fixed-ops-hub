@@ -1135,13 +1135,13 @@ class ClaimAcknowledgementTests(unittest.TestCase):
             return "{}"
 
         claim = _paid_claim()
-        claim["time_punches"] = []
+        claim["correction"] += " GOODWILL adjustment."
         claim["vin"] = ""
         claim["list_number"] = ""
         result = run_audit(claim, [], complete=complete)
         self.assertEqual(called["count"], 0)
-        self.assertTrue(any(item["ro_field"] == "Time punches" for item in result["findings"]))
-        self.assertFalse(any(item["ro_field"] in {"VIN", "List number", "Authorization"} for item in result["findings"]))
+        self.assertTrue(any(item["ro_field"] == "Goodwill" for item in result["findings"]))
+        self.assertFalse(any(item["ro_field"] in {"VIN", "List number", "Authorization", "Time punches"} for item in result["findings"]))
         self.assertIn("No warranty manual is stored", result["summary"])
 
 

@@ -112,7 +112,7 @@ Rules:
 - If the excerpts do not address the repair, return an empty findings array.
 - Treat null signatures and fields listed as unreadable as unknown. Do not flag an unknown field as missing.
 - Flag a signature only when the repair order value is false and an excerpt requires that signature.
-- Flag time punches only when time_punches is empty or visibly incomplete and an excerpt requires them.
+- Flag time punches only when an excerpt requires them for this repair and the punches are missing or incomplete. If the excerpt says time punching is not required for a dealer type, do not flag a missing punch unless the repair order shows that dealer type.
 - how_to_fix must restate the action required by the quoted excerpt, not a new rule.
 - severity is critical when the excerpt says the claim will be charged back, debited, or rejected; major when the excerpt says the claim is incomplete or may be denied; minor when the excerpt only states a format or clarity requirement.
 - ro_field names the repair-order item that is wrong, such as time punches, customer signature, mileage, VIN, cause, correction, parts, or labor operation.

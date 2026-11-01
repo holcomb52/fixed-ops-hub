@@ -16,7 +16,17 @@ MAX_CHUNK_CHARS = 1400
 CHUNK_OVERLAP = 180
 MIN_CHUNK_CHARS = 20
 MIN_QUOTE_CHARS = 24
-MAX_EXCERPTS = 12
+MAX_EXCERPTS = 16
+# Phrases that appear in the stored warranty manual or the auditor's reason-code guide.
+# One stored chunk for each phrase is included when that phrase is actually in the text.
+RULE_ANCHORS = (
+    "3 c's",
+    "time punching",
+    "initialed with the date and time by the service manager",
+    "tech notes do not support",
+    "add on operations",
+    "time documentation",
+)
 
 SEVERITIES = ("critical", "major", "minor", "info")
 REQUIRED_SEVERITIES = ("critical", "major", "minor")
@@ -305,6 +315,21 @@ def retrieve_for_repair_order(repair_order: dict, chunks: list[dict], *, limit: 
                 return
 
     add(retrieve_chunks(chunks, repair_order_query_text(repair_order), limit=8))
+    for phrase in RULE_ANCHORS:
+        matches = [
+            chunk for chunk in chunks
+            if phrase in str(chunk.get("text") or "").casefold()
+            or phrase in str(chunk.get("section_label") or "").casefold()
+        ]
+        if not matches:
+            continue
+        matches.sort(key=lambda chunk: (
+            0 if phrase in str(chunk.get("section_label") or "").casefold() else 1,
+            int(chunk.get("page_number") or 0),
+        ))
+        add(matches[:1])
+        if len(selected) >= limit:
+            break
     if len(selected) < limit:
         for probe in DOCUMENTATION_PROBES:
             add(retrieve_chunks(chunks, probe, limit=2))

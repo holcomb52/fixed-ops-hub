@@ -84,9 +84,19 @@ SUPABASE_KEY = "your_service_role_key"
 APP_PASSWORD = "choose-a-strong-password"
 ```
 
+The app stays locked until `APP_PASSWORD` is set. Sign in with that password. Without it, payroll and the other pages do not open.
+
 4. Bookmark your `https://something.streamlit.app` URL in Chrome
 
-No AI runs in this app — it is payroll and warranty spreadsheet math only.
+Payroll, ELR, and parts math do not call an AI service. **Warranty Audit** does: it reads a repair-order photo with a vision model and compares it to the warranty manual you stored. Add this secret only if you use that page:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+# Optional. Must be a vision-capable chat model. Defaults to gpt-4o.
+OPENAI_MODEL = "gpt-4o"
+```
+
+`OPENAI_API_KEY` is read from the environment or Streamlit secrets, same as `SUPABASE_KEY`. Never commit the real key.
 
 ## Payroll (every pay period)
 
@@ -118,6 +128,7 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 | Payroll | Live — technician, advisor, and receptionist pay |
 | Flag Sheet | Live — technician flag hours |
 | Warranty | Live — warranty ELR analysis |
+| Warranty Audit | Live — every repair order vs the warranty manual and the audit guide |
 | Warranty Admin Bonus | Live |
 | CSI Bonus | Live |
 | Advisor Training | Live — daily training logs |
@@ -125,3 +136,13 @@ The repo still contains a leftover `create-next-app` scaffold (`src/`, `package.
 | Labor Rate | Live — customer-pay rate grid |
 | Parts | Live — returns and stocking |
 | Reports | Live — saved runs, reopen / PDF / delete |
+
+## Warranty Audit
+
+1. On an existing Supabase project, run `supabase/warranty_audit_tables.sql` in the SQL Editor. A brand-new project that already ran `supabase/schema.sql` can skip this.
+2. Set `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) as shown above.
+3. Open **Warranty Audit**. Store the warranty manual and the dealer audit guide. A text PDF is stored directly. A photo scan is read once, then every repair order is checked against both documents.
+4. On your phone, tap **Open camera**, snap every page, then tap **Add these pictures to the claim**. The camera stays open between pages. You can add up to 20. Click **Read repair order**, fix anything that was read wrong, then **Check this document**. To save the audit, this app's secrets need `SUPABASE_URL` and `SUPABASE_KEY` copied from the original Fixed Ops Hub app. The warranty audit tables are already in that Supabase project.
+5. Download the findings CSV, or click **Save audit to history** to keep it on this page and under Reports.
+
+The checker flags what an auditor looks for: tech notes that do not justify the repair, missing time punches, hours in the notes that do not match the labor line, a plus sign next to a job number without your signature, and Goodwill without your signature. Blank boxes on the claim acknowledgement are not flagged. A finding from the warranty manual or the audit guide is added only when it quotes a sentence from that stored document. The checker does not fill in Stellantis policy from memory.

@@ -107,6 +107,13 @@ from lib.advisor_training_storage import (
     load_advisor_training_log,
 )
 from lib.advisor_training_pdf_export import generate_advisor_training_pdf
+from lib.warranty_audit_manual import csv_download_name, findings_to_csv
+from lib.warranty_audit_storage import (
+    apply_warranty_audit_snapshot_to_session,
+    delete_warranty_audit_run,
+    list_warranty_audit_runs,
+    load_warranty_audit_run,
+)
 from views.payroll_helpers import init_payroll_session
 
 ACCENT_TECH = "orange"
@@ -120,6 +127,7 @@ ACCENT_EOM = "orange"
 ACCENT_LABOR = "cyan"
 ACCENT_PARTS = "violet"
 ACCENT_STOCKING = "teal"
+ACCENT_AUDIT = "rose"
 
 
 def _fmt_date(iso: str) -> str:
@@ -442,6 +450,83 @@ def _render_warranty_runs():
             run_label=run_label,
             delete_fn=delete_warranty_labor_run,
             active_session_key="active_warranty_run_id",
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
+def _render_warranty_audit_runs():
+    runs = list_warranty_audit_runs()
+    st.markdown(team_section_divider(ACCENT_AUDIT), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "Warranty Audits",
+            "Saved repair-order checks against the stored warranty manual",
+            accent=ACCENT_AUDIT,
+            icon="🔎",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved warranty audits yet. Run one on **Warranty Audit** and click **Save audit to history**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        ro_number = run.get("ro_number") or "Repair order"
+        completed = _fmt_date(run.get("completed_at", ""))
+        loaded = load_warranty_audit_run(run_id)
+        st.markdown(
+            report_run_summary_card(
+                f"RO {ro_number}",
+                ACCENT_AUDIT,
+                caption=f"Saved {completed}",
+                amount=f"{int(run.get('finding_count') or 0)} to fix",
+                meta=f"{int(run.get('critical_count') or 0)} critical",
+                badge_html='<span class="badge badge-live">Saved</span>',
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button("✏️ Reopen", key=f"audit_reopen_{run_id}", use_container_width=True):
+                if loaded:
+                    apply_warranty_audit_snapshot_to_session(loaded, run_id)
+                    st.session_state.pending_nav = "Warranty Audit"
+                    st.rerun()
+        with a2:
+            if loaded:
+                snapshot = loaded.get("snapshot") or {}
+                ro = snapshot.get("ro") or {}
+                csv_text = findings_to_csv(
+                    str(ro.get("ro_number") or ro_number),
+                    str(snapshot.get("summary") or ""),
+                    list(snapshot.get("findings") or []),
+                )
+                st.download_button(
+                    "⬇ Findings CSV",
+                    data=csv_text.encode("utf-8-sig"),
+                    file_name=csv_download_name(str(ro.get("ro_number") or ro_number)),
+                    mime="text/csv",
+                    key=f"audit_csv_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("audit", run_id)
+        _render_delete_report_controls(
+            prefix="audit",
+            run_id=run_id,
+            run_label=f"RO {ro_number}",
+            delete_fn=delete_warranty_audit_run,
+            active_session_key="warranty_audit_active_run_id",
+            extra_clear_keys=["warranty_audit_result", "warranty_audit_saved_label"],
         )
         st.caption(f"ID: {run_id[:8]}…")
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
@@ -1504,6 +1589,7 @@ def render(parts_only: bool = False):
             st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
 
     _render_warranty_runs()
+    _render_warranty_audit_runs()
     _render_warranty_admin_bonus_runs()
     _render_csi_bonus_runs()
     _render_advisor_training_logs()

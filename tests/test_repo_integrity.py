@@ -66,6 +66,21 @@ class RepoIntegrityTests(unittest.TestCase):
         self.assertIn("&lt;b&gt;nope&lt;/b&gt;", banner)
         self.assertNotIn("<b>nope</b>", banner)
 
+    def test_report_section_header_stays_one_html_line(self):
+        from lib.page_ui import report_section_header
+
+        empty = report_section_header(
+            "Warranty ELR Analysis",
+            "Saved warranty labor rate runs",
+            run_count=None,
+        )
+        self.assertNotIn("\n", empty)
+        self.assertIn("Warranty ELR Analysis", empty)
+        self.assertIn("Saved warranty labor rate runs", empty)
+        counted = report_section_header("Warranty Audits", "Saved checks", run_count=1)
+        self.assertIn(">1 run<", counted)
+        self.assertNotIn("\n", counted)
+
     def test_prepare_local_lib_wins_over_venv_lib(self):
         """Streamlit Cloud's venv/lib directory must not shadow repo lib.app_auth."""
         import sys

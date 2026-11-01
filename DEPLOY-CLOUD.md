@@ -80,6 +80,9 @@ Use the **service_role** key from Supabase (not the anon key). After RLS is enab
 
 - `APP_PASSWORD` — full Fixed Ops Hub access (you). **Required** whenever the app is on a public URL with Supabase connected.
 - `PARTS_MANAGER_PASSWORD` — Parts tab + Parts Returns / Stocking reports only (Parts Manager)
+- `OPENAI_API_KEY` — required only for **Warranty Audit** (repair-order photos). Optional `OPENAI_MODEL` defaults to `gpt-4o` and must be vision-capable. Leave the key blank if you do not use that page.
+
+On an existing Supabase project, also run `supabase/warranty_audit_tables.sql` once so the manual and audit history can sync. New projects that run the full `supabase/schema.sql` already include those tables.
 
 5. Click **Deploy**.
 

@@ -1,4 +1,4 @@
-"""Optional password gate with role-based access for cloud deployments."""
+"""Password gate with role-based access. The app stays locked until a password is set and entered."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ ALL_PAGES = [
     "Payroll",
     "Flag Sheet",
     "Warranty",
+    "Warranty Audit",
     "Warranty Admin Bonus",
     "CSI Bonus",
     "Advisor Training",
@@ -126,14 +127,30 @@ def sign_out() -> None:
         st.session_state.pop(key, None)
 
 
+def session_may_proceed(*, password_configured: bool, authenticated: bool) -> bool:
+    """The app does not open when no password is configured, or before sign-in."""
+    return bool(password_configured and authenticated)
+
+
 def require_login() -> bool:
     """Gate the app. Returns True when the session may proceed."""
     if not auth_enabled():
-        st.session_state.setdefault("fixed_ops_role", ROLE_ADMIN)
-        st.session_state.setdefault("fixed_ops_user_label", "Admin")
-        return True
+        st.markdown("## Fixed Ops Hub")
+        st.error("This app is locked.")
+        st.markdown(
+            "Add a password, then reboot.\n\n"
+            "1. Open **Manage app** → **Settings** → **Secrets**\n"
+            "2. Add this on its own line, with a password you choose: "
+            '`APP_PASSWORD = "your-password"`\n'
+            "3. Save, then **Reboot app**\n"
+            "4. Sign in with that password"
+        )
+        return False
 
-    if st.session_state.get("fixed_ops_authenticated"):
+    if session_may_proceed(
+        password_configured=True,
+        authenticated=bool(st.session_state.get("fixed_ops_authenticated")),
+    ):
         return True
 
     st.markdown("## Fixed Ops Hub")

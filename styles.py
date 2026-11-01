@@ -3,7 +3,22 @@ CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@500;600&display=swap');
 
 /* ── Hide Streamlit chrome ── */
-#MainMenu, footer, header[data-testid="stHeader"] {visibility: hidden; height: 0;}
+#MainMenu, footer, header[data-testid="stHeader"] {visibility: hidden; height: 0; overflow: visible;}
+header[data-testid="stHeader"] {pointer-events: none;}
+/* The phone menu button lives in the hidden header. Keep it tappable. */
+[data-testid="stExpandSidebarButton"] {
+    visibility: visible !important;
+    pointer-events: auto !important;
+    position: fixed !important;
+    top: 0.65rem !important;
+    left: 0.65rem !important;
+    z-index: 100001 !important;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 12px !important;
+    background: rgba(8, 12, 22, 0.94) !important;
+    border: 1px solid rgba(0, 212, 255, 0.4) !important;
+}
 .stDeployButton {display: none;}
 
 /* ── Base ── */
@@ -195,7 +210,7 @@ div[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
 
 .hero-title {
     font-family: 'Syne', sans-serif !important;
-    font-size: clamp(2.4rem, 5vw, 3.6rem) !important;
+    font-size: clamp(1.7rem, 7vw, 3.6rem) !important;
     font-weight: 800 !important;
     letter-spacing: -0.04em !important;
     line-height: 1.05 !important;
@@ -1239,6 +1254,18 @@ h2, h3 { font-family: 'Syne', sans-serif; }
 @media (max-width: 1100px) {
     .warranty-ro-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .page-hero { padding: 0.75rem 0 1rem; }
+    .hero-sub { font-size: 0.95rem !important; }
+    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .stHorizontalBlock { flex-wrap: wrap !important; gap: 0.75rem; }
+    .stHorizontalBlock > [data-testid="stColumn"] {
+        flex: 1 1 46% !important;
+        width: auto !important;
+        min-width: 140px !important;
     }
 }
 

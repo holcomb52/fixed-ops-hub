@@ -26,9 +26,17 @@ def render():
         )
     else:
         st.markdown(
-            status_banner("Connect Supabase to unlock live data. See Payroll tab for steps.", "warn"),
+            status_banner(
+                "To save reports here, paste SUPABASE_URL and SUPABASE_KEY into this app's secrets. "
+                "Copy them from the original Fixed Ops Hub app. The database tables are already created.",
+                "warn",
+            ),
             unsafe_allow_html=True,
         )
+
+    if st.button("Open Warranty Audit", type="primary", use_container_width=True):
+        st.session_state.pending_nav = "Warranty Audit"
+        st.rerun()
 
     c1, c2, c3, c4 = st.columns(4)
     stats = [
@@ -55,6 +63,7 @@ def render():
     cards = [
         ("💰 Payroll", "Technician flag sheets + service advisor pay plans", "Live", "cyan"),
         ("🛡️ Warranty", "Customer-pay ELR analysis for rate submissions.", "Live", "green"),
+        ("🔎 Warranty Audit", "Check a repair order against the stored Stellantis warranty manual.", "Live", "orange"),
         ("📈 Labor Rate", "Build a customer-pay grid from target ELR + hour mix.", "Live", "violet"),
         ("🔩 Parts", "MNS returns and 6MS stocking planner.", "Live", "orange"),
     ]

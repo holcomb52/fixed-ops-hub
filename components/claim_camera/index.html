@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      margin: 0;
+      font-family: "DM Sans", sans-serif;
+      color: #e8edf5;
+      background: transparent;
+    }
+    button, label.pick {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0.45rem 0;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 212, 255, 0.45);
+      background: rgba(0, 212, 255, 0.12);
+      color: #e8edf5;
+      font-size: 1rem;
+      font-weight: 600;
+      text-align: center;
+    }
+    button.primary {
+      background: #00d4ff;
+      color: #041018;
+      border: none;
+    }
+    button:disabled { opacity: 0.45; }
+    video, img.preview {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      background: #05070d;
+      border-radius: 12px;
+    }
+    .thumbs { display: flex; gap: 0.4rem; overflow-x: auto; padding: 0.35rem 0; }
+    .thumbs img { height: 64px; width: 48px; object-fit: cover; border-radius: 6px; }
+    .note { color: #8b9cb3; font-size: 0.85rem; margin: 0.2rem 0 0.4rem; }
+    .error { color: #ffb4a8; font-size: 0.9rem; }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+  <p class="note" id="count">0 pictures ready. Snap each page, then add them to the claim.</p>
+  <button id="open" class="primary" type="button">Open camera</button>
+  <video id="video" playsinline autoplay muted style="display:none"></video>
+  <button id="snap" type="button" style="display:none">Snap this page</button>
+  <div class="thumbs" id="thumbs"></div>
+  <button id="done" class="primary" type="button" style="display:none">Add these pictures to the claim</button>
+  <label class="pick" for="library">Choose photos you already took</label>
+  <input id="library" type="file" accept="image/*" multiple />
+  <p class="error" id="error"></p>
+  <script>
+    const shots = [];
+    let limit = 20;
+    const video = document.getElementById("video");
+    const count = document.getElementById("count");
+    const error = document.getElementById("error");
+
+    function send(type, data) {
+      window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+    }
+    function setValue(value) {
+      send("streamlit:setComponentValue", { value: value, dataType: "json" });
+    }
+    function setHeight(height) {
+      send("streamlit:setFrameHeight", { height: height });
+    }
+    function refreshCount() {
+      count.textContent = shots.length + " of " + limit + " pictures. Snap each page, then add them to the claim.";
+      document.getElementById("done").style.display = shots.length ? "block" : "none";
+      document.getElementById("snap").disabled = shots.length >= limit;
+    }
+    function addShot(dataUrl) {
+      if (shots.length >= limit) return;
+      shots.push(dataUrl);
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      document.getElementById("thumbs").appendChild(img);
+      refreshCount();
+      setHeight(document.body.scrollHeight + 12);
+    }
+    function fileToJpeg(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("read"));
+        reader.onload = () => {
+          const image = new Image();
+          image.onload = () => resolve(drawJpeg(image));
+          image.onerror = () => reject(new Error("image"));
+          image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    function drawJpeg(source) {
+      const maxEdge = 1280;
+      let width = source.videoWidth || source.width;
+      let height = source.videoHeight || source.height;
+      const scale = Math.min(1, maxEdge / Math.max(width, height));
+      width = Math.max(1, Math.round(width * scale));
+      height = Math.max(1, Math.round(height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(source, 0, 0, width, height);
+      return canvas.toDataURL("image/jpeg", 0.72);
+    }
+
+    document.getElementById("open").onclick = async () => {
+      error.textContent = "";
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        video.srcObject = stream;
+        video.style.display = "block";
+        document.getElementById("snap").style.display = "block";
+        document.getElementById("open").style.display = "none";
+        setHeight(document.body.scrollHeight + 12);
+      } catch (err) {
+        error.textContent = "The camera did not open. Use Choose photos you already took, and select every page.";
+      }
+    };
+    document.getElementById("snap").onclick = () => {
+      if (!video.videoWidth) return;
+      addShot(drawJpeg(video));
+    };
+    document.getElementById("done").onclick = () => {
+      if (!shots.length) return;
+      setValue(shots.slice());
+    };
+    document.getElementById("library").onchange = async (event) => {
+      error.textContent = "";
+      const files = Array.from(event.target.files || []);
+      for (const file of files) {
+        if (shots.length >= limit) break;
+        try {
+          addShot(await fileToJpeg(file));
+        } catch (err) {
+          error.textContent = "One picture could not be opened. Try Take Photo or a JPG.";
+        }
+      }
+      event.target.value = "";
+      if (shots.length) setValue(shots.slice());
+    };
+
+    window.addEventListener("message", (event) => {
+      if (!event.data || event.data.type !== "streamlit:render") return;
+      const args = event.data.args || {};
+      if (typeof args.limit === "number") limit = args.limit;
+      refreshCount();
+    });
+    send("streamlit:componentReady", { apiVersion: 1 });
+    setHeight(220);
+    refreshCount();
+  </script>
+</body>
+</html>

@@ -84,25 +84,19 @@ def report_section_header(
             f"{int(run_count)} {label}</span>"
         )
     sub = f'<p class="report-section-sub">{html_text(subtitle)}</p>' if subtitle else ""
-    return f"""
-    <div class="report-section-header" style="
-        border-left-color: {theme['border']};
-        background: {theme['bg']};
-    ">
-        <div class="report-section-icon" style="
-            color: {theme['title']};
-            background: {theme['avatar']};
-            border-color: {theme['border']};
-        ">{html_text(icon)}</div>
-        <div class="report-section-body">
-            <div class="report-section-top">
-                <span class="report-section-title" style="color: {theme['title']};">{html_text(title)}</span>
-                {count_html}
-            </div>
-            {sub}
-        </div>
-    </div>
-    """
+    # One line, with no blank line when there is no run count. Streamlit treats a
+    # whitespace-only line as a markdown break and then prints the rest as text.
+    return (
+        f'<div class="report-section-header" style="border-left-color: {theme["border"]}; background: {theme["bg"]};">'
+        f'<div class="report-section-icon" style="color: {theme["title"]}; background: {theme["avatar"]}; border-color: {theme["border"]};">{html_text(icon)}</div>'
+        f'<div class="report-section-body">'
+        f'<div class="report-section-top">'
+        f'<span class="report-section-title" style="color: {theme["title"]};">{html_text(title)}</span>'
+        f"{count_html}"
+        f"</div>"
+        f"{sub}"
+        f"</div></div>"
+    )
 
 
 def report_run_summary_card(

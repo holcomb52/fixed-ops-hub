@@ -63,6 +63,7 @@ try:
         reports,
         warranty,
         warranty_admin_bonus,
+        warranty_audit,
     )
 except Exception as exc:
     st.set_page_config(page_title="Fixed Ops Hub", page_icon="⚡", layout="wide")
@@ -92,6 +93,7 @@ ALL_PAGES = {
     "Payroll": payroll.render,
     "Flag Sheet": flag_sheet.render,
     "Warranty": warranty.render,
+    "Warranty Audit": warranty_audit.render,
     "Warranty Admin Bonus": warranty_admin_bonus.render,
     "CSI Bonus": csi_bonus.render,
     "Advisor Training": advisor_training.render,
@@ -106,6 +108,7 @@ NAV_LABELS = {
     "Payroll": "💰  Payroll",
     "Flag Sheet": "📋  Flag Sheet",
     "Warranty": "🛡️  Warranty",
+    "Warranty Audit": "🔎  Warranty Audit",
     "Warranty Admin Bonus": "🏅  Warranty Admin Bonus",
     "CSI Bonus": "⭐  CSI Bonus",
     "Advisor Training": "🎓  Advisor Training",

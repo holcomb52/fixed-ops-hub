@@ -98,7 +98,7 @@ def _render_reference_documents():
         manual = _render_one_document(
             kind=MANUAL_KIND,
             heading="Warranty manual",
-            empty="No warranty manual is stored yet.",
+            empty="No warranty manual is stored yet. Upload WAM_3054, the FCA Warranty Administration Manual.",
             uploader="Warranty manual PDF",
             help_text="Upload the Stellantis warranty manual. A text PDF is stored directly. A scan is read once.",
             store_label="Store warranty manual",
@@ -108,7 +108,7 @@ def _render_reference_documents():
         guide = _render_one_document(
             kind=GUIDE_KIND,
             heading="Audit guide",
-            empty="No audit guide is stored yet. Upload the dealer audit reason-code guide.",
+            empty="No audit guide is stored yet. Upload the Warranty Audit Reason Code Application Guide, the packet from the warranty audit.",
             uploader="Audit guide PDF",
             help_text="This is the other document. A photo scan is read once, then every repair order is checked against it.",
             store_label="Store audit guide",

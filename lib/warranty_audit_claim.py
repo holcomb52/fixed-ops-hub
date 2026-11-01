@@ -27,6 +27,7 @@ def check_claim_criteria(repair_order: dict) -> list[dict]:
     order = repair_order if isinstance(repair_order, dict) else {}
     findings: list[dict] = []
     findings.extend(_hours_mismatch_findings(order))
+    findings.extend(_special_labor_warnings(order))
     findings.extend(_add_on_findings(order))
     findings.extend(_goodwill_findings(order))
     findings.extend(_tech_note_findings(order))
@@ -54,6 +55,58 @@ def _hours_mismatch_findings(order: dict) -> list[dict]:
                 how_to_fix="Make the hours in the notes match the hours on that LOP line.",
                 citation="Labor hours",
             ))
+    return findings
+
+
+def _lop_key(value: object) -> str:
+    return re.sub(r"[^A-Z0-9]", "", _clean(value).upper())
+
+
+def _special_labor_kind(line: dict) -> str:
+    """Labor that an auditor checks for time punches and a service manager signature."""
+    code = _lop_key(line.get("op_code"))
+    description = _clean(line.get("description"))
+    if code.startswith("8541"):
+        return "operation diagnostics (85-41)"
+    if code == "85333333":
+        return "sublet processing allowance (85-33-33-33)"
+    if code == "8585CG09":
+        return "consumer goodwill (85-85-CG-09)"
+    if code == "85LOAN00":
+        return "back-order rental (85-LO-AN-00)"
+    if len(code) >= 8 and code.endswith("00"):
+        return "actual time (LOP ending in 00)"
+    if re.search(r"\bwir(?:e|ing)\b", description, re.IGNORECASE):
+        return "wiring repair"
+    return ""
+
+
+def _special_labor_warnings(order: dict) -> list[dict]:
+    """Warn when diagnostic, actual-time, wiring, or the related 85- LOPs are on the RO."""
+    findings = []
+    seen: set[str] = set()
+    for line in _all_labor(order):
+        kind = _special_labor_kind(line)
+        if not kind:
+            continue
+        code = _clean(line.get("op_code")) or kind
+        key = f"{_lop_key(code)}:{kind}"
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(_shop_issue(
+            severity="major",
+            ro_field=f"LOP {code}",
+            whats_wrong=(
+                f"LOP {code} is {kind}. Check the time punches for this labor "
+                "and make sure a service manager's signature is on it."
+            ),
+            how_to_fix=(
+                "Confirm the on and off punches support this labor, and that service management "
+                "initialed, dated, and signed it during or at the time of the repair."
+            ),
+            citation="Service manager signature",
+        ))
     return findings
 
 

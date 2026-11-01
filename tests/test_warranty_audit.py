@@ -993,6 +993,25 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         from_claim = normalize_repair_order({"claim_number": "100245"})
         self.assertEqual(from_claim["ro_number"], "100245")
 
+    def test_special_labor_warns_to_check_punches_and_the_service_manager(self):
+        claim = _paid_claim()
+        claim["repair_orders"][0]["labor_lines"] = [
+            {"op_code": "85-41-02-00", "description": "Trouble not found", "hours": "0.5", "failure_code": "11"},
+            {"op_code": "12-34-56-00", "description": "Actual time wiring", "hours": "1.0", "failure_code": "11"},
+            {"op_code": "85-33-33-33", "description": "Sublet processing", "hours": "0.3", "failure_code": "11"},
+            {"op_code": "85-85-CG-09", "description": "Consumer goodwill", "hours": "0.0", "failure_code": "11"},
+            {"op_code": "08-20-01-70", "description": "Camera", "hours": "0.3", "failure_code": "58"},
+        ]
+        fields = [item["ro_field"] for item in check_claim_criteria(claim)]
+        self.assertIn("LOP 85-41-02-00", fields)
+        self.assertIn("LOP 12-34-56-00", fields)
+        self.assertIn("LOP 85-33-33-33", fields)
+        self.assertIn("LOP 85-85-CG-09", fields)
+        self.assertNotIn("LOP 08-20-01-70", fields)
+        warning = next(item for item in check_claim_criteria(claim) if item["ro_field"] == "LOP 85-41-02-00")
+        self.assertIn("time punches", warning["whats_wrong"].lower())
+        self.assertIn("service manager", warning["whats_wrong"].lower())
+
     def test_goodwill_requires_your_signature(self):
         claim = _paid_claim()
         claim["correction"] += " GOODWILL adjustment."

@@ -678,6 +678,76 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertFalse(any(row["on"] == "8:00" and row["off"] == "9:00" for row in order["time_punches"]))
         self.assertEqual(order["time_punches"][0]["hours"], "1.3")
 
+    def test_every_job_story_and_warranty_copy_punch_are_kept(self):
+        from PIL import Image
+
+        transcript = (
+            "VIN: 3D3KR58L86G832222\n"
+            "Mileage: 84221\n"
+            "In service date: 06/27/2021\n"
+            "Date completed: 01/16/2026\n"
+            "Job 1\n"
+            "18HC1B2 Cluster Module, Instrument Panel 48 0.5 441\n"
+            "Concern: Cluster is blank and the gauges do not work.\n"
+            "Cause: The cluster module failed internal tests.\n"
+            "Correction: Replaced the cluster module and programmed it.\n"
+            "Job 2\n"
+            "26AB1000 Battery test and replace 11 0.3 441\n"
+            "Concern: Battery will not hold a charge.\n"
+            "Cause: Bad cell in the battery.\n"
+            "Correction: Replaced the battery and verified the charging system.\n"
+            "Parts\n"
+            "68188534AB Cluster module 1\n"
+            "20001 0802 0918 1.3\n"
+            "WARRANTY COPY\n"
+        )
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                return transcript
+            return json.dumps({
+                "ro_number": "57478",
+                "vin": "3D3KR58L86G832222",
+                "customer_concern": "Concern: Cluster Module, Instrument Panel",
+                "cause": "Concern: Cluster Module, Instrument Panel",
+                "correction": "Concern: Cluster Module, Instrument Panel",
+                "tech_notes": "Cause:\nCorrection:",
+                "mileage": "",
+                "labor_operations": [{
+                    "op_code": "18HC1B2",
+                    "description": "Cluster Module, Instrument Panel",
+                    "failure_code": "48",
+                    "hours": "0.5",
+                }],
+                "time_punches": [],
+                "parts": [{"ro_number": "57478"}],
+            })
+
+        image = Image.new("RGB", (24, 24), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        codes = [row["op_code"] for row in order["labor_operations"]]
+        self.assertEqual(codes, ["18HC1B2", "26AB1000"])
+        self.assertEqual(order["labor_operations"][0]["tech_number"], "441")
+        self.assertEqual(order["labor_operations"][0]["job_number"], "1")
+        self.assertEqual(order["labor_operations"][1]["failure_code"], "11")
+        self.assertIn("gauges do not work", order["customer_concern"])
+        self.assertIn("will not hold a charge", order["customer_concern"])
+        self.assertIn("failed internal tests", order["cause"])
+        self.assertIn("Bad cell", order["cause"])
+        self.assertIn("programmed it", order["correction"])
+        self.assertIn("charging system", order["tech_notes"])
+        self.assertNotIn("Cluster Module, Instrument Panel", order["cause"])
+        punches = {(row["tech_number"], row["on"], row["off"], row["hours"]) for row in order["time_punches"]}
+        self.assertIn(("20001", "8:02", "9:18", "1.3"), punches)
+        self.assertEqual(order["mileage"], "84221")
+        self.assertEqual(order["in_service_date"], "06/27/2021")
+        self.assertEqual(order["date_completed"], "01/16/2026")
+        self.assertEqual(order["parts"][0]["part_number"], "68188534AB")
+        self.assertEqual(order["parts"][0]["quantity"], "1")
+
     def test_time_punches_do_not_drop_the_copied_notes(self):
         from lib.warranty_audit_llm import _keep_unread_narrative
 

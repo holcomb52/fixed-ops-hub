@@ -53,21 +53,24 @@ PUNCH: <tech number> | <time on> | <time off> | <hours>
 Write one PUNCH line for every time punch. If this page has no punch, write PUNCH: none
 
 The VIN is in the top section of the FCA Global Claim Acknowledgement. It may be labeled VIN or Veh ID. Copy all 17 characters.
-Time punches are the rows just above the words Warranty Copy at the bottom of the invoice. Copy every row in that block. A time may use a colon or a dot, such as 8:02 or 08.02. Copy the technician number, the time on, the time off, and the hours.
+Time punches are the rows just above the words Warranty Copy at the bottom of the invoice. Copy every row in that block. A time may be a clock (8:02 or 08.02), four digits (0802), or decimal hours (8.5 and 10.2). Copy the technician number, the time on, the time off, and the hours.
+Copy the mileage and every printed date: in service, date completed, date received, open, close, and repair.
+
+A repair order has every job, not only the first. Copy job 1, job 2, and every job after that. Each job has its own concern, cause, and correction. Copy the sentences after those labels. Do not put the labor description in place of that story.
 
 Then copy the rest of the page. Include every one of these when it is on the page:
 - The top section of an FCA Global Claim Acknowledgement: claim number, RO number, in service date, date completed, date received, service advisor number, list number, VIN, coverage, claim type, submission type, and continuation. The RO number and the claim number are the same number. Authorization is usually blank. Do not fill it in.
 - The technician name printed with the technician identification. It is on the claim acknowledgement, not in that top section.
 - The full customer narrative and the technician notes, word for word: concern, cause, correction, tests, and what was found. If the word Goodwill appears, copy it.
 - On that same Warranty Copy, every job number. When a small plus sign is printed beside the job number, copy it as "Job +2" or "Job 2 +" and copy any signature or initials next to that job.
-- Every labor line: LOP, description, failure code, hours, and technician
-- Every part: part number, description, quantity, and whether Failed Part is marked
+- Every labor line on every job: job number, LOP, description, failure code, hours, and technician. One line in your copy for each job.
+- Every part on every job: part number, description, quantity, and whether Failed Part is marked
 - List Number. Copy the digits exactly, such as 2025123
 
 Do not copy the owner's name. Pre-Tax Total is usually blank. Do not fill those in.
 The service advisor is the number in the top section, not a person's name.
 Keep the technician notes as full sentences. Keep every time punch on its own line.
-If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the VIN, the notes, the dates, the list number, or the time punches out."""
+If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave out a later job, the VIN, the notes, the mileage, the dates, the list number, or the time punches."""
 
 EXTRACT_USER_PROMPT = """Read this Reynolds Ignite repair order or FCA Global Claim Acknowledgement.
 Return JSON with exactly these keys:
@@ -92,8 +95,10 @@ unreadable (list of field names you could not read).
 
 On a claim acknowledgement, split Customer Narrative into customer_concern (what the customer stated),
 cause (what was found), and correction (the repair performed, including any labor operation and hours the narrative states).
-tech_notes is the technician's full story: the tests, the cause, and the correction, word for word. Do not shorten it.
-Copy LOP into op_code, Failure Code into failure_code, and Hours into hours.
+tech_notes is the technician's full story for every job: the tests, the cause, and the correction, word for word. Do not shorten it. When the repair order has more than one job, include each job's concern, cause, and correction and label it with that job number. Do not copy the labor description into customer_concern, cause, or correction.
+Copy every labor line into labor_operations. One object per job. Do not stop after the first LOP. Copy LOP into op_code, Failure Code into failure_code, Hours into hours, and the job number into job_number.
+Copy every part into parts. Do not stop after the first part.
+Copy mileage into mileage. Copy in service date, date completed, date received, open date, close date, and repair date when they are printed.
 The RO number and the claim number are the same number. Both are in the top section of the claim acknowledgement. Copy that number into ro_number and claim_number.
 in_service_date, date_completed, date_received, list_number, and service_advisor are in that same top section. service_advisor is the advisor number, not a name. Copy the printed dates. Do not leave a printed date blank.
 technician_name is on the claim acknowledgement next to the technician identification. It is not in the top section. Copy the name that is printed there.
@@ -105,7 +110,7 @@ authorization is usually blank on the claim acknowledgement. Leave it blank. Do 
 dealer_code is 68888.
 pre_tax_total is usually blank. Leave it blank. Do not calculate it.
 signatures.service_manager is true when your signature or initials are on the Warranty Copy next to a job that has a plus sign, or next to a Goodwill job. It is false when that spot is visible and unsigned, and null when the Warranty Copy is not in the pictures.
-A claim can contain more than one repair order. Keep each RO's lines and totals together in repair_orders.
+A claim can contain more than one job and more than one repair order. labor_operations must list every job. Keep each RO's lines and totals together in repair_orders, and do not drop a job that is also listed there.
 Do not invent values that are not on the page."""
 
 AUDIT_SYSTEM_PROMPT = """You are a warranty-audit checker for an automobile dealership.
@@ -319,7 +324,8 @@ def build_structure_messages(transcript: str) -> list:
         EXTRACT_USER_PROMPT
         + "\n\nThe page text below was copied from the pictures. Use only that text.\n"
         + "Copy the full customer narrative into customer_concern, cause, and correction. Do not shorten it.\n"
-        + "Copy every time punch from the Warranty Copy into time_punches. A line that starts with PUNCH: is one punch. Copy the VIN: line into vin. Do not leave vin or time_punches empty when that text is present. Copy every labor line and every part.\n"
+        + "Copy every time punch from the Warranty Copy into time_punches. A line that starts with PUNCH: is one punch. Copy the VIN: line into vin. Do not leave vin or time_punches empty when that text is present.\n"
+        + "Copy every job into labor_operations. If the page text has two LOPs, return two labor lines. Copy each job's concern, cause, and correction. Do not repeat the labor description in those fields. Copy every part, the mileage, and the printed dates.\n"
         + "The top section of the claim acknowledgement has the in service date, date completed, service advisor number, and the RO number, which is the same as the claim number.\n"
         + "If the page text contains the notes, the dates, or the punches, those fields are readable. Do not leave them blank.\n\n"
         + "PAGE TEXT\n"
@@ -583,7 +589,8 @@ def _structure_transcript(transcript: str, complete_fn: CompleteFn) -> dict:
         data = _transcript_fallback(transcript)
     else:
         data = _keep_unread_narrative(data, transcript)
-    return _recover_vin_and_punches(data, transcript)
+    data = _recover_vin_and_punches(data, transcript)
+    return _recover_jobs(data, transcript)
 
 
 def _transcript_fallback(transcript: str) -> dict:
@@ -644,6 +651,399 @@ def _recover_vin_and_punches(data: dict, transcript: str) -> dict:
     if found:
         data["time_punches"] = _merge_punch_lists(_punch_rows(data.get("time_punches")), found)
     return data
+
+
+def _recover_jobs(data: dict, transcript: str) -> dict:
+    """Keep every job, its story, the mileage, and the dates when the field list drops them."""
+    if not isinstance(data, dict):
+        data = {}
+    blob = transcript or ""
+    labor = _merge_labor_rows(_as_list(data.get("labor_operations")), _labor_from_text(blob))
+    if labor:
+        data["labor_operations"] = labor
+    if _parts_lack_numbers(data.get("parts")):
+        parts = _parts_from_text(blob)
+        if parts:
+            data["parts"] = parts
+    else:
+        data["parts"] = _merge_part_rows(_as_list(data.get("parts")), _parts_from_text(blob))
+    descriptions = [_text(row.get("description")) for row in labor if isinstance(row, dict)]
+    stories = _stories_from_text(blob, descriptions)
+    _apply_stories(data, stories, descriptions, blob)
+    if not _text(data.get("mileage")):
+        mileage = _mileage_from_text(blob)
+        if mileage:
+            data["mileage"] = mileage
+    for field, pattern in _DATE_LABELS:
+        if _text(data.get(field)):
+            continue
+        match = re.search(pattern + _DATE_VALUE, blob, flags=re.IGNORECASE)
+        if match:
+            data[field] = match.group(1)
+    return data
+
+
+_DATE_VALUE = r"[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"
+_DATE_LABELS = (
+    ("in_service_date", r"\bin[\s-]*service(?:\s*date)?\b"),
+    ("date_completed", r"\bdate\s+completed\b"),
+    ("date_received", r"\bdate\s+received\b"),
+    ("open_date", r"\b(?:open(?:ed)?\s*date|date\s+opened)\b"),
+    ("close_date", r"\b(?:close(?:d)?\s*date|date\s+closed)\b"),
+    ("repair_date", r"\brepair\s+date\b"),
+)
+_LOP_TOKEN = re.compile(
+    r"\b([A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){1,4})\b|\b(\d{2}[A-Z][A-Z0-9]{3,8})\b|\b(\d{7,8})\b",
+    re.IGNORECASE,
+)
+
+
+def _lop_key(value: object) -> str:
+    return re.sub(r"[^A-Z0-9]", "", _text(value).upper())
+
+
+def _first_lop(line: str) -> str:
+    match = _LOP_TOKEN.search(line or "")
+    if not match:
+        return ""
+    token = next(group for group in match.groups() if group)
+    compact = re.sub(r"[^A-Z0-9]", "", token.upper())
+    if len(compact) == 17:
+        return ""
+    return token.upper()
+
+
+def _labor_from_text(text: str) -> list[dict]:
+    rows: list[dict] = []
+    current_job = ""
+    for line in text.splitlines():
+        header = re.match(r"(?i)^\s*job\s+(\+?[A-Z0-9]+)\b", line)
+        if header:
+            current_job = header.group(1)
+        row = _labor_from_line(line)
+        if not row:
+            continue
+        if not row["job_number"] and current_job:
+            row["job_number"] = current_job
+        if "+" in row["job_number"]:
+            row["add_on"] = True
+        rows.append(row)
+    return rows
+
+
+def _labor_from_line(line: str) -> dict | None:
+    if re.match(r"(?i)\s*(?:VIN|PUNCH)\s*:", line):
+        return None
+    lop = _first_lop(line)
+    if not lop:
+        return None
+    hours = _labor_hours(line)
+    if not hours:
+        return None
+    job = ""
+    prefix = line[: line.upper().find(lop.upper())]
+    job_match = re.search(r"(?i)(?:job\s*)?(\+?\d{1,2}|[A-D])\s*$", prefix.strip())
+    if job_match:
+        job = job_match.group(1)
+    failure = ""
+    tech = ""
+    remainder = line
+    lop_at = remainder.upper().find(lop.upper())
+    tail = remainder[lop_at + len(lop):]
+    hours_at = tail.rfind(hours)
+    before_hours = tail[:hours_at] if hours_at >= 0 else tail
+    after_hours = tail[hours_at + len(hours):] if hours_at >= 0 else ""
+    failure_match = re.search(r"\b(\d{1,3})\b", before_hours)
+    if failure_match:
+        failure = failure_match.group(1)
+    labeled_tech = re.search(r"(?i)\btech(?:nician)?(?:\s*(?:number|#|id|no))?\.?\s*[:#]?\s*(\d{2,6})\b", line)
+    if labeled_tech:
+        tech = labeled_tech.group(1)
+    else:
+        tech_match = re.search(r"\b(\d{3,6})\b", after_hours)
+        if tech_match and not (len(tech_match.group(1)) == 4 and 2015 <= int(tech_match.group(1)) <= 2039):
+            tech = tech_match.group(1)
+    description = re.sub(r"\s+", " ", re.sub(r"\b\d{1,3}\b", " ", before_hours)).strip(" -,")
+    description = re.sub(r"(?i)\b(?:lop|hours|hrs|failure\s*code|tech(?:nician)?)\b", "", description).strip(" -,")
+    return {
+        "job_number": job,
+        "op_code": lop,
+        "description": description,
+        "failure_code": failure,
+        "hours": hours,
+        "tech_number": tech,
+    }
+
+
+def _labor_hours(line: str) -> str:
+    labeled = re.search(r"(?i)\b(?:hours|hrs)\b[:\s]*(\d{1,2}(?:\.\d{1,2})?)", line)
+    if labeled:
+        value = float(labeled.group(1))
+        if value <= 24:
+            return labeled.group(1)
+    for match in reversed(list(re.finditer(r"\b(\d{1,2}\.\d{1,2}|\d{1,2}\.\d)\b", line))):
+        value = match.group(1)
+        number = float(value)
+        if number <= 0 or number > 24:
+            continue
+        return value
+    return ""
+
+
+def _merge_labor_rows(existing: list, extra: list) -> list[dict]:
+    merged: list[dict] = []
+    for item in list(existing) + list(extra):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        if not _text(row.get("op_code")):
+            row["op_code"] = _text(row.get("lop") or row.get("labor_op"))
+        code = _lop_key(row.get("op_code"))
+        match = None
+        if code:
+            same = [current for current in merged if _lop_key(current.get("op_code")) == code]
+            if len(same) == 1:
+                match = same[0]
+        if match is None:
+            merged.append(row)
+            continue
+        for field in ("ro_number", "job_number", "description", "failure_code", "hours", "tech_number", "add_on"):
+            if not _text(match.get(field)) and _text(row.get(field)):
+                match[field] = row[field]
+    return merged
+
+
+def _parts_lack_numbers(value: object) -> bool:
+    rows = [item for item in _as_list(value) if isinstance(item, dict)]
+    return not any(_text(row.get("part_number")) for row in rows)
+
+
+def _parts_from_text(text: str) -> list[dict]:
+    rows: list[dict] = []
+    in_parts = False
+    for line in text.splitlines():
+        if re.match(r"(?i)^\s*parts?\b[:\s]*$", line) or re.match(r"(?i)^\s*part\s+(?:number|#)\b", line):
+            in_parts = True
+            continue
+        if in_parts and re.match(r"(?i)^\s*(job|labor|concern|cause|correction|warranty|punch|vin|lop)\b", line):
+            in_parts = False
+        if not in_parts:
+            continue
+        part = _part_from_line(line)
+        if part:
+            rows.append(part)
+    return rows
+
+
+def _part_from_line(line: str) -> dict | None:
+    match = re.search(r"\b([A-Z0-9]*\d[A-Z0-9-]{4,16})\b", line, flags=re.IGNORECASE)
+    if not match:
+        return None
+    number = match.group(1).upper()
+    if _first_lop(number) == number or len(re.sub(r"[^A-Z0-9]", "", number)) < 6:
+        return None
+    tail = line[match.end():]
+    qty_match = re.search(r"\b(\d{1,3})\b", tail)
+    description = tail
+    if qty_match:
+        description = tail[: qty_match.start()]
+    description = re.sub(r"\s+", " ", description).strip(" -,")
+    return {
+        "part_number": number,
+        "description": description,
+        "quantity": qty_match.group(1) if qty_match else "",
+    }
+
+
+def _merge_part_rows(existing: list, extra: list) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for item in list(existing) + list(extra):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        number = _text(row.get("part_number")).upper()
+        if number and number in seen:
+            continue
+        if number:
+            seen.add(number)
+        if not number and not _text(row.get("description")):
+            continue
+        merged.append(row)
+    return merged
+
+
+def _stories_from_text(text: str, descriptions: list[str]) -> list[dict]:
+    stories: list[dict] = []
+    current = {"job": "", "concern": "", "cause": "", "correction": ""}
+    mode = ""
+    descriptions_folded = {item.casefold() for item in descriptions if item}
+
+    def flush() -> None:
+        nonlocal current, mode
+        if any(current[field].strip() for field in ("concern", "cause", "correction")):
+            stories.append({field: current[field].strip() for field in current})
+        current = {"job": "", "concern": "", "cause": "", "correction": ""}
+        mode = ""
+
+    def add(field: str, chunk: str) -> None:
+        chunk = chunk.strip(" \t-")
+        if not chunk:
+            return
+        current[field] = (current[field] + " " + chunk).strip()
+
+    for line in text.splitlines():
+        header = re.match(r"(?i)^\s*job\s+(\+?[A-Z0-9]+)\b", line)
+        if header and any(current[field].strip() for field in ("concern", "cause", "correction")):
+            flush()
+        if header:
+            current["job"] = header.group(1)
+        if _labor_from_line(line) or re.match(r"(?i)^\s*(?:parts?|warranty copy|punch|vin)\b", line):
+            mode = ""
+            continue
+        pieces = re.split(r"(?i)\b(concern|complaint|cause|correction)\s*:", line)
+        if len(pieces) == 1:
+            if mode and line.strip():
+                add(mode, line)
+            continue
+        if pieces[0].strip() and mode:
+            add(mode, pieces[0])
+        index = 1
+        while index < len(pieces) - 1:
+            label = pieces[index].casefold()
+            field = "concern" if label == "complaint" else label
+            if field == "concern" and current["concern"] and (current["cause"] or current["correction"]):
+                job = current["job"]
+                flush()
+                current["job"] = job
+            mode = field
+            add(field, pieces[index + 1])
+            index += 2
+    flush()
+    kept = []
+    for story in stories:
+        body = " ".join(story[field] for field in ("concern", "cause", "correction")).strip()
+        if body.casefold() in descriptions_folded:
+            continue
+        kept.append(story)
+    return kept
+
+
+def _stories_have_body(stories: list[dict], descriptions: list[str]) -> bool:
+    blocked = {item.casefold() for item in descriptions if item}
+    for story in stories:
+        for field in ("cause", "correction"):
+            text = (story.get(field) or "").strip()
+            if len(text) >= 12 and text.casefold() not in blocked:
+                return True
+    return False
+
+
+def _bare_story(value: object) -> str:
+    text = _text(value)
+    return re.sub(r"(?i)^(concern|cause|correction|complaint)\s*:\s*", "", text).strip()
+
+
+def _notes_are_labels_only(value: object) -> bool:
+    text = _text(value)
+    if not text:
+        return True
+    stripped = re.sub(r"(?i)\b(concern|cause|correction|complaint)\s*:?", "", text)
+    return re.sub(r"\s+", "", stripped) == ""
+
+
+def _narrative_is_placeholder(data: dict, descriptions: list[str]) -> bool:
+    fields = [_bare_story(data.get(name)) for name in ("customer_concern", "cause", "correction")]
+    filled = [item for item in fields if item]
+    if not filled:
+        return True
+    unique = {item.casefold() for item in filled}
+    blocked = {item.casefold() for item in descriptions if item}
+    if len(unique) == 1:
+        only = next(iter(unique))
+        if only in blocked or len(only) < 80:
+            return True
+    return bool(_notes_are_labels_only(data.get("tech_notes")) and any(item.casefold() in blocked for item in filled))
+
+
+def _join_story_field(stories: list[dict], field: str) -> str:
+    chunks = []
+    multiple = len([story for story in stories if (story.get(field) or "").strip()]) > 1
+    for story in stories:
+        text = (story.get(field) or "").strip()
+        if not text:
+            continue
+        if multiple:
+            job = story.get("job") or ""
+            chunks.append(f"Job {job}: {text}" if job else text)
+        else:
+            chunks.append(text)
+    return "\n\n".join(chunks)
+
+
+def _story_notes(stories: list[dict]) -> str:
+    blocks = []
+    usable = [story for story in stories if any((story.get(field) or "").strip() for field in ("concern", "cause", "correction"))]
+    for story in usable:
+        lines = []
+        for label, field in (("Concern", "concern"), ("Cause", "cause"), ("Correction", "correction")):
+            text = (story.get(field) or "").strip()
+            if text:
+                lines.append(f"{label}: {text}")
+        if not lines:
+            continue
+        if len(usable) > 1 and story.get("job"):
+            blocks.append(f"Job {story['job']}\n" + "\n".join(lines))
+        else:
+            blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def _apply_stories(data: dict, stories: list[dict], descriptions: list[str], transcript: str) -> None:
+    notes = _story_notes(stories)
+    if stories and (_narrative_is_placeholder(data, descriptions) or _concern_is_page_dump(data.get("customer_concern"), transcript)):
+        if _stories_have_body(stories, descriptions):
+            concern = _join_story_field(stories, "concern")
+            cause = _join_story_field(stories, "cause")
+            correction = _join_story_field(stories, "correction")
+            if concern:
+                data["customer_concern"] = concern
+            if cause:
+                data["cause"] = cause
+            if correction:
+                data["correction"] = correction
+            if notes:
+                data["tech_notes"] = notes
+            return
+    if not _text(data.get("cause")):
+        cause = _join_story_field(stories, "cause")
+        if cause:
+            data["cause"] = cause
+    if not _text(data.get("correction")):
+        correction = _join_story_field(stories, "correction")
+        if correction:
+            data["correction"] = correction
+    if _notes_are_labels_only(data.get("tech_notes")):
+        if notes:
+            data["tech_notes"] = notes
+        elif transcript.strip():
+            data["tech_notes"] = transcript.strip()[:12000]
+
+
+def _concern_is_page_dump(value: object, transcript: str) -> bool:
+    text = _text(value)
+    page = (transcript or "").strip()
+    return bool(text) and bool(page) and (text == page[:12000] or text.startswith("PAGE "))
+
+
+def _mileage_from_text(text: str) -> str:
+    match = re.search(
+        r"(?i)\b(?:mileage|odometer|odo|miles)\b[:\s#]*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\b",
+        text,
+    )
+    if not match:
+        return ""
+    return match.group(1).replace(",", "")
 
 
 def _vin_from_text(text: str) -> str:
@@ -721,6 +1121,8 @@ def _punches_from_text(text: str) -> list[dict]:
         if re.match(r"(?i)\s*PUNCH:", line):
             continue
         row = _punch_from_line(line)
+        if row is None and index in regions and not _first_lop(line):
+            row = _loose_punch_from_line(line)
         if not _line_is_punch(line, row, index in regions):
             continue
         rows.append(row)
@@ -748,6 +1150,63 @@ def _line_is_punch(line: str, row: dict | None, in_region: bool) -> bool:
     if re.search(r"(?i)\bon\b", line) and re.search(r"(?i)\boff\b", line):
         return True
     return bool(in_region and row.get("tech_number"))
+
+
+def _loose_punch_from_line(line: str) -> dict | None:
+    """Read a Warranty Copy punch printed as 0802/0918 or as decimal hours 8.5/10.2."""
+    scrubbed = re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", " ", line)
+    clocks: list[str] = []
+    used: set[str] = set()
+    for match in re.finditer(r"\b([01]\d|2[0-3])([0-5]\d)\b", scrubbed):
+        token = match.group(0)
+        if len(token) == 4 and 2015 <= int(token) <= 2039:
+            continue
+        clocks.append(_clock_text(str(int(match.group(1))), match.group(2), ""))
+        used.add(token)
+        if len(clocks) == 2:
+            break
+    if len(clocks) < 2:
+        clocks = []
+        used.clear()
+        for match in re.finditer(r"\b(\d{1,2}\.\d{1,2}|\d{1,2}\.\d)\b", line):
+            value = match.group(1)
+            hour_text, frac = value.split(".", 1)
+            hour = int(hour_text)
+            if hour > 24:
+                continue
+            if len(frac) == 2 and int(frac) <= 59 and hour <= 23:
+                continue
+            clocks.append(value)
+            if len(clocks) == 2:
+                break
+    if len(clocks) < 2:
+        return None
+    tech = _tech_not_used(line, used)
+    if not tech and not re.search(r"(?i)\bpunch\b|\bon\b|\boff\b|\btech\b", line):
+        return None
+    return {
+        "tech_number": tech,
+        "on": clocks[0],
+        "off": clocks[1],
+        "hours": _hours_on_line(line),
+    }
+
+
+def _tech_not_used(line: str, used: set[str]) -> str:
+    labeled = re.search(
+        r"(?i)\btech(?:nician)?(?:\s*(?:number|#|id|no))?\.?\s*[:#]?\s*(\d{2,6})\b",
+        line,
+    )
+    if labeled and labeled.group(1) not in used:
+        return labeled.group(1)
+    for match in re.finditer(r"\b(\d{3,6})\b", line):
+        number = match.group(1)
+        if number in used:
+            continue
+        if len(number) == 4 and 2015 <= int(number) <= 2039:
+            continue
+        return number
+    return ""
 
 
 def _punch_from_line(line: str) -> dict | None:
@@ -815,12 +1274,13 @@ def _hours_on_line(line: str) -> str:
         if len(parts) >= 4 and re.fullmatch(r"\d{1,2}(?:\.\d{1,2})?", parts[-1]):
             return parts[-1]
     clocks = set(_clocks(line))
-    for match in reversed(list(re.finditer(r"\b(\d{1,2}\.\d{1,2})\b", line))):
-        value = match.group(1)
-        hour, minute = value.split(".", 1)
-        if len(minute) == 2 and _clock_text(hour, minute, "") in clocks:
-            continue
-        return value
+    for pattern in (r"\b(\d{1,2}\.\d{1,2})\b", r"\b(\d{1,2}\.\d)\b"):
+        for match in reversed(list(re.finditer(pattern, line))):
+            value = match.group(1)
+            hour, minute = value.split(".", 1)
+            if len(minute) == 2 and _clock_text(hour, minute, "") in clocks:
+                continue
+            return value
     return ""
 
 
@@ -1099,9 +1559,9 @@ def _flatten_repair_orders(data: dict) -> dict:
             if isinstance(line, dict):
                 parts.append({**line, "ro_number": line.get("ro_number") or ro_number})
     if labor:
-        data["labor_operations"] = labor
+        data["labor_operations"] = _merge_labor_rows(_as_list(data.get("labor_operations")), labor)
     if parts:
-        data["parts"] = parts
+        data["parts"] = _merge_part_rows(_as_list(data.get("parts")), parts)
     if techs:
         data["tech_numbers"] = techs
     if not data.get("technician_name"):

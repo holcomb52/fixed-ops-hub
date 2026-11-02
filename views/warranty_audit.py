@@ -318,7 +318,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 20. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 21. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
     read_col, clear_col = st.columns(2)
@@ -329,7 +329,7 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     with read_col:
         read_clicked = st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read", use_container_width=True)
     if read_clicked:
-        with st.spinner("Reading every page, including the notes and the time punches."):
+        with st.spinner("Reading the pages together, including the notes and the time punches."):
             progress = st.progress(0, text="Starting to read the pictures...")
 
             def _on_progress(done: int, total: int) -> None:

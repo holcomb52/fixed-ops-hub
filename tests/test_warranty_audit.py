@@ -17,6 +17,7 @@ from lib.warranty_audit_claim import check_claim_criteria
 from lib.warranty_audit_llm import (
     AUDIT_SYSTEM_PROMPT,
     LlmError,
+    _split_page_copy,
     build_audit_messages,
     complete_chat,
     extract_repair_order,
@@ -521,7 +522,45 @@ class AuditPipelineTests(unittest.TestCase):
             complete=complete,
         )
         self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
-        self.assertGreaterEqual(calls["count"], 3)
+        self.assertGreaterEqual(calls["count"], 2)
+
+    def test_several_pages_are_read_in_groups(self):
+        from PIL import Image
+
+        picture_calls = {"count": 0}
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                picture_calls["count"] += 1
+                image_count = sum(
+                    1 for part in content if isinstance(part, dict) and part.get("type") == "image_url"
+                )
+                self.assertEqual(image_count, 3)
+                label = content[0]["text"].split("exactly ", 1)[1].split(".", 1)[0]
+                bodies = [
+                    f"{name.strip()}\nCustomer concern camera is dead on {name.strip()}. Time punch tech 441."
+                    for name in label.split(",")
+                ]
+                return "\n".join(bodies)
+            return json.dumps({"customer_concern": "camera is dead", "vin": "1C4RJFBG5LC000001"})
+
+        def jpeg() -> bytes:
+            image = Image.new("RGB", (40, 30), "white")
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG")
+            return buffer.getvalue()
+
+        order = extract_repair_order(
+            images=[(jpeg(), "image/jpeg") for _ in range(6)],
+            complete=complete,
+        )
+        self.assertEqual(picture_calls["count"], 2)
+        self.assertIn("camera is dead", order["customer_concern"].lower())
+        self.assertEqual(
+            _split_page_copy("PAGE 4\nnotes four\nPAGE 5\npunch five\n", 2, first_page=4),
+            ["notes four", "punch five"],
+        )
 
     def test_unreadable_model_reply_does_not_stop_the_read(self):
         from PIL import Image
@@ -557,7 +596,7 @@ class AuditPipelineTests(unittest.TestCase):
                 self.assertIn("Do not summarize", prompt)
                 self.assertIn("time punch", prompt.lower())
                 image = next(part for part in content if part.get("type") == "image_url")
-                self.assertEqual(image["image_url"]["detail"], "high")
+                self.assertEqual(image["image_url"]["detail"], "auto")
                 return transcript
             seen.append("fields")
             self.assertIsInstance(content, str)

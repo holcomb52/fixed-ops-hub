@@ -274,15 +274,33 @@ def complete_chat(
 
 
 def build_transcribe_messages(*, image: tuple[bytes, str], page_number: int) -> list:
-    blob, mime = image
-    encoded = base64.b64encode(blob).decode("ascii")
-    content: list[dict] = [
-        {"type": "text", "text": f"Page {page_number}.\n{TRANSCRIBE_USER_PROMPT}"},
-        {
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
-        },
-    ]
+    return _transcribe_request([(image, page_number)])
+
+
+def build_transcribe_batch(images: list[tuple[bytes, str]], *, first_page: int) -> list:
+    labeled = [(image, first_page + offset) for offset, image in enumerate(images)]
+    return _transcribe_request(labeled)
+
+
+def _transcribe_request(labeled: list[tuple[tuple[bytes, str], int]]) -> list:
+    if len(labeled) == 1:
+        page_number = labeled[0][1]
+        intro = f"Page {page_number}.\n{TRANSCRIBE_USER_PROMPT}"
+    else:
+        names = ", ".join(f"PAGE {page}" for _image, page in labeled)
+        intro = (
+            "Copy these pages in order. Start each page with its own line, exactly "
+            f"{names}.\n{TRANSCRIBE_USER_PROMPT}"
+        )
+    content: list[dict] = [{"type": "text", "text": intro}]
+    for (blob, mime), _page in labeled:
+        encoded = base64.b64encode(blob).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "auto"},
+            }
+        )
     return [
         {"role": "system", "content": TRANSCRIBE_SYSTEM_PROMPT},
         {"role": "user", "content": content},
@@ -454,7 +472,7 @@ def _extract_prepared(
     """
     prepared = [_smaller_for_model(image) for image in images]
     structure_fn = complete or _bound_complete(json_mode=True, max_tokens=16384)
-    transcribe_fn = complete or _bound_complete(json_mode=False, max_tokens=4096)
+    transcribe_fn = complete or _bound_complete(json_mode=False, max_tokens=8192)
     pages = _transcribe_pages(prepared, transcribe_fn, on_progress)
     transcript = _join_transcript(pages, document_text)
     if on_progress:
@@ -489,17 +507,50 @@ def _transcribe_pages(
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    batch_size = 3
+    groups = [images[start:start + batch_size] for start in range(0, len(images), batch_size)]
     pages: list[str] = [""] * len(images)
-    with ThreadPoolExecutor(max_workers=3) as pool:
+
+    def copy_group(start: int, group: list[tuple[bytes, str]]) -> list[str]:
+        messages = build_transcribe_batch(group, first_page=start + 1)
+        try:
+            text = transcribe_fn(messages).strip()
+        except LlmError as exc:
+            return [f"[Page {start + offset + 1} could not be read. {exc}]" for offset in range(len(group))]
+        return _split_page_copy(text, len(group), first_page=start + 1)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {
-            pool.submit(copy_page, index, image): index for index, image in enumerate(images)
+            pool.submit(copy_group, start, group): start
+            for start, group in ((index * batch_size, group) for index, group in enumerate(groups))
         }
         finished = 0
         for future in as_completed(futures):
-            pages[futures[future]] = future.result()
-            finished += 1
+            start = futures[future]
+            copied = future.result()
+            for offset, text in enumerate(copied):
+                pages[start + offset] = text
+            finished += len(copied)
             if on_progress:
-                on_progress(finished, len(images))
+                on_progress(min(finished, len(images)), len(images))
+    return pages
+
+
+def _split_page_copy(text: str, count: int, *, first_page: int = 1) -> list[str]:
+    """Split a multi-page copy on PAGE N lines. Keep the whole reply if those lines are missing."""
+    if count <= 1:
+        return [text]
+    parts = re.split(r"(?im)^page\s+(\d+)\s*$", text.strip())
+    if len(parts) < 3:
+        return [text] + [""] * (count - 1)
+    pages = [""] * count
+    pairs = iter(parts[1:])
+    for number, body in zip(pairs, pairs):
+        index = int(number) - first_page
+        if 0 <= index < count:
+            pages[index] = body.strip()
+    if not any(pages):
+        return [text] + [""] * (count - 1)
     return pages
 
 
@@ -559,7 +610,7 @@ def _keep_unread_narrative(data: dict, transcript: str) -> dict:
 def _smaller_for_model(image: tuple[bytes, str]) -> tuple[bytes, str]:
     blob, mime = image
     try:
-        return shrink_image(blob, max_edge=1600)
+        return shrink_image(blob, max_edge=1280)
     except Exception:
         return blob, mime
 

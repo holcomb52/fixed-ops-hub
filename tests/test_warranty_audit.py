@@ -892,6 +892,15 @@ class StorageTests(unittest.TestCase):
         active = [row for row in client.rows["warranty_manuals"] if row.get("is_active") is True]
         self.assertEqual(len(active), 2)
 
+    def test_unwritable_disk_does_not_drop_a_stored_manual(self):
+        client = _MemorySupabase()
+        with patch("lib.warranty_audit_storage.get_supabase", return_value=client):
+            save_manual_record(self._record("manual"))
+            with patch("pathlib.Path.replace", side_effect=FileNotFoundError("read only")):
+                loaded = load_active_manual()
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["filename"], "manual.pdf")
+
     def test_missing_table_message_points_at_the_sql_file(self):
         message = cloud_error_message("Could not find the table public.warranty_manuals")
         self.assertIn("warranty_audit_tables.sql", message)

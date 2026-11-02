@@ -318,10 +318,17 @@ def _render_repair_order(manual: dict | None, guide: dict | None, llm_ready: boo
     if len(tray) >= MAX_CLAIM_PHOTOS:
         st.caption(f"This claim has {MAX_CLAIM_PHOTOS} pictures, which is the maximum.")
     else:
-        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 19. Tap Read repair order when every page is here.")
+        st.caption(f"{len(tray)} of {MAX_CLAIM_PHOTOS} pictures. Photo reader 20. Tap Read repair order when every page is here.")
     digest = hashlib.sha256("".join(item["sha"] for item in tray).encode("ascii")).hexdigest()[:16]
     names = ", ".join(name for name, _data in photos)
-    if st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read"):
+    read_col, clear_col = st.columns(2)
+    with clear_col:
+        if st.button("Clear form", use_container_width=True, key="warranty_audit_clear_form"):
+            _clear_claim_form()
+            st.rerun()
+    with read_col:
+        read_clicked = st.button("Read repair order", disabled=not llm_ready, key="warranty_audit_read", use_container_width=True)
+    if read_clicked:
         with st.spinner("Reading every page, including the notes and the time punches."):
             progress = st.progress(0, text="Starting to read the pictures...")
 
@@ -778,6 +785,35 @@ def _render_carried_numbers() -> None:
     }
 
 
+def _clear_claim_form() -> None:
+    """Remove every picture on this claim so the form can start empty."""
+    tray = list(st.session_state.get("warranty_audit_photo_tray") or [])
+    ignored = list(st.session_state.get("warranty_audit_ignored_shas") or [])
+    for item in tray:
+        for key in ("sha", "raw_sha"):
+            value = str((item or {}).get(key) or "")
+            if value and value not in ignored:
+                ignored.append(value)
+    st.session_state.warranty_audit_ignored_shas = ignored
+    st.session_state.warranty_audit_photo_generation = int(
+        st.session_state.get("warranty_audit_photo_generation") or 0
+    ) + 1
+    st.session_state.warranty_audit_photo_tray = []
+    st.session_state.warranty_audit_photo_warnings = []
+    for key in (
+        "warranty_audit_extract",
+        "warranty_audit_extract_digest",
+        "warranty_audit_extract_name",
+        "warranty_audit_read_warnings",
+        "warranty_audit_result",
+        "warranty_audit_active_run_id",
+        "warranty_audit_saved_label",
+        "warranty_audit_form_token",
+    ):
+        st.session_state.pop(key, None)
+    clear_live_photos()
+
+
 def _start_next_repair_order(result: dict) -> None:
     """Clear the audit that was just saved and keep its RO number and claim number."""
     ro = (result or {}).get("ro") if isinstance(result, dict) else {}
@@ -915,10 +951,8 @@ def _show_photo_tray(tray: list[dict]) -> None:
                 st.session_state.warranty_audit_photo_tray = kept
                 delete_live_photo(item["sha"])
                 st.rerun()
-    if st.button("Remove all pictures", key="warranty_audit_clear_photos"):
-        st.session_state.warranty_audit_photo_tray = []
-        st.session_state.warranty_audit_photo_warnings = []
-        clear_live_photos()
+    if st.button("Clear form", key="warranty_audit_clear_form_tray"):
+        _clear_claim_form()
         st.rerun()
 
 

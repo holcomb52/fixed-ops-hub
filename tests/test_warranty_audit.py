@@ -913,7 +913,10 @@ class RepoWiringTests(unittest.TestCase):
         auth = (ROOT / "lib" / "app_auth.py").read_text()
         self.assertIn('"Warranty Audit": warranty_audit.render', app)
         self.assertIn('"Warranty Audit"', auth)
-        self.assertIn("Drag pictures here", (ROOT / "views" / "warranty_audit.py").read_text())
+        audit_view = (ROOT / "views" / "warranty_audit.py").read_text()
+        self.assertIn("Drag pictures here", audit_view)
+        self.assertIn("Clear form", audit_view)
+        self.assertIn("def _clear_claim_form", audit_view)
         self.assertIn("stExpandSidebarButton", (ROOT / "styles.py").read_text())
         for relative in (
             "README.md",

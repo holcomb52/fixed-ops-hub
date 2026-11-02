@@ -536,7 +536,7 @@ class AuditPipelineTests(unittest.TestCase):
                 image_count = sum(
                     1 for part in content if isinstance(part, dict) and part.get("type") == "image_url"
                 )
-                self.assertEqual(image_count, 3)
+                self.assertEqual(image_count, 2)
                 label = content[0]["text"].split("exactly ", 1)[1].split(".", 1)[0]
                 bodies = [
                     f"{name.strip()}\nCustomer concern camera is dead on {name.strip()}. Time punch tech 441."
@@ -555,7 +555,7 @@ class AuditPipelineTests(unittest.TestCase):
             images=[(jpeg(), "image/jpeg") for _ in range(6)],
             complete=complete,
         )
-        self.assertEqual(picture_calls["count"], 2)
+        self.assertEqual(picture_calls["count"], 3)
         self.assertIn("camera is dead", order["customer_concern"].lower())
         self.assertEqual(
             _split_page_copy("PAGE 4\nnotes four\nPAGE 5\npunch five\n", 2, first_page=4),
@@ -596,7 +596,7 @@ class AuditPipelineTests(unittest.TestCase):
                 self.assertIn("Do not summarize", prompt)
                 self.assertIn("time punch", prompt.lower())
                 image = next(part for part in content if part.get("type") == "image_url")
-                self.assertEqual(image["image_url"]["detail"], "auto")
+                self.assertEqual(image["image_url"]["detail"], "high")
                 return transcript
             seen.append("fields")
             self.assertIsInstance(content, str)
@@ -640,6 +640,43 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertIn("radio pops", order["customer_concern"])
         self.assertIn("Punch tech 12", order["other_visible_notes"])
         self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
+        self.assertEqual(order["time_punches"][0]["tech_number"], "12")
+        self.assertEqual(order["time_punches"][0]["on"], "1:00")
+        self.assertEqual(order["time_punches"][0]["off"], "2:00")
+
+    def test_blank_vin_and_punch_fields_are_filled_from_the_page_copy(self):
+        from PIL import Image
+
+        transcript = (
+            "VIN: 1C4RJFBG5LC123456\n"
+            "PUNCH: 20001 | 8:02 AM | 9:18 AM | 1.3\n"
+            "Customer concern: Camera is dead.\n"
+            "441 HALCOMB 08.05 09.40 1.6\n"
+            "WARRANTY COPY\n"
+            "The customer arrived at 8:00 and left at 9:00.\n"
+        )
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                return transcript
+            return json.dumps({
+                "customer_concern": "Camera is dead.",
+                "vin": "",
+                "time_punches": [],
+            })
+
+        image = Image.new("RGB", (20, 20), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        self.assertEqual(order["vin"], "1C4RJFBG5LC123456")
+        punches = {(row["tech_number"], row["on"], row["off"]) for row in order["time_punches"]}
+        self.assertIn(("20001", "8:02 AM", "9:18 AM"), punches)
+        self.assertIn(("441", "8:05", "9:40"), punches)
+        self.assertNotIn((""), {row["on"] for row in order["time_punches"]})
+        self.assertFalse(any(row["on"] == "8:00" and row["off"] == "9:00" for row in order["time_punches"]))
+        self.assertEqual(order["time_punches"][0]["hours"], "1.3")
 
     def test_time_punches_do_not_drop_the_copied_notes(self):
         from lib.warranty_audit_llm import _keep_unread_narrative
@@ -1170,6 +1207,13 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertEqual(order["time_punches"][0]["on"], "8:00")
         self.assertEqual(order["time_punches"][0]["off"], "9:00")
         self.assertTrue(order["parts"][0]["failed"])
+        dotted = normalize_repair_order({
+            "time_punches": {"tech": "441", "time_on": "8:02", "time_off": "9:18", "hrs": "1.3"},
+        })
+        self.assertEqual(dotted["time_punches"][0]["tech_number"], "441")
+        self.assertEqual(dotted["time_punches"][0]["on"], "8:02")
+        self.assertEqual(dotted["time_punches"][0]["off"], "9:18")
+        self.assertEqual(dotted["time_punches"][0]["hours"], "1.3")
         self.assertEqual(order["repair_orders"][0]["technician_id"], "20001")
 
     def test_next_repair_order_keeps_the_ro_and_claim_number(self):

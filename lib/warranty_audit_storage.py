@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import shutil
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -232,16 +233,55 @@ def _timestamp(record: dict) -> str:
     return str(value)
 
 
+_ARCHIVE_CACHE: dict[str, Path] = {}
+
+
+def _archive_dir(preferred: Path) -> Path:
+    """Use the repo data folder, or /tmp when Streamlit Cloud cannot write the repo."""
+    key = str(preferred)
+    cached = _ARCHIVE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    fallback = Path(tempfile.gettempdir()) / "fixed-ops-hub" / preferred.name
+    for candidate in (preferred, fallback):
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_ok"
+            probe.write_text("1", encoding="utf-8")
+            probe.unlink()
+            _ARCHIVE_CACHE[key] = candidate
+            return candidate
+        except OSError:
+            continue
+    _ARCHIVE_CACHE[key] = fallback
+    return fallback
+
+
 def _manual_path(kind: str = MANUAL_KIND) -> Path:
-    return MANUAL_DIR / (kind or MANUAL_KIND) / "record.json"
+    return _archive_dir(MANUAL_DIR) / (kind or MANUAL_KIND) / "record.json"
+
+
+def _write_json(path: Path, payload: str) -> None:
+    """Write JSON without letting a read-only Cloud disk crash the page."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name(path.name + ".tmp")
+        temp.write_text(payload, encoding="utf-8")
+        try:
+            temp.replace(path)
+        except OSError:
+            path.write_text(payload, encoding="utf-8")
+            try:
+                temp.unlink()
+            except OSError:
+                pass
+    except OSError:
+        return
 
 
 def _save_local_manual(record: dict) -> None:
     path = _manual_path(str(record.get("document_kind") or MANUAL_KIND))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(json_safe(record), indent=2))
-    temp.replace(path)
+    _write_json(path, json.dumps(json_safe(record), indent=2))
 
 
 def _load_local_manual(kind: str = MANUAL_KIND) -> Optional[dict]:
@@ -312,13 +352,12 @@ def _load_remote_manual(client, kind: str = MANUAL_KIND) -> Optional[dict]:
 
 
 def _audit_path(run_id: str) -> Path:
-    return AUDIT_DIR / run_id
+    return _archive_dir(AUDIT_DIR) / run_id
 
 
 def _save_local_audit(run_id: str, record: dict) -> None:
-    path = _audit_path(run_id)
-    path.mkdir(parents=True, exist_ok=True)
-    (path / "record.json").write_text(json.dumps(json_safe(record), indent=2))
+    path = _audit_path(run_id) / "record.json"
+    _write_json(path, json.dumps(json_safe(record), indent=2))
 
 
 def _load_local_audit(run_id: str) -> Optional[dict]:
@@ -332,10 +371,11 @@ def _load_local_audit(run_id: str) -> Optional[dict]:
 
 
 def _list_local_audits() -> List[dict]:
-    if not AUDIT_DIR.exists():
+    root = _archive_dir(AUDIT_DIR)
+    if not root.exists():
         return []
     records = []
-    for folder in AUDIT_DIR.iterdir():
+    for folder in root.iterdir():
         meta = folder / "record.json"
         if folder.is_dir() and meta.exists():
             try:

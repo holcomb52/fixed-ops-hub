@@ -9,7 +9,9 @@ from typing import Dict, List, Optional, Tuple
 
 from lib.receptionist_payroll_calc import (
     CSI_BONUS_DEFAULT_NAMES,
+    DEFAULT_DECLINED_APPOINTMENT_RATE,
     DEFAULT_WARRANTY_BONUS,
+    SERENITY_SKINNER_NAME,
     TYPE_RECEPTIONIST,
     ReceptionistPayrollRow,
     ensure_receptionist_row_fields,
@@ -55,12 +57,15 @@ def default_roster() -> Dict[str, List[ReceptionistPayrollRow]]:
                 appointment_rate=2.0,
             ),
             ReceptionistPayrollRow(
-                "Serenity Skinner",
+                SERENITY_SKINNER_NAME,
                 last_name="SKINNER",
                 taker_codes=["22SKINNERS"],
+                appointment_rate=3.0,
                 has_warranty_bonus=True,
                 warranty_bonus_amount=DEFAULT_WARRANTY_BONUS,
                 has_csi_bonus=True,
+                has_declined_services_plan=True,
+                declined_appointment_rate=DEFAULT_DECLINED_APPOINTMENT_RATE,
             ),
         ],
     }
@@ -122,6 +127,16 @@ def _row_from_dict(item: dict) -> ReceptionistPayrollRow:
         has_recall_pulse_plan=bool(
             item.get("has_recall_pulse_plan", name == "Brandy Sistrunk")
         ),
+        has_declined_services_plan=bool(
+            item.get(
+                "has_declined_services_plan",
+                name == SERENITY_SKINNER_NAME,
+            )
+        ),
+        declined_appointment_rate=float(
+            item.get("declined_appointment_rate", DEFAULT_DECLINED_APPOINTMENT_RATE)
+            or DEFAULT_DECLINED_APPOINTMENT_RATE
+        ),
     )
 
 
@@ -136,6 +151,8 @@ def _serialize_row(row: ReceptionistPayrollRow) -> dict:
         "warranty_bonus_amount": row.warranty_bonus_amount,
         "has_csi_bonus": row.has_csi_bonus,
         "has_recall_pulse_plan": row.has_recall_pulse_plan,
+        "has_declined_services_plan": row.has_declined_services_plan,
+        "declined_appointment_rate": row.declined_appointment_rate,
     }
 
 
@@ -268,9 +285,30 @@ def ensure_recall_pulse_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) 
     return changed
 
 
+def ensure_declined_services_roster(roster: Dict[str, List[ReceptionistPayrollRow]]) -> bool:
+    """Backfill Serenity Skinner's declined-services plan on existing rosters."""
+    changed = False
+    for row in flatten_roster(roster):
+        if row.name != SERENITY_SKINNER_NAME:
+            continue
+        if not row.has_declined_services_plan:
+            row.has_declined_services_plan = True
+            changed = True
+        if float(row.declined_appointment_rate or 0) <= 0:
+            row.declined_appointment_rate = DEFAULT_DECLINED_APPOINTMENT_RATE
+            changed = True
+        # Pay plan addendum: regular appointments remain $3 each.
+        if float(row.appointment_rate or 0) < 3.0:
+            row.appointment_rate = 3.0
+            changed = True
+    return changed
+
+
 def ensure_known_receptionists(roster: Dict[str, List[ReceptionistPayrollRow]]) -> bool:
     """Add/fix known receptionists (e.g. Megan Schneider) on existing cloud rosters."""
     changed = ensure_recall_pulse_roster(roster)
+    if ensure_declined_services_roster(roster):
+        changed = True
     rows = roster.setdefault(TYPE_RECEPTIONIST, [])
     existing_codes = {
         str(code).strip().upper()

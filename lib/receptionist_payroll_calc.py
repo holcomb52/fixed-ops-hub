@@ -7,8 +7,10 @@ from typing import List
 
 TIRE_PAY_RATE = 5.0
 DEFAULT_WARRANTY_BONUS = 100.0
+DEFAULT_DECLINED_APPOINTMENT_RATE = 6.0
 CSI_BONUS_NATIONAL_AVERAGE = 1000.0
 CSI_BONUS_BUSINESS_CENTER = 500.0
+SERENITY_SKINNER_NAME = "Serenity Skinner"
 
 CSI_TIER_NONE = "none"
 CSI_TIER_NATIONAL = "national"
@@ -21,8 +23,9 @@ RECEPTIONIST_CSI_TIER_OPTIONS = {
 }
 
 CSI_TIER_KEYS = [CSI_TIER_NATIONAL, CSI_TIER_MID, CSI_TIER_NONE]
-CSI_BONUS_DEFAULT_NAMES = frozenset({"Brandy Sistrunk", "Serenity Skinner"})
+CSI_BONUS_DEFAULT_NAMES = frozenset({"Brandy Sistrunk", SERENITY_SKINNER_NAME})
 BRANDY_SISTRUNK_NAME = "Brandy Sistrunk"
+DECLINED_SERVICES_DEFAULT_NAMES = frozenset({SERENITY_SKINNER_NAME})
 
 RECALL_PULSE_STRETCH_BONUS = 500.0
 RECALL_PULSE_TIERS = (
@@ -73,6 +76,9 @@ class ReceptionistPayrollRow:
     has_warranty_bonus: bool = False
     warranty_bonus_amount: float = DEFAULT_WARRANTY_BONUS
     warranty_bonus_qualified: bool = False
+    has_declined_services_plan: bool = False
+    declined_appointments_set: float = 0.0
+    declined_appointment_rate: float = DEFAULT_DECLINED_APPOINTMENT_RATE
     has_csi_bonus: bool = False
     csi_tier: str = CSI_TIER_NONE
     has_recall_pulse_plan: bool = False
@@ -87,6 +93,7 @@ class ReceptionistPayrollRow:
 @dataclass
 class ReceptionistPayrollResult:
     appointment_pay: float
+    declined_pay: float
     tire_pay: float
     warranty_pay: float
     csi_pay: float
@@ -133,7 +140,19 @@ def ensure_receptionist_row_fields(row: ReceptionistPayrollRow) -> ReceptionistP
         row.stretch_bonus_qualified = False
     if not hasattr(row, "stretch_bonus_amount"):
         row.stretch_bonus_amount = RECALL_PULSE_STRETCH_BONUS
+    if not hasattr(row, "has_declined_services_plan"):
+        row.has_declined_services_plan = row.name in DECLINED_SERVICES_DEFAULT_NAMES
+    if not hasattr(row, "declined_appointments_set"):
+        row.declined_appointments_set = 0.0
+    if not hasattr(row, "declined_appointment_rate"):
+        row.declined_appointment_rate = DEFAULT_DECLINED_APPOINTMENT_RATE
     return row
+
+
+def describe_declined_services_pay(declined_appointments: float, rate: float = DEFAULT_DECLINED_APPOINTMENT_RATE) -> str:
+    count = max(float(declined_appointments or 0), 0.0)
+    pay_rate = float(rate or DEFAULT_DECLINED_APPOINTMENT_RATE)
+    return f"{count:.0f} declined appts × ${pay_rate:.0f} (RecallPulse)"
 
 
 def calculate_receptionist_payroll(row: ReceptionistPayrollRow) -> ReceptionistPayrollResult:
@@ -142,6 +161,13 @@ def calculate_receptionist_payroll(row: ReceptionistPayrollRow) -> ReceptionistP
         appointment_pay = calculate_recall_pulse_appointment_bonus(row.appointments_set)
     else:
         appointment_pay = row.appointments_set * row.appointment_rate
+
+    declined_pay = 0.0
+    if row.has_declined_services_plan:
+        declined_pay = max(float(row.declined_appointments_set or 0), 0.0) * float(
+            row.declined_appointment_rate or DEFAULT_DECLINED_APPOINTMENT_RATE
+        )
+
     tire_pay = row.tires_sold * row.tire_rate
 
     warranty_pay = 0.0
@@ -157,10 +183,20 @@ def calculate_receptionist_payroll(row: ReceptionistPayrollRow) -> ReceptionistP
     if row.has_recall_pulse_plan and row.stretch_bonus_qualified:
         stretch_pay = float(row.stretch_bonus_amount or RECALL_PULSE_STRETCH_BONUS)
     spiff_pay = row.spiff
-    total_pay = appointment_pay + tire_pay + warranty_pay + csi_pay + bonus_pay + stretch_pay + spiff_pay
+    total_pay = (
+        appointment_pay
+        + declined_pay
+        + tire_pay
+        + warranty_pay
+        + csi_pay
+        + bonus_pay
+        + stretch_pay
+        + spiff_pay
+    )
 
     return ReceptionistPayrollResult(
         appointment_pay=appointment_pay,
+        declined_pay=declined_pay,
         tire_pay=tire_pay,
         warranty_pay=warranty_pay,
         csi_pay=csi_pay,

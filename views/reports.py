@@ -100,6 +100,13 @@ from lib.csi_bonus_storage import (
     list_csi_bonus_runs,
     load_csi_bonus_run,
 )
+from lib.esc_bonus_pdf_export import generate_esc_bonus_pdf
+from lib.esc_bonus_storage import (
+    apply_esc_bonus_snapshot_to_session,
+    delete_esc_bonus_run,
+    list_esc_bonus_runs,
+    load_esc_bonus_run,
+)
 from lib.advisor_training_storage import (
     apply_advisor_training_snapshot_to_session,
     delete_advisor_training_log,
@@ -121,6 +128,7 @@ ACCENT_ADVISOR = "cyan"
 ACCENT_RECEPTIONIST = "violet"
 ACCENT_WARRANTY = "amber"
 ACCENT_WARRANTY_ADMIN = "green"
+ACCENT_ESC = "violet"
 ACCENT_CSI = "amber"
 ACCENT_TRAINING = "green"
 ACCENT_EOM = "orange"
@@ -617,6 +625,101 @@ def _render_warranty_admin_bonus_runs():
             delete_fn=delete_warranty_admin_bonus_run,
             active_session_key="active_warranty_admin_bonus_run_id",
             extra_clear_keys=["warranty_admin_bonus_completed"],
+        )
+        st.caption(f"ID: {run_id[:8]}…")
+        st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
+
+
+def _render_esc_bonus_runs():
+    runs = list_esc_bonus_runs()
+
+    st.markdown(team_section_divider(ACCENT_ESC), unsafe_allow_html=True)
+    st.markdown(
+        report_section_header(
+            "ESC Bonus",
+            "Saved Extended Service Contract claims bonuses (separate check on the 10th)",
+            accent=ACCENT_ESC,
+            icon="📄",
+            run_count=len(runs) if runs else None,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    if not runs:
+        st.markdown(
+            status_banner(
+                "No saved ESC bonuses yet. Finish on **ESC Bonus** "
+                "and click **Complete & Save to Reports**.",
+                "warn",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+
+    for run in runs:
+        run_id = run["id"]
+        pay_period = run.get("pay_period", "—")
+        completed = _fmt_date(run.get("completed_at", ""))
+        grand = _money(run.get("grand_total"))
+        loaded = load_esc_bonus_run(run_id)
+        employee = (
+            run.get("employee_name")
+            or (loaded or {}).get("snapshot", {}).get("employee_name")
+            or "—"
+        )
+        meta = (
+            f"{employee} · Separate check"
+            if run.get("status") != "draft"
+            else f"{employee} · In progress"
+        )
+
+        st.markdown(
+            report_run_summary_card(
+                pay_period,
+                ACCENT_ESC,
+                caption=_run_status_caption(run, completed),
+                amount=grand,
+                meta=meta,
+                badge_html=_run_status_badge(run),
+            ),
+            unsafe_allow_html=True,
+        )
+        a1, a2, a3 = st.columns(3)
+        with a1:
+            if st.button(
+                "✏️ Reopen & edit",
+                key=f"esc_reopen_{run_id}",
+                use_container_width=True,
+            ):
+                if loaded:
+                    apply_esc_bonus_snapshot_to_session(
+                        loaded.get("snapshot") or {},
+                        run_id,
+                        status=loaded.get("status", "completed"),
+                    )
+                    st.session_state.pending_nav = "ESC Bonus"
+                    st.rerun()
+        with a2:
+            if loaded and loaded.get("snapshot"):
+                stub = str(pay_period).replace(" ", "_")
+                emp_stub = str(employee).replace(" ", "_")
+                st.download_button(
+                    "📄 Export PDF",
+                    data=generate_esc_bonus_pdf(loaded["snapshot"]),
+                    file_name=f"ESC_BONUS_{emp_stub}_{stub}.pdf",
+                    mime="application/pdf",
+                    key=f"esc_dl_{run_id}",
+                    use_container_width=True,
+                )
+        with a3:
+            _render_delete_report_button("esc", run_id)
+        _render_delete_report_controls(
+            prefix="esc",
+            run_id=run_id,
+            run_label=f"{employee} · {pay_period}",
+            delete_fn=delete_esc_bonus_run,
+            active_session_key="active_esc_bonus_run_id",
+            extra_clear_keys=["esc_bonus_completed"],
         )
         st.caption(f"ID: {run_id[:8]}…")
         st.markdown('<div class="report-run-spacer"></div>', unsafe_allow_html=True)
@@ -1591,6 +1694,7 @@ def render(parts_only: bool = False):
     _render_warranty_runs()
     _render_warranty_audit_runs()
     _render_warranty_admin_bonus_runs()
+    _render_esc_bonus_runs()
     _render_csi_bonus_runs()
     _render_advisor_training_logs()
     _render_eom_report_runs()

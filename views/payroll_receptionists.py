@@ -10,6 +10,7 @@ from lib.receptionist_payroll_calc import (
     RECEPTIONIST_CSI_TIER_OPTIONS,
     TIRE_PAY_RATE,
     calculate_receptionist_payroll,
+    describe_declined_services_pay,
     describe_recall_pulse_appointment_pay,
 )
 from lib.receptionist_payroll_export_data import build_receptionist_payroll_snapshot
@@ -232,6 +233,7 @@ def _summary_row(row, synced, result) -> dict:
         "Appt Plan": appt_plan,
         "Appts": synced.appointments_set,
         "Appt Pay": result.appointment_pay,
+        "Declined": result.declined_pay,
         "Stretch": result.stretch_pay,
         "Tires": synced.tires_sold,
         "Tire Pay": result.tire_pay,
@@ -295,6 +297,23 @@ def _render_receptionist_section(row) -> None:
             help="Type the number of tires sold this pay period.",
         )
 
+    if row.has_declined_services_plan:
+        st.markdown("##### Declined services incentive (RecallPulse)")
+        st.caption(
+            f"Pay plan addendum — **${float(row.declined_appointment_rate or 6):.0f}** for each "
+            "declined-service appointment booked from the RecallPulse declined list. "
+            "Regular appointments stay at the rate above and are paid on the next paycheck."
+        )
+        st.number_input(
+            "Declined-service appointments booked",
+            min_value=0.0,
+            step=1.0,
+            key=rec_key(row.name, "declined_appointments_set"),
+            on_change=persist_receptionist_changes,
+            args=(row.name,),
+            help="Count from RecallPulse for this pay period only.",
+        )
+
     if row.has_warranty_bonus:
         st.checkbox(
             f"Extended warranty schedule bonus — {_money(row.warranty_bonus_amount)}",
@@ -340,6 +359,15 @@ def _render_receptionist_section(row) -> None:
             "Pay": "Appointment pay",
             "Amount": result.appointment_pay,
             "Detail": f"{synced.appointments_set:.0f} appts × {_money(synced.appointment_rate)}",
+        })
+    if row.has_declined_services_plan:
+        pay_rows.append({
+            "Pay": "Declined services",
+            "Amount": result.declined_pay,
+            "Detail": describe_declined_services_pay(
+                synced.declined_appointments_set,
+                synced.declined_appointment_rate,
+            ),
         })
     pay_rows.append({
         "Pay": "Tire pay",

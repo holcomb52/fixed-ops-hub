@@ -47,20 +47,30 @@ The customer narrative and the time punches are required. Copy them in full."""
 
 TRANSCRIBE_USER_PROMPT = """Copy this page exactly. Do not summarize.
 
-Include every one of these when it is on the page:
+Before any other text, write these lines from what is printed on this page:
+VIN: <the 17-character VIN, or leave this blank>
+PUNCH: <tech number> | <time on> | <time off> | <hours>
+Write one PUNCH line for every time punch. If this page has no punch, write PUNCH: none
+
+The VIN is in the top section of the FCA Global Claim Acknowledgement. It may be labeled VIN or Veh ID. Copy all 17 characters.
+Time punches are the rows just above the words Warranty Copy at the bottom of the invoice. Copy every row in that block. A time may be a clock (8:02 or 08.02), four digits (0802), or decimal hours (8.5 and 10.2). Copy the technician number, the time on, the time off, and the hours.
+Copy the mileage and every printed date: in service, date completed, date received, open, close, and repair.
+
+A repair order has every job, not only the first. Copy job 1, job 2, and every job after that. Each job has its own concern, cause, and correction. Copy the sentences after those labels. Do not put the labor description in place of that story.
+
+Then copy the rest of the page. Include every one of these when it is on the page:
 - The top section of an FCA Global Claim Acknowledgement: claim number, RO number, in service date, date completed, date received, service advisor number, list number, VIN, coverage, claim type, submission type, and continuation. The RO number and the claim number are the same number. Authorization is usually blank. Do not fill it in.
 - The technician name printed with the technician identification. It is on the claim acknowledgement, not in that top section.
 - The full customer narrative and the technician notes, word for word: concern, cause, correction, tests, and what was found. If the word Goodwill appears, copy it.
-- Time punches are on the invoice whose bottom says Warranty Copy. Copy every punch: technician, time on, time off, and hours.
 - On that same Warranty Copy, every job number. When a small plus sign is printed beside the job number, copy it as "Job +2" or "Job 2 +" and copy any signature or initials next to that job.
-- Every labor line: LOP, description, failure code, hours, and technician
-- Every part: part number, description, quantity, and whether Failed Part is marked
+- Every labor line on every job: job number, LOP, description, failure code, hours, and technician. One line in your copy for each job.
+- Every part on every job: part number, description, quantity, and whether Failed Part is marked
 - List Number. Copy the digits exactly, such as 2025123
 
 Do not copy the owner's name. Pre-Tax Total is usually blank. Do not fill those in.
 The service advisor is the number in the top section, not a person's name.
 Keep the technician notes as full sentences. Keep every time punch on its own line.
-If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave the notes, the dates, the list number, or the time punches out."""
+If a line is hard to read, copy your best reading and mark it [unclear]. Do not leave out a later job, the VIN, the notes, the mileage, the dates, the list number, or the time punches."""
 
 EXTRACT_USER_PROMPT = """Read this Reynolds Ignite repair order or FCA Global Claim Acknowledgement.
 Return JSON with exactly these keys:
@@ -85,20 +95,22 @@ unreadable (list of field names you could not read).
 
 On a claim acknowledgement, split Customer Narrative into customer_concern (what the customer stated),
 cause (what was found), and correction (the repair performed, including any labor operation and hours the narrative states).
-tech_notes is the technician's full story: the tests, the cause, and the correction, word for word. Do not shorten it.
-Copy LOP into op_code, Failure Code into failure_code, and Hours into hours.
+tech_notes is the technician's full story for every job: the tests, the cause, and the correction, word for word. Do not shorten it. When the repair order has more than one job, include each job's concern, cause, and correction and label it with that job number. Do not copy the labor description into customer_concern, cause, or correction.
+Copy every labor line into labor_operations. One object per job. Do not stop after the first LOP. Copy LOP into op_code, Failure Code into failure_code, Hours into hours, and the job number into job_number.
+Copy every part into parts. Do not stop after the first part.
+Copy mileage into mileage. Copy in service date, date completed, date received, open date, close date, and repair date when they are printed.
 The RO number and the claim number are the same number. Both are in the top section of the claim acknowledgement. Copy that number into ro_number and claim_number.
 in_service_date, date_completed, date_received, list_number, and service_advisor are in that same top section. service_advisor is the advisor number, not a name. Copy the printed dates. Do not leave a printed date blank.
 technician_name is on the claim acknowledgement next to the technician identification. It is not in the top section. Copy the name that is printed there.
 job_number is the job number on the Warranty Copy invoice. add_on is true only when a small plus sign is printed beside that job number on the Warranty Copy. A plus sign inside a part number is not an add-on.
-time_punches come from the invoice whose bottom says Warranty Copy. Copy every punch.
+time_punches come from the rows just above Warranty Copy at the bottom of the invoice. Copy every punch. A time may use a colon or a dot, such as 8:02 or 08.02. Lines that start with PUNCH: are punches. A line that starts with VIN: is the vin. Do not leave vin or time_punches empty when those lines are in the page text.
 list_number is the List Number in the top section. Copy every digit, such as 2025123.
 owner_name must be blank. Do not copy an owner name.
 authorization is usually blank on the claim acknowledgement. Leave it blank. Do not invent a number.
 dealer_code is 68888.
 pre_tax_total is usually blank. Leave it blank. Do not calculate it.
 signatures.service_manager is true when your signature or initials are on the Warranty Copy next to a job that has a plus sign, or next to a Goodwill job. It is false when that spot is visible and unsigned, and null when the Warranty Copy is not in the pictures.
-A claim can contain more than one repair order. Keep each RO's lines and totals together in repair_orders.
+A claim can contain more than one job and more than one repair order. labor_operations must list every job. Keep each RO's lines and totals together in repair_orders, and do not drop a job that is also listed there.
 Do not invent values that are not on the page."""
 
 AUDIT_SYSTEM_PROMPT = """You are a warranty-audit checker for an automobile dealership.
@@ -274,15 +286,33 @@ def complete_chat(
 
 
 def build_transcribe_messages(*, image: tuple[bytes, str], page_number: int) -> list:
-    blob, mime = image
-    encoded = base64.b64encode(blob).decode("ascii")
-    content: list[dict] = [
-        {"type": "text", "text": f"Page {page_number}.\n{TRANSCRIBE_USER_PROMPT}"},
-        {
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
-        },
-    ]
+    return _transcribe_request([(image, page_number)])
+
+
+def build_transcribe_batch(images: list[tuple[bytes, str]], *, first_page: int) -> list:
+    labeled = [(image, first_page + offset) for offset, image in enumerate(images)]
+    return _transcribe_request(labeled)
+
+
+def _transcribe_request(labeled: list[tuple[tuple[bytes, str], int]]) -> list:
+    if len(labeled) == 1:
+        page_number = labeled[0][1]
+        intro = f"Page {page_number}.\n{TRANSCRIBE_USER_PROMPT}"
+    else:
+        names = ", ".join(f"PAGE {page}" for _image, page in labeled)
+        intro = (
+            "Copy these pages in order. Start each page with its own line, exactly "
+            f"{names}.\n{TRANSCRIBE_USER_PROMPT}"
+        )
+    content: list[dict] = [{"type": "text", "text": intro}]
+    for (blob, mime), _page in labeled:
+        encoded = base64.b64encode(blob).decode("ascii")
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{encoded}", "detail": "high"},
+            }
+        )
     return [
         {"role": "system", "content": TRANSCRIBE_SYSTEM_PROMPT},
         {"role": "user", "content": content},
@@ -294,7 +324,8 @@ def build_structure_messages(transcript: str) -> list:
         EXTRACT_USER_PROMPT
         + "\n\nThe page text below was copied from the pictures. Use only that text.\n"
         + "Copy the full customer narrative into customer_concern, cause, and correction. Do not shorten it.\n"
-        + "Copy every time punch from the Warranty Copy into time_punches. Copy every labor line and every part.\n"
+        + "Copy every time punch from the Warranty Copy into time_punches. A line that starts with PUNCH: is one punch. Copy the VIN: line into vin. Do not leave vin or time_punches empty when that text is present.\n"
+        + "Copy every job into labor_operations. If the page text has two LOPs, return two labor lines. Copy each job's concern, cause, and correction. Do not repeat the labor description in those fields. Copy every part, the mileage, and the printed dates.\n"
         + "The top section of the claim acknowledgement has the in service date, date completed, service advisor number, and the RO number, which is the same as the claim number.\n"
         + "If the page text contains the notes, the dates, or the punches, those fields are readable. Do not leave them blank.\n\n"
         + "PAGE TEXT\n"
@@ -339,7 +370,7 @@ def normalize_repair_order(data: dict) -> dict:
         source = row.pop("_source", {})
         row["add_on"] = _add_on_value(source, row.get("job_number"))
         labor.append(row)
-    punches = _rows(data.get("time_punches"), ("tech_number", "on", "off", "hours"))
+    punches = _punch_rows(data.get("time_punches"))
     parts = []
     for row in _rows(data.get("parts"), ("ro_number", "part_number", "description", "quantity")):
         source = row.pop("_source", {})
@@ -454,7 +485,7 @@ def _extract_prepared(
     """
     prepared = [_smaller_for_model(image) for image in images]
     structure_fn = complete or _bound_complete(json_mode=True, max_tokens=16384)
-    transcribe_fn = complete or _bound_complete(json_mode=False, max_tokens=4096)
+    transcribe_fn = complete or _bound_complete(json_mode=False, max_tokens=8192)
     pages = _transcribe_pages(prepared, transcribe_fn, on_progress)
     transcript = _join_transcript(pages, document_text)
     if on_progress:
@@ -489,17 +520,50 @@ def _transcribe_pages(
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    batch_size = 2
+    groups = [images[start:start + batch_size] for start in range(0, len(images), batch_size)]
     pages: list[str] = [""] * len(images)
-    with ThreadPoolExecutor(max_workers=3) as pool:
+
+    def copy_group(start: int, group: list[tuple[bytes, str]]) -> list[str]:
+        messages = build_transcribe_batch(group, first_page=start + 1)
+        try:
+            text = transcribe_fn(messages).strip()
+        except LlmError as exc:
+            return [f"[Page {start + offset + 1} could not be read. {exc}]" for offset in range(len(group))]
+        return _split_page_copy(text, len(group), first_page=start + 1)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {
-            pool.submit(copy_page, index, image): index for index, image in enumerate(images)
+            pool.submit(copy_group, start, group): start
+            for start, group in ((index * batch_size, group) for index, group in enumerate(groups))
         }
         finished = 0
         for future in as_completed(futures):
-            pages[futures[future]] = future.result()
-            finished += 1
+            start = futures[future]
+            copied = future.result()
+            for offset, text in enumerate(copied):
+                pages[start + offset] = text
+            finished += len(copied)
             if on_progress:
-                on_progress(finished, len(images))
+                on_progress(min(finished, len(images)), len(images))
+    return pages
+
+
+def _split_page_copy(text: str, count: int, *, first_page: int = 1) -> list[str]:
+    """Split a multi-page copy on PAGE N lines. Keep the whole reply if those lines are missing."""
+    if count <= 1:
+        return [text]
+    parts = re.split(r"(?im)^page\s+(\d+)\s*$", text.strip())
+    if len(parts) < 3:
+        return [text] + [""] * (count - 1)
+    pages = [""] * count
+    pairs = iter(parts[1:])
+    for number, body in zip(pairs, pairs):
+        index = int(number) - first_page
+        if 0 <= index < count:
+            pages[index] = body.strip()
+    if not any(pages):
+        return [text] + [""] * (count - 1)
     return pages
 
 
@@ -522,8 +586,11 @@ def _structure_transcript(transcript: str, complete_fn: CompleteFn) -> dict:
     try:
         data = parse_json_object(complete_fn(messages))
     except LlmError:
-        return _transcript_fallback(transcript)
-    return _keep_unread_narrative(data, transcript)
+        data = _transcript_fallback(transcript)
+    else:
+        data = _keep_unread_narrative(data, transcript)
+    data = _recover_vin_and_punches(data, transcript)
+    return _recover_jobs(data, transcript)
 
 
 def _transcript_fallback(transcript: str) -> dict:
@@ -554,6 +621,690 @@ def _keep_unread_narrative(data: dict, transcript: str) -> dict:
         unreadable.append(note)
     data["unreadable"] = unreadable
     return data
+
+
+def _recover_vin_and_punches(data: dict, transcript: str) -> dict:
+    """Fill a blank VIN or blank punch list from the copied page text.
+
+    The field step often leaves these empty even when the page copy has them.
+    """
+    if not isinstance(data, dict):
+        data = {}
+    blob = "\n".join(
+        part
+        for part in (
+            transcript,
+            _text(data.get("customer_concern")),
+            _text(data.get("cause")),
+            _text(data.get("correction")),
+            _text(data.get("tech_notes")),
+            _text(data.get("other_visible_notes")),
+            _text(data.get("vehicle_description")),
+        )
+        if part
+    )
+    if not _text(data.get("vin")):
+        vin = _vin_from_text(blob)
+        if vin:
+            data["vin"] = vin
+    found = _punches_from_text(blob)
+    if found:
+        data["time_punches"] = _merge_punch_lists(_punch_rows(data.get("time_punches")), found)
+    return data
+
+
+def _recover_jobs(data: dict, transcript: str) -> dict:
+    """Keep every job, its story, the mileage, and the dates when the field list drops them."""
+    if not isinstance(data, dict):
+        data = {}
+    blob = transcript or ""
+    labor = _merge_labor_rows(_as_list(data.get("labor_operations")), _labor_from_text(blob))
+    if labor:
+        data["labor_operations"] = labor
+    if _parts_lack_numbers(data.get("parts")):
+        parts = _parts_from_text(blob)
+        if parts:
+            data["parts"] = parts
+    else:
+        data["parts"] = _merge_part_rows(_as_list(data.get("parts")), _parts_from_text(blob))
+    descriptions = [_text(row.get("description")) for row in labor if isinstance(row, dict)]
+    stories = _stories_from_text(blob, descriptions)
+    _apply_stories(data, stories, descriptions, blob)
+    if not _text(data.get("mileage")):
+        mileage = _mileage_from_text(blob)
+        if mileage:
+            data["mileage"] = mileage
+    for field, pattern in _DATE_LABELS:
+        if _text(data.get(field)):
+            continue
+        match = re.search(pattern + _DATE_VALUE, blob, flags=re.IGNORECASE)
+        if match:
+            data[field] = match.group(1)
+    return data
+
+
+_DATE_VALUE = r"[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"
+_DATE_LABELS = (
+    ("in_service_date", r"\bin[\s-]*service(?:\s*date)?\b"),
+    ("date_completed", r"\bdate\s+completed\b"),
+    ("date_received", r"\bdate\s+received\b"),
+    ("open_date", r"\b(?:open(?:ed)?\s*date|date\s+opened)\b"),
+    ("close_date", r"\b(?:close(?:d)?\s*date|date\s+closed)\b"),
+    ("repair_date", r"\brepair\s+date\b"),
+)
+_LOP_TOKEN = re.compile(
+    r"\b([A-Z0-9]{2,}(?:-[A-Z0-9]{2,}){1,4})\b|\b(\d{2}[A-Z][A-Z0-9]{3,8})\b|\b(\d{7,8})\b",
+    re.IGNORECASE,
+)
+
+
+def _lop_key(value: object) -> str:
+    return re.sub(r"[^A-Z0-9]", "", _text(value).upper())
+
+
+def _first_lop(line: str) -> str:
+    match = _LOP_TOKEN.search(line or "")
+    if not match:
+        return ""
+    token = next(group for group in match.groups() if group)
+    compact = re.sub(r"[^A-Z0-9]", "", token.upper())
+    if len(compact) == 17:
+        return ""
+    return token.upper()
+
+
+def _labor_from_text(text: str) -> list[dict]:
+    rows: list[dict] = []
+    current_job = ""
+    for line in text.splitlines():
+        header = re.match(r"(?i)^\s*job\s+(\+?[A-Z0-9]+)\b", line)
+        if header:
+            current_job = header.group(1)
+        row = _labor_from_line(line)
+        if not row:
+            continue
+        if not row["job_number"] and current_job:
+            row["job_number"] = current_job
+        if "+" in row["job_number"]:
+            row["add_on"] = True
+        rows.append(row)
+    return rows
+
+
+def _labor_from_line(line: str) -> dict | None:
+    if re.match(r"(?i)\s*(?:VIN|PUNCH)\s*:", line):
+        return None
+    lop = _first_lop(line)
+    if not lop:
+        return None
+    hours = _labor_hours(line)
+    if not hours:
+        return None
+    job = ""
+    prefix = line[: line.upper().find(lop.upper())]
+    job_match = re.search(r"(?i)(?:job\s*)?(\+?\d{1,2}|[A-D])\s*$", prefix.strip())
+    if job_match:
+        job = job_match.group(1)
+    failure = ""
+    tech = ""
+    remainder = line
+    lop_at = remainder.upper().find(lop.upper())
+    tail = remainder[lop_at + len(lop):]
+    hours_at = tail.rfind(hours)
+    before_hours = tail[:hours_at] if hours_at >= 0 else tail
+    after_hours = tail[hours_at + len(hours):] if hours_at >= 0 else ""
+    failure_match = re.search(r"\b(\d{1,3})\b", before_hours)
+    if failure_match:
+        failure = failure_match.group(1)
+    labeled_tech = re.search(r"(?i)\btech(?:nician)?(?:\s*(?:number|#|id|no))?\.?\s*[:#]?\s*(\d{2,6})\b", line)
+    if labeled_tech:
+        tech = labeled_tech.group(1)
+    else:
+        tech_match = re.search(r"\b(\d{3,6})\b", after_hours)
+        if tech_match and not (len(tech_match.group(1)) == 4 and 2015 <= int(tech_match.group(1)) <= 2039):
+            tech = tech_match.group(1)
+    description = re.sub(r"\s+", " ", re.sub(r"\b\d{1,3}\b", " ", before_hours)).strip(" -,")
+    description = re.sub(r"(?i)\b(?:lop|hours|hrs|failure\s*code|tech(?:nician)?)\b", "", description).strip(" -,")
+    return {
+        "job_number": job,
+        "op_code": lop,
+        "description": description,
+        "failure_code": failure,
+        "hours": hours,
+        "tech_number": tech,
+    }
+
+
+def _labor_hours(line: str) -> str:
+    labeled = re.search(r"(?i)\b(?:hours|hrs)\b[:\s]*(\d{1,2}(?:\.\d{1,2})?)", line)
+    if labeled:
+        value = float(labeled.group(1))
+        if value <= 24:
+            return labeled.group(1)
+    for match in reversed(list(re.finditer(r"\b(\d{1,2}\.\d{1,2}|\d{1,2}\.\d)\b", line))):
+        value = match.group(1)
+        number = float(value)
+        if number <= 0 or number > 24:
+            continue
+        return value
+    return ""
+
+
+def _merge_labor_rows(existing: list, extra: list) -> list[dict]:
+    merged: list[dict] = []
+    for item in list(existing) + list(extra):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        if not _text(row.get("op_code")):
+            row["op_code"] = _text(row.get("lop") or row.get("labor_op"))
+        code = _lop_key(row.get("op_code"))
+        match = None
+        if code:
+            same = [current for current in merged if _lop_key(current.get("op_code")) == code]
+            if len(same) == 1:
+                match = same[0]
+        if match is None:
+            merged.append(row)
+            continue
+        for field in ("ro_number", "job_number", "description", "failure_code", "hours", "tech_number", "add_on"):
+            if not _text(match.get(field)) and _text(row.get(field)):
+                match[field] = row[field]
+    return merged
+
+
+def _parts_lack_numbers(value: object) -> bool:
+    rows = [item for item in _as_list(value) if isinstance(item, dict)]
+    return not any(_text(row.get("part_number")) for row in rows)
+
+
+def _parts_from_text(text: str) -> list[dict]:
+    rows: list[dict] = []
+    in_parts = False
+    for line in text.splitlines():
+        if re.match(r"(?i)^\s*parts?\b[:\s]*$", line) or re.match(r"(?i)^\s*part\s+(?:number|#)\b", line):
+            in_parts = True
+            continue
+        if in_parts and re.match(r"(?i)^\s*(job|labor|concern|cause|correction|warranty|punch|vin|lop)\b", line):
+            in_parts = False
+        if not in_parts:
+            continue
+        part = _part_from_line(line)
+        if part:
+            rows.append(part)
+    return rows
+
+
+def _part_from_line(line: str) -> dict | None:
+    match = re.search(r"\b([A-Z0-9]*\d[A-Z0-9-]{4,16})\b", line, flags=re.IGNORECASE)
+    if not match:
+        return None
+    number = match.group(1).upper()
+    if _first_lop(number) == number or len(re.sub(r"[^A-Z0-9]", "", number)) < 6:
+        return None
+    tail = line[match.end():]
+    qty_match = re.search(r"\b(\d{1,3})\b", tail)
+    description = tail
+    if qty_match:
+        description = tail[: qty_match.start()]
+    description = re.sub(r"\s+", " ", description).strip(" -,")
+    return {
+        "part_number": number,
+        "description": description,
+        "quantity": qty_match.group(1) if qty_match else "",
+    }
+
+
+def _merge_part_rows(existing: list, extra: list) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for item in list(existing) + list(extra):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        number = _text(row.get("part_number")).upper()
+        if number and number in seen:
+            continue
+        if number:
+            seen.add(number)
+        if not number and not _text(row.get("description")):
+            continue
+        merged.append(row)
+    return merged
+
+
+def _stories_from_text(text: str, descriptions: list[str]) -> list[dict]:
+    stories: list[dict] = []
+    current = {"job": "", "concern": "", "cause": "", "correction": ""}
+    mode = ""
+    descriptions_folded = {item.casefold() for item in descriptions if item}
+
+    def flush() -> None:
+        nonlocal current, mode
+        if any(current[field].strip() for field in ("concern", "cause", "correction")):
+            stories.append({field: current[field].strip() for field in current})
+        current = {"job": "", "concern": "", "cause": "", "correction": ""}
+        mode = ""
+
+    def add(field: str, chunk: str) -> None:
+        chunk = chunk.strip(" \t-")
+        if not chunk:
+            return
+        current[field] = (current[field] + " " + chunk).strip()
+
+    for line in text.splitlines():
+        header = re.match(r"(?i)^\s*job\s+(\+?[A-Z0-9]+)\b", line)
+        if header and any(current[field].strip() for field in ("concern", "cause", "correction")):
+            flush()
+        if header:
+            current["job"] = header.group(1)
+        if _labor_from_line(line) or re.match(r"(?i)^\s*(?:parts?|warranty copy|punch|vin)\b", line):
+            mode = ""
+            continue
+        pieces = re.split(r"(?i)\b(concern|complaint|cause|correction)\s*:", line)
+        if len(pieces) == 1:
+            if mode and line.strip():
+                add(mode, line)
+            continue
+        if pieces[0].strip() and mode:
+            add(mode, pieces[0])
+        index = 1
+        while index < len(pieces) - 1:
+            label = pieces[index].casefold()
+            field = "concern" if label == "complaint" else label
+            if field == "concern" and current["concern"] and (current["cause"] or current["correction"]):
+                job = current["job"]
+                flush()
+                current["job"] = job
+            mode = field
+            add(field, pieces[index + 1])
+            index += 2
+    flush()
+    kept = []
+    for story in stories:
+        body = " ".join(story[field] for field in ("concern", "cause", "correction")).strip()
+        if body.casefold() in descriptions_folded:
+            continue
+        kept.append(story)
+    return kept
+
+
+def _stories_have_body(stories: list[dict], descriptions: list[str]) -> bool:
+    blocked = {item.casefold() for item in descriptions if item}
+    for story in stories:
+        for field in ("cause", "correction"):
+            text = (story.get(field) or "").strip()
+            if len(text) >= 12 and text.casefold() not in blocked:
+                return True
+    return False
+
+
+def _bare_story(value: object) -> str:
+    text = _text(value)
+    return re.sub(r"(?i)^(concern|cause|correction|complaint)\s*:\s*", "", text).strip()
+
+
+def _notes_are_labels_only(value: object) -> bool:
+    text = _text(value)
+    if not text:
+        return True
+    stripped = re.sub(r"(?i)\b(concern|cause|correction|complaint)\s*:?", "", text)
+    return re.sub(r"\s+", "", stripped) == ""
+
+
+def _narrative_is_placeholder(data: dict, descriptions: list[str]) -> bool:
+    fields = [_bare_story(data.get(name)) for name in ("customer_concern", "cause", "correction")]
+    filled = [item for item in fields if item]
+    if not filled:
+        return True
+    unique = {item.casefold() for item in filled}
+    blocked = {item.casefold() for item in descriptions if item}
+    if len(unique) == 1:
+        only = next(iter(unique))
+        if only in blocked or len(only) < 80:
+            return True
+    return bool(_notes_are_labels_only(data.get("tech_notes")) and any(item.casefold() in blocked for item in filled))
+
+
+def _join_story_field(stories: list[dict], field: str) -> str:
+    chunks = []
+    multiple = len([story for story in stories if (story.get(field) or "").strip()]) > 1
+    for story in stories:
+        text = (story.get(field) or "").strip()
+        if not text:
+            continue
+        if multiple:
+            job = story.get("job") or ""
+            chunks.append(f"Job {job}: {text}" if job else text)
+        else:
+            chunks.append(text)
+    return "\n\n".join(chunks)
+
+
+def _story_notes(stories: list[dict]) -> str:
+    blocks = []
+    usable = [story for story in stories if any((story.get(field) or "").strip() for field in ("concern", "cause", "correction"))]
+    for story in usable:
+        lines = []
+        for label, field in (("Concern", "concern"), ("Cause", "cause"), ("Correction", "correction")):
+            text = (story.get(field) or "").strip()
+            if text:
+                lines.append(f"{label}: {text}")
+        if not lines:
+            continue
+        if len(usable) > 1 and story.get("job"):
+            blocks.append(f"Job {story['job']}\n" + "\n".join(lines))
+        else:
+            blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def _apply_stories(data: dict, stories: list[dict], descriptions: list[str], transcript: str) -> None:
+    notes = _story_notes(stories)
+    if stories and (_narrative_is_placeholder(data, descriptions) or _concern_is_page_dump(data.get("customer_concern"), transcript)):
+        if _stories_have_body(stories, descriptions):
+            concern = _join_story_field(stories, "concern")
+            cause = _join_story_field(stories, "cause")
+            correction = _join_story_field(stories, "correction")
+            if concern:
+                data["customer_concern"] = concern
+            if cause:
+                data["cause"] = cause
+            if correction:
+                data["correction"] = correction
+            if notes:
+                data["tech_notes"] = notes
+            return
+    if not _text(data.get("cause")):
+        cause = _join_story_field(stories, "cause")
+        if cause:
+            data["cause"] = cause
+    if not _text(data.get("correction")):
+        correction = _join_story_field(stories, "correction")
+        if correction:
+            data["correction"] = correction
+    if _notes_are_labels_only(data.get("tech_notes")):
+        if notes:
+            data["tech_notes"] = notes
+        elif transcript.strip():
+            data["tech_notes"] = transcript.strip()[:12000]
+
+
+def _concern_is_page_dump(value: object, transcript: str) -> bool:
+    text = _text(value)
+    page = (transcript or "").strip()
+    return bool(text) and bool(page) and (text == page[:12000] or text.startswith("PAGE "))
+
+
+def _mileage_from_text(text: str) -> str:
+    match = re.search(
+        r"(?i)\b(?:mileage|odometer|odo|miles)\b[:\s#]*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\b",
+        text,
+    )
+    if not match:
+        return ""
+    return match.group(1).replace(",", "")
+
+
+def _vin_from_text(text: str) -> str:
+    """Prefer a VIN that is labeled. Otherwise take a 17-character VIN that checks out."""
+    for match in re.finditer(r"(?im)^VIN:\s*(\S.*?)\s*$", text):
+        vin = _labeled_vin(match.group(1))
+        if vin and vin.casefold() not in {"none", "blank", "n/a"}:
+            return vin
+    label = re.compile(
+        r"(?i)\b(?:v\s*\.?\s*i\s*\.?\s*n\.?|veh(?:icle)?\s*id(?:entification)?(?:\s*number)?)\b"
+    )
+    for match in label.finditer(text):
+        vin = _labeled_vin(text[match.end():match.end() + 48])
+        if vin:
+            return vin
+    for match in re.finditer(r"\b[A-HJ-NPR-Z0-9]{17}\b", text, flags=re.IGNORECASE):
+        vin = match.group(0).upper()
+        if any(char.isalpha() for char in vin) and any(char.isdigit() for char in vin) and _vin_check_ok(vin):
+            return vin
+    return ""
+
+
+def _labeled_vin(raw: str) -> str:
+    compact = re.sub(r"[^A-Za-z0-9]", "", raw or "").upper()
+    direct = re.search(r"[A-HJ-NPR-Z0-9]{17}", compact)
+    if direct:
+        return direct.group(0)
+    repaired = compact.translate(str.maketrans({"I": "1", "O": "0", "Q": "0"}))
+    match = re.search(r"[A-HJ-NPR-Z0-9]{17}", repaired)
+    if match and _vin_check_ok(match.group(0)):
+        return match.group(0)
+    return ""
+
+
+def _vin_check_ok(vin: str) -> bool:
+    translit = {
+        **{str(digit): digit for digit in range(10)},
+        "A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "G": 7, "H": 8,
+        "J": 1, "K": 2, "L": 3, "M": 4, "N": 5, "P": 7, "R": 9,
+        "S": 2, "T": 3, "U": 4, "V": 5, "W": 6, "X": 7, "Y": 8, "Z": 9,
+    }
+    weights = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+    if len(vin) != 17:
+        return False
+    total = 0
+    for char, weight in zip(vin, weights):
+        value = translit.get(char)
+        if value is None:
+            return False
+        total += value * weight
+    check = total % 11
+    expected = "X" if check == 10 else str(check)
+    return vin[8] == expected
+
+
+_COLON_TIME = re.compile(r"\b(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?\b")
+_DOT_TIME = re.compile(r"\b(\d{1,2})\.(\d{2})\b")
+_PUNCH_REGION = re.compile(
+    r"(?i)warranty copy|tech time|time punch|punch time|time clock|actual time|technician time"
+)
+
+
+def _punches_from_text(text: str) -> list[dict]:
+    rows: list[dict] = []
+    for match in re.finditer(r"(?im)^PUNCH:\s*(.+)$", text):
+        payload = match.group(1).strip()
+        if payload.casefold() in {"none", "n/a", "na", "blank", "no punches", "no punch"}:
+            continue
+        row = _punch_from_line(payload)
+        if row:
+            rows.append(row)
+    lines = text.splitlines()
+    regions = _punch_regions(lines)
+    for index, line in enumerate(lines):
+        if re.match(r"(?i)\s*PUNCH:", line):
+            continue
+        row = _punch_from_line(line)
+        if row is None and index in regions and not _first_lop(line):
+            row = _loose_punch_from_line(line)
+        if not _line_is_punch(line, row, index in regions):
+            continue
+        rows.append(row)
+    return _merge_punch_lists([], rows)
+
+
+def _punch_regions(lines: list[str]) -> set[int]:
+    indexes: set[int] = set()
+    for index, line in enumerate(lines):
+        if _PUNCH_REGION.search(line) or re.search(r"(?i)\bpunch\b", line):
+            for offset in range(-15, 6):
+                neighbor = index + offset
+                if 0 <= neighbor < len(lines):
+                    indexes.add(neighbor)
+        if re.search(r"(?i)\bon\b", line) and re.search(r"(?i)\boff\b", line):
+            indexes.add(index)
+    return indexes
+
+
+def _line_is_punch(line: str, row: dict | None, in_region: bool) -> bool:
+    if not row:
+        return False
+    if re.search(r"(?i)\bpunch\b", line):
+        return True
+    if re.search(r"(?i)\bon\b", line) and re.search(r"(?i)\boff\b", line):
+        return True
+    return bool(in_region and row.get("tech_number"))
+
+
+def _loose_punch_from_line(line: str) -> dict | None:
+    """Read a Warranty Copy punch printed as 0802/0918 or as decimal hours 8.5/10.2."""
+    scrubbed = re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", " ", line)
+    clocks: list[str] = []
+    used: set[str] = set()
+    for match in re.finditer(r"\b([01]\d|2[0-3])([0-5]\d)\b", scrubbed):
+        token = match.group(0)
+        if len(token) == 4 and 2015 <= int(token) <= 2039:
+            continue
+        clocks.append(_clock_text(str(int(match.group(1))), match.group(2), ""))
+        used.add(token)
+        if len(clocks) == 2:
+            break
+    if len(clocks) < 2:
+        clocks = []
+        used.clear()
+        for match in re.finditer(r"\b(\d{1,2}\.\d{1,2}|\d{1,2}\.\d)\b", line):
+            value = match.group(1)
+            hour_text, frac = value.split(".", 1)
+            hour = int(hour_text)
+            if hour > 24:
+                continue
+            if len(frac) == 2 and int(frac) <= 59 and hour <= 23:
+                continue
+            clocks.append(value)
+            if len(clocks) == 2:
+                break
+    if len(clocks) < 2:
+        return None
+    tech = _tech_not_used(line, used)
+    if not tech and not re.search(r"(?i)\bpunch\b|\bon\b|\boff\b|\btech\b", line):
+        return None
+    return {
+        "tech_number": tech,
+        "on": clocks[0],
+        "off": clocks[1],
+        "hours": _hours_on_line(line),
+    }
+
+
+def _tech_not_used(line: str, used: set[str]) -> str:
+    labeled = re.search(
+        r"(?i)\btech(?:nician)?(?:\s*(?:number|#|id|no))?\.?\s*[:#]?\s*(\d{2,6})\b",
+        line,
+    )
+    if labeled and labeled.group(1) not in used:
+        return labeled.group(1)
+    for match in re.finditer(r"\b(\d{3,6})\b", line):
+        number = match.group(1)
+        if number in used:
+            continue
+        if len(number) == 4 and 2015 <= int(number) <= 2039:
+            continue
+        return number
+    return ""
+
+
+def _punch_from_line(line: str) -> dict | None:
+    clocks = _clocks(line)
+    if len(clocks) < 2:
+        return None
+    return {
+        "tech_number": _tech_on_line(line),
+        "on": clocks[0],
+        "off": clocks[1],
+        "hours": _hours_on_line(line),
+    }
+
+
+def _clocks(line: str) -> list[str]:
+    found: list[tuple[int, str]] = []
+    for match in _COLON_TIME.finditer(line):
+        found.append((match.start(), _clock_text(match.group(1), match.group(2), match.group(3))))
+    if len(found) < 2:
+        for match in _DOT_TIME.finditer(line):
+            hour = int(match.group(1))
+            minute = int(match.group(2))
+            if hour > 23 or minute > 59:
+                continue
+            if len(found) >= 2 and hour < 5:
+                continue
+            if hour < 5 and not re.search(r"(?i)\bpunch\b|\bon\b|\boff\b", line):
+                continue
+            found.append((match.start(), _clock_text(match.group(1), match.group(2), "")))
+    found.sort(key=lambda item: item[0])
+    return [text for _start, text in found]
+
+
+def _clock_text(hour: str, minute: str, ampm: str) -> str:
+    text = f"{int(hour)}:{minute}"
+    if ampm:
+        text = f"{text} {ampm.upper()}"
+    return text
+
+
+def _tech_on_line(line: str) -> str:
+    labeled = re.search(
+        r"(?i)\btech(?:nician)?(?:\s*(?:number|#|id|no))?\.?\s*[:#]?\s*(\d{2,6})\b",
+        line,
+    )
+    if labeled:
+        return labeled.group(1)
+    scrubbed = _COLON_TIME.sub(" ", line)
+    scrubbed = _DOT_TIME.sub(" ", scrubbed)
+    scrubbed = re.sub(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", " ", scrubbed)
+    for match in re.finditer(r"\b(\d{2,6})\b", scrubbed):
+        number = match.group(1)
+        if len(number) == 4 and 2015 <= int(number) <= 2039:
+            continue
+        return number
+    return ""
+
+
+def _hours_on_line(line: str) -> str:
+    labeled = re.search(r"(?i)\b(?:hours|hrs)\b[:\s]*(\d{1,2}(?:\.\d{1,2})?)", line)
+    if labeled:
+        return labeled.group(1)
+    if "|" in line:
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) >= 4 and re.fullmatch(r"\d{1,2}(?:\.\d{1,2})?", parts[-1]):
+            return parts[-1]
+    clocks = set(_clocks(line))
+    for pattern in (r"\b(\d{1,2}\.\d{1,2})\b", r"\b(\d{1,2}\.\d)\b"):
+        for match in reversed(list(re.finditer(pattern, line))):
+            value = match.group(1)
+            hour, minute = value.split(".", 1)
+            if len(minute) == 2 and _clock_text(hour, minute, "") in clocks:
+                continue
+            return value
+    return ""
+
+
+def _merge_punch_lists(current: list[dict], extra: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for row in list(current) + list(extra):
+        key = (
+            _text(row.get("tech_number")).casefold(),
+            _text(row.get("on")).casefold(),
+            _text(row.get("off")).casefold(),
+        )
+        if key in seen or not any(key):
+            continue
+        seen.add(key)
+        merged.append(
+            {
+                "tech_number": _text(row.get("tech_number")),
+                "on": _text(row.get("on")),
+                "off": _text(row.get("off")),
+                "hours": _text(row.get("hours")),
+            }
+        )
+    return merged
 
 
 def _smaller_for_model(image: tuple[bytes, str]) -> tuple[bytes, str]:
@@ -808,9 +1559,9 @@ def _flatten_repair_orders(data: dict) -> dict:
             if isinstance(line, dict):
                 parts.append({**line, "ro_number": line.get("ro_number") or ro_number})
     if labor:
-        data["labor_operations"] = labor
+        data["labor_operations"] = _merge_labor_rows(_as_list(data.get("labor_operations")), labor)
     if parts:
-        data["parts"] = parts
+        data["parts"] = _merge_part_rows(_as_list(data.get("parts")), parts)
     if techs:
         data["tech_numbers"] = techs
     if not data.get("technician_name"):
@@ -936,7 +1687,7 @@ def shrink_image(data: bytes, *, max_edge: int = 1600) -> tuple[bytes, str]:
         converted = upright.convert("RGB")
         converted.thumbnail((max_edge, max_edge))
         buf = io_bytes()
-        converted.save(buf, format="JPEG", quality=80, optimize=True)
+        converted.save(buf, format="JPEG", quality=85, optimize=True)
         return buf.getvalue(), "image/jpeg"
 
 
@@ -966,21 +1717,14 @@ def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = MAX_CLAIM_P
     if name.endswith(".pdf") or data[:4] == b"%PDF":
         from lib.warranty_audit_manual import extract_pdf_pages, render_pdf_page_images
 
-        images_raw = render_pdf_page_images(data, max_pages=max_pages)
+        images_raw = render_pdf_page_images(data, max_pages=max_pages, resolution=170)
         images = [_safe_shrink(blob) for blob in images_raw]
-        document_text = ""
+        document_text = _pdf_text_layer(data, max_pages)
+        if not images and not document_text:
+            raise LlmError(
+                "Could not read this PDF. Upload a JPG, PNG, or a PDF with visible pages."
+            )
         if not images:
-            try:
-                pages = extract_pdf_pages(data)
-            except Exception as exc:
-                raise LlmError(str(exc)) from None
-            document_text = "\n\n".join(
-                f"PDF page {page['page_number']}\n{page['text']}" for page in pages if page.get("text")
-            ).strip()
-            if not document_text:
-                raise LlmError(
-                    "Could not read this PDF. Upload a JPG, PNG, or a PDF with visible pages."
-                )
             warnings.append("PDF pages could not be rendered, so the text layer was read instead.")
         else:
             try:
@@ -1001,6 +1745,22 @@ def prepare_ro_input(filename: str, data: bytes, *, max_pages: int = MAX_CLAIM_P
         "document_text": "",
         "warnings": warnings,
     }
+
+
+def _pdf_text_layer(data: bytes, max_pages: int) -> str:
+    """Keep the PDF's own text so a printed VIN and punch block are not left to the photo."""
+    try:
+        from lib.warranty_audit_manual import extract_pdf_pages
+
+        pages = extract_pdf_pages(data)
+    except Exception:
+        return ""
+    chunks = []
+    for page in pages[:max_pages]:
+        text = str(page.get("text") or "").strip()
+        if text:
+            chunks.append(f"PDF page {page.get('page_number')}\n{text}")
+    return "\n\n".join(chunks).strip()
 
 
 def _safe_shrink(data: bytes) -> tuple[bytes, str]:
@@ -1130,6 +1890,31 @@ def _as_items(value: object) -> list:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return [value]
     return []
+
+
+def _punch_rows(value: object) -> list[dict]:
+    """Read a punch whether the model named the columns on/off or time_on/time_off."""
+    aliases = {
+        "tech_number": ("tech_number", "tech", "technician", "technician_number", "technician_id", "tech_id"),
+        "on": ("on", "time_on", "on_time", "start", "time_in", "clock_on", "punch_in"),
+        "off": ("off", "time_off", "off_time", "stop", "finish", "time_out", "clock_off", "punch_out"),
+        "hours": ("hours", "hrs", "elapsed", "actual_hours"),
+    }
+    rows = []
+    for item in _as_list(value):
+        if not isinstance(item, dict):
+            continue
+        row = {}
+        for field, names in aliases.items():
+            text = ""
+            for name in names:
+                if _text(item.get(name)):
+                    text = _text(item.get(name))
+                    break
+            row[field] = text
+        if any(row.values()):
+            rows.append(row)
+    return rows
 
 
 def _rows(value: object, fields: tuple[str, ...]) -> list[dict]:

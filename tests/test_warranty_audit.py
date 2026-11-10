@@ -17,6 +17,7 @@ from lib.warranty_audit_claim import check_claim_criteria
 from lib.warranty_audit_llm import (
     AUDIT_SYSTEM_PROMPT,
     LlmError,
+    _split_page_copy,
     build_audit_messages,
     complete_chat,
     extract_repair_order,
@@ -521,7 +522,45 @@ class AuditPipelineTests(unittest.TestCase):
             complete=complete,
         )
         self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
-        self.assertGreaterEqual(calls["count"], 3)
+        self.assertGreaterEqual(calls["count"], 2)
+
+    def test_several_pages_are_read_in_groups(self):
+        from PIL import Image
+
+        picture_calls = {"count": 0}
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                picture_calls["count"] += 1
+                image_count = sum(
+                    1 for part in content if isinstance(part, dict) and part.get("type") == "image_url"
+                )
+                self.assertEqual(image_count, 2)
+                label = content[0]["text"].split("exactly ", 1)[1].split(".", 1)[0]
+                bodies = [
+                    f"{name.strip()}\nCustomer concern camera is dead on {name.strip()}. Time punch tech 441."
+                    for name in label.split(",")
+                ]
+                return "\n".join(bodies)
+            return json.dumps({"customer_concern": "camera is dead", "vin": "1C4RJFBG5LC000001"})
+
+        def jpeg() -> bytes:
+            image = Image.new("RGB", (40, 30), "white")
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG")
+            return buffer.getvalue()
+
+        order = extract_repair_order(
+            images=[(jpeg(), "image/jpeg") for _ in range(6)],
+            complete=complete,
+        )
+        self.assertEqual(picture_calls["count"], 3)
+        self.assertIn("camera is dead", order["customer_concern"].lower())
+        self.assertEqual(
+            _split_page_copy("PAGE 4\nnotes four\nPAGE 5\npunch five\n", 2, first_page=4),
+            ["notes four", "punch five"],
+        )
 
     def test_unreadable_model_reply_does_not_stop_the_read(self):
         from PIL import Image
@@ -601,6 +640,113 @@ class AuditPipelineTests(unittest.TestCase):
         self.assertIn("radio pops", order["customer_concern"])
         self.assertIn("Punch tech 12", order["other_visible_notes"])
         self.assertEqual(order["vin"], "1C4RJFBG5LC000001")
+        self.assertEqual(order["time_punches"][0]["tech_number"], "12")
+        self.assertEqual(order["time_punches"][0]["on"], "1:00")
+        self.assertEqual(order["time_punches"][0]["off"], "2:00")
+
+    def test_blank_vin_and_punch_fields_are_filled_from_the_page_copy(self):
+        from PIL import Image
+
+        transcript = (
+            "VIN: 1C4RJFBG5LC123456\n"
+            "PUNCH: 20001 | 8:02 AM | 9:18 AM | 1.3\n"
+            "Customer concern: Camera is dead.\n"
+            "441 HALCOMB 08.05 09.40 1.6\n"
+            "WARRANTY COPY\n"
+            "The customer arrived at 8:00 and left at 9:00.\n"
+        )
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                return transcript
+            return json.dumps({
+                "customer_concern": "Camera is dead.",
+                "vin": "",
+                "time_punches": [],
+            })
+
+        image = Image.new("RGB", (20, 20), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        self.assertEqual(order["vin"], "1C4RJFBG5LC123456")
+        punches = {(row["tech_number"], row["on"], row["off"]) for row in order["time_punches"]}
+        self.assertIn(("20001", "8:02 AM", "9:18 AM"), punches)
+        self.assertIn(("441", "8:05", "9:40"), punches)
+        self.assertNotIn((""), {row["on"] for row in order["time_punches"]})
+        self.assertFalse(any(row["on"] == "8:00" and row["off"] == "9:00" for row in order["time_punches"]))
+        self.assertEqual(order["time_punches"][0]["hours"], "1.3")
+
+    def test_every_job_story_and_warranty_copy_punch_are_kept(self):
+        from PIL import Image
+
+        transcript = (
+            "VIN: 3D3KR58L86G832222\n"
+            "Mileage: 84221\n"
+            "In service date: 06/27/2021\n"
+            "Date completed: 01/16/2026\n"
+            "Job 1\n"
+            "18HC1B2 Cluster Module, Instrument Panel 48 0.5 441\n"
+            "Concern: Cluster is blank and the gauges do not work.\n"
+            "Cause: The cluster module failed internal tests.\n"
+            "Correction: Replaced the cluster module and programmed it.\n"
+            "Job 2\n"
+            "26AB1000 Battery test and replace 11 0.3 441\n"
+            "Concern: Battery will not hold a charge.\n"
+            "Cause: Bad cell in the battery.\n"
+            "Correction: Replaced the battery and verified the charging system.\n"
+            "Parts\n"
+            "68188534AB Cluster module 1\n"
+            "20001 0802 0918 1.3\n"
+            "WARRANTY COPY\n"
+        )
+
+        def complete(messages):
+            content = messages[-1]["content"]
+            if isinstance(content, list):
+                return transcript
+            return json.dumps({
+                "ro_number": "57478",
+                "vin": "3D3KR58L86G832222",
+                "customer_concern": "Concern: Cluster Module, Instrument Panel",
+                "cause": "Concern: Cluster Module, Instrument Panel",
+                "correction": "Concern: Cluster Module, Instrument Panel",
+                "tech_notes": "Cause:\nCorrection:",
+                "mileage": "",
+                "labor_operations": [{
+                    "op_code": "18HC1B2",
+                    "description": "Cluster Module, Instrument Panel",
+                    "failure_code": "48",
+                    "hours": "0.5",
+                }],
+                "time_punches": [],
+                "parts": [{"ro_number": "57478"}],
+            })
+
+        image = Image.new("RGB", (24, 24), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        order = extract_repair_order(images=[(buffer.getvalue(), "image/jpeg")], complete=complete)
+        codes = [row["op_code"] for row in order["labor_operations"]]
+        self.assertEqual(codes, ["18HC1B2", "26AB1000"])
+        self.assertEqual(order["labor_operations"][0]["tech_number"], "441")
+        self.assertEqual(order["labor_operations"][0]["job_number"], "1")
+        self.assertEqual(order["labor_operations"][1]["failure_code"], "11")
+        self.assertIn("gauges do not work", order["customer_concern"])
+        self.assertIn("will not hold a charge", order["customer_concern"])
+        self.assertIn("failed internal tests", order["cause"])
+        self.assertIn("Bad cell", order["cause"])
+        self.assertIn("programmed it", order["correction"])
+        self.assertIn("charging system", order["tech_notes"])
+        self.assertNotIn("Cluster Module, Instrument Panel", order["cause"])
+        punches = {(row["tech_number"], row["on"], row["off"], row["hours"]) for row in order["time_punches"]}
+        self.assertIn(("20001", "8:02", "9:18", "1.3"), punches)
+        self.assertEqual(order["mileage"], "84221")
+        self.assertEqual(order["in_service_date"], "06/27/2021")
+        self.assertEqual(order["date_completed"], "01/16/2026")
+        self.assertEqual(order["parts"][0]["part_number"], "68188534AB")
+        self.assertEqual(order["parts"][0]["quantity"], "1")
 
     def test_time_punches_do_not_drop_the_copied_notes(self):
         from lib.warranty_audit_llm import _keep_unread_narrative
@@ -892,6 +1038,15 @@ class StorageTests(unittest.TestCase):
         active = [row for row in client.rows["warranty_manuals"] if row.get("is_active") is True]
         self.assertEqual(len(active), 2)
 
+    def test_unwritable_disk_does_not_drop_a_stored_manual(self):
+        client = _MemorySupabase()
+        with patch("lib.warranty_audit_storage.get_supabase", return_value=client):
+            save_manual_record(self._record("manual"))
+            with patch("pathlib.Path.replace", side_effect=FileNotFoundError("read only")):
+                loaded = load_active_manual()
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["filename"], "manual.pdf")
+
     def test_missing_table_message_points_at_the_sql_file(self):
         message = cloud_error_message("Could not find the table public.warranty_manuals")
         self.assertIn("warranty_audit_tables.sql", message)
@@ -904,7 +1059,10 @@ class RepoWiringTests(unittest.TestCase):
         auth = (ROOT / "lib" / "app_auth.py").read_text()
         self.assertIn('"Warranty Audit": warranty_audit.render', app)
         self.assertIn('"Warranty Audit"', auth)
-        self.assertIn("Drag pictures here", (ROOT / "views" / "warranty_audit.py").read_text())
+        audit_view = (ROOT / "views" / "warranty_audit.py").read_text()
+        self.assertIn("Drag pictures here", audit_view)
+        self.assertIn("Clear form", audit_view)
+        self.assertIn("def _clear_claim_form", audit_view)
         self.assertIn("stExpandSidebarButton", (ROOT / "styles.py").read_text())
         for relative in (
             "README.md",
@@ -1119,6 +1277,13 @@ class ClaimAcknowledgementTests(unittest.TestCase):
         self.assertEqual(order["time_punches"][0]["on"], "8:00")
         self.assertEqual(order["time_punches"][0]["off"], "9:00")
         self.assertTrue(order["parts"][0]["failed"])
+        dotted = normalize_repair_order({
+            "time_punches": {"tech": "441", "time_on": "8:02", "time_off": "9:18", "hrs": "1.3"},
+        })
+        self.assertEqual(dotted["time_punches"][0]["tech_number"], "441")
+        self.assertEqual(dotted["time_punches"][0]["on"], "8:02")
+        self.assertEqual(dotted["time_punches"][0]["off"], "9:18")
+        self.assertEqual(dotted["time_punches"][0]["hours"], "1.3")
         self.assertEqual(order["repair_orders"][0]["technician_id"], "20001")
 
     def test_next_repair_order_keeps_the_ro_and_claim_number(self):

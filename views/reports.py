@@ -636,7 +636,7 @@ def _render_esc_bonus_runs():
     st.markdown(team_section_divider(ACCENT_ESC), unsafe_allow_html=True)
     st.markdown(
         report_section_header(
-            "ESC Bonus",
+            "Service Contract Bonus",
             "Saved Extended Service Contract claims bonuses (separate check on the 10th)",
             accent=ACCENT_ESC,
             icon="📄",
@@ -648,7 +648,7 @@ def _render_esc_bonus_runs():
     if not runs:
         st.markdown(
             status_banner(
-                "No saved ESC bonuses yet. Finish on **ESC Bonus** "
+                "No saved Service Contract bonuses yet. Finish on **Service Contract Bonus** "
                 "and click **Complete & Save to Reports**.",
                 "warn",
             ),
@@ -697,7 +697,7 @@ def _render_esc_bonus_runs():
                         run_id,
                         status=loaded.get("status", "completed"),
                     )
-                    st.session_state.pending_nav = "ESC Bonus"
+                    st.session_state.pending_nav = "Service Contract Bonus"
                     st.rerun()
         with a2:
             if loaded and loaded.get("snapshot"):

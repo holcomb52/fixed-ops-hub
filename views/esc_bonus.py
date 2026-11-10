@@ -50,7 +50,7 @@ def render():
 
     st.markdown(
         page_hero(
-            "ESC Bonus",
+            "Service Contract Bonus",
             "Extended Service Contract claims bonus for Serenity Skinner — "
             "2% of parts & labor actually paid to the store. Separate check on the 10th.",
             tag="Claims",
@@ -234,7 +234,7 @@ def render():
                 "Open Reports after fixing the connection, or save again."
             )
         else:
-            st.success(f"Saved — find it in Reports under ESC Bonus · {saved}")
+            st.success(f"Saved — find it in Reports under Service Contract Bonus · {saved}")
             st.balloons()
 
     with st.expander("Pay plan addendum rules", expanded=False):

@@ -75,10 +75,12 @@
       "taker_codes": [
         "22SKINNERS"
       ],
-      "appointment_rate": 2.0,
+      "appointment_rate": 3.0,
       "has_warranty_bonus": true,
       "warranty_bonus_amount": 100.0,
-      "has_csi_bonus": true
+      "has_csi_bonus": true,
+      "has_declined_services_plan": true,
+      "declined_appointment_rate": 6.0
     }
   ],
   "bonus": []

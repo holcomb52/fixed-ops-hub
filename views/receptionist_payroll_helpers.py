@@ -27,6 +27,7 @@ from lib.receptionist_roster import flatten_roster, load_roster, normalize_roste
 
 RECEPTIONIST_FIELDS = {
     "appointments_set": 0.0,
+    "declined_appointments_set": 0.0,
     "tires_sold": 0.0,
     "appointment_rate": 0.0,
     "bonus_amount": 0.0,
@@ -307,6 +308,10 @@ def apply_receptionist_value_store():
         _hydrate(rec_key(row.name, "bonus_label"), saved.get("bonus_label", row.bonus_label or "Bonus"))
         _hydrate(rec_key(row.name, "warranty_bonus"), bool(saved.get("warranty_bonus", False)))
         _hydrate(rec_key(row.name, "stretch_bonus"), bool(saved.get("stretch_bonus", False)))
+        _hydrate(
+            rec_key(row.name, "declined_appointments_set"),
+            float(saved.get("declined_appointments_set", 0) or 0),
+        )
         _hydrate(rec_key(row.name, "csi_tier"), saved.get("csi_tier", CSI_TIER_NONE))
         _hydrate(rec_key(row.name, "notes"), str(saved.get("notes", row.notes) or ""))
 
@@ -424,6 +429,9 @@ def capture_receptionist_values(rows: list[ReceptionistPayrollRow]) -> dict:
             "spiff": float(st.session_state.get(rec_key(row.name, "spiff"), row.spiff) or 0),
             "warranty_bonus": bool(st.session_state.get(rec_key(row.name, "warranty_bonus"), False)),
             "stretch_bonus": bool(st.session_state.get(rec_key(row.name, "stretch_bonus"), False)),
+            "declined_appointments_set": float(
+                st.session_state.get(rec_key(row.name, "declined_appointments_set"), 0) or 0
+            ),
             "csi_tier": st.session_state.get(rec_key(row.name, "csi_tier"), CSI_TIER_NONE),
             "notes": str(st.session_state.get(rec_key(row.name, "notes"), row.notes) or ""),
         }
@@ -447,6 +455,9 @@ def _init_fields(row: ReceptionistPayrollRow, overrides: Optional[dict] = None):
     )
     st.session_state[rec_key(row.name, "stretch_bonus")] = bool(
         overrides.get("stretch_bonus", False)
+    )
+    st.session_state[rec_key(row.name, "declined_appointments_set")] = float(
+        overrides.get("declined_appointments_set", 0) or 0
     )
     st.session_state[rec_key(row.name, "csi_tier")] = overrides.get("csi_tier", CSI_TIER_NONE)
     st.session_state[rec_key(row.name, "notes")] = overrides.get("notes", row.notes or "")
@@ -589,6 +600,13 @@ def sync_receptionist(row: ReceptionistPayrollRow) -> ReceptionistPayrollRow:
         has_warranty_bonus=row.has_warranty_bonus,
         warranty_bonus_amount=float(row.warranty_bonus_amount or 0),
         warranty_bonus_qualified=_session_bool(row, "warranty_bonus", row.warranty_bonus_qualified),
+        has_declined_services_plan=row.has_declined_services_plan,
+        declined_appointments_set=_session_float(
+            row, "declined_appointments_set", row.declined_appointments_set
+        ),
+        declined_appointment_rate=float(
+            row.declined_appointment_rate or 0
+        ),
         has_csi_bonus=row.has_csi_bonus,
         has_recall_pulse_plan=row.has_recall_pulse_plan,
         stretch_bonus_qualified=_session_bool(row, "stretch_bonus", row.stretch_bonus_qualified),

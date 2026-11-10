@@ -53,6 +53,11 @@ def generate_receptionist_payroll_pdf(snapshot: dict) -> bytes:
             section_total += r["total_pay"]
             bonus_cell = "—"
             bonus_parts = []
+            if r.get("declined_pay"):
+                declined_count = r.get("declined_appointments_set") or 0
+                bonus_parts.append(
+                    f"Declined {declined_count:.0f}\n${r['declined_pay']:,.2f}"
+                )
             if r.get("warranty_pay"):
                 bonus_parts.append(f"Warranty\n${r['warranty_pay']:,.2f}")
             if r.get("csi_pay"):

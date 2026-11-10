@@ -55,6 +55,7 @@ try:
         advisor_training,
         csi_bonus,
         eom_report,
+        esc_bonus,
         flag_sheet,
         home,
         labor_rate,
@@ -95,6 +96,7 @@ ALL_PAGES = {
     "Warranty": warranty.render,
     "Warranty Audit": warranty_audit.render,
     "Warranty Admin Bonus": warranty_admin_bonus.render,
+    "Service Contract Bonus": esc_bonus.render,
     "CSI Bonus": csi_bonus.render,
     "Advisor Training": advisor_training.render,
     "EOM Report": eom_report.render,
@@ -110,6 +112,7 @@ NAV_LABELS = {
     "Warranty": "🛡️  Warranty",
     "Warranty Audit": "🔎  Warranty Audit",
     "Warranty Admin Bonus": "🏅  Warranty Admin Bonus",
+    "Service Contract Bonus": "📄  Service Contract Bonus",
     "CSI Bonus": "⭐  CSI Bonus",
     "Advisor Training": "🎓  Advisor Training",
     "EOM Report": "📅  EOM Report",
@@ -182,7 +185,7 @@ with st.sidebar:
         f"""
         <div class="sidebar-footer">
             <div>Database <strong>{db_status}</strong></div>
-            <div style="margin-top:0.35rem">v0.3 · Supabase</div>
+            <div style="margin-top:0.35rem">v0.4 · Supabase</div>
         </div>
         """,
         unsafe_allow_html=True,

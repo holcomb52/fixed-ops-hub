@@ -18,6 +18,7 @@ ALL_PAGES = [
     "Warranty",
     "Warranty Audit",
     "Warranty Admin Bonus",
+    "Service Contract Bonus",
     "CSI Bonus",
     "Advisor Training",
     "EOM Report",
